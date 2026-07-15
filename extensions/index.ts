@@ -48,6 +48,7 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 					(() => {
 						throw new Error("Pi Atelier config unavailable");
 					})(),
+				colorEnabled: !("NO_COLOR" in process.env),
 				requestRender,
 				onBranchChange: (callback) =>
 					footerData.onBranchChange(() => {

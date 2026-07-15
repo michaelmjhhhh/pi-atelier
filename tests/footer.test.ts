@@ -7,6 +7,7 @@ const plainTheme = {
 	fg: (_color: string, text: string) => text,
 	bold: (text: string) => text,
 };
+const stripAnsi = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "");
 
 const state: AtelierState = {
 	activity: "ready",
@@ -47,15 +48,28 @@ describe("footer", () => {
 		]);
 	});
 
-	it("uses semantic jewel-tone theme groups", () => {
+	it("uses the Midnight Amethyst palette without green or yellow theme roles", () => {
 		const fg = vi.fn((_color: string, text: string) => text);
-		const theme = { fg, bold: (text: string) => text };
-		renderFooterLine(state, DEFAULT_CONFIG, theme, 180);
-		expect(fg).toHaveBeenCalledWith("syntaxVariable", "↑324k");
-		expect(fg).toHaveBeenCalledWith("success", "↓15k");
-		expect(fg).toHaveBeenCalledWith("syntaxType", "R5.9M");
-		expect(fg).toHaveBeenCalledWith("warning", "$5.041");
-		expect(fg).toHaveBeenCalledWith("success", "◔27.0%/372k");
+		const line = renderFooterLine(state, DEFAULT_CONFIG, { fg, bold: (text) => text }, 180);
+		expect(line).toContain("\u001b[38;2;110;168;254m↑324k\u001b[39m");
+		expect(line).toContain("\u001b[38;2;177;140;255m↓15k\u001b[39m");
+		expect(line).toContain("\u001b[38;2;125;211;252mR5.9M\u001b[39m");
+		expect(line).toContain("\u001b[38;2;255;159;67m$5.041\u001b[39m");
+		expect(line).toContain("\u001b[38;2;110;168;254m◔27.0%/372k\u001b[39m");
+		expect(fg).not.toHaveBeenCalledWith("success", expect.anything());
+		expect(fg).not.toHaveBeenCalledWith("warning", expect.anything());
+	});
+
+	it("uses neutral theme colors when true color is disabled", () => {
+		const fg = vi.fn((_color: string, text: string) => text);
+		renderFooterLine(state, DEFAULT_CONFIG, { fg, bold: (text) => text }, 180, false);
+		const colors = fg.mock.calls.map(([color]) => color);
+		expect(colors).not.toContain("success");
+		expect(colors).not.toContain("warning");
+		expect(colors).toEqual(expect.arrayContaining(["accent", "text", "muted"]));
+		expect(colors.every((color) => ["accent", "text", "muted", "borderMuted", "error"].includes(color))).toBe(
+			true,
+		);
 	});
 	it.each([
 		[132, true, true, true, true],
@@ -77,17 +91,18 @@ describe("footer", () => {
 	it("right-aligns telemetry in gallery mode", () => {
 		const line = renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 180);
 		expect(visibleWidth(line)).toBe(180);
-		expect(line.endsWith("⌥A MENU")).toBe(true);
+		expect(stripAnsi(line).endsWith("⌥A MENU")).toBe(true);
 	});
 
 	it("renders the full editorial layout at wide widths", () => {
 		const line = renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 160);
 		expect(line).toContain("◆ ATELIER");
+		const plainLine = stripAnsi(line);
 		for (const group of ["↑324k ↓15k", "R5.9M CH98.8%", "$5.041 (sub)", "◔27.0%/372k (auto)"]) {
-			expect(line).toContain(group);
+			expect(plainLine).toContain(group);
 		}
-		expect(line).toContain("gpt-5.6-sol · medium");
-		expect(line).toContain("main ✦");
+		expect(plainLine).toContain("gpt-5.6-sol · medium");
+		expect(plainLine).toContain("main ✦");
 		expect(visibleWidth(line)).toBeLessThanOrEqual(160);
 	});
 
@@ -171,19 +186,18 @@ describe("footer", () => {
 		expect(invalidLine).not.toMatch(/NaN|Infinity/);
 	});
 
-	it("uses warning and error context colors at exact thresholds", () => {
-		for (const [percent, color] of [
-			[70, "warning"],
-			[90, "error"],
+	it("uses orange and red context colors at exact thresholds", () => {
+		for (const [percent, rgb] of [
+			[70, "255;159;67"],
+			[90, "255;93;115"],
 		] as const) {
-			const fg = vi.fn((_color: string, text: string) => text);
-			renderFooterLine(
+			const line = renderFooterLine(
 				{ ...state, metrics: { ...state.metrics, contextPercent: percent } },
 				DEFAULT_CONFIG,
-				{ fg, bold: (text) => text },
+				plainTheme,
 				160,
 			);
-			expect(fg).toHaveBeenCalledWith(color, `◔${percent.toFixed(1)}%/372k`);
+			expect(line).toContain(`\u001b[38;2;${rgb}m◔${percent.toFixed(1)}%/372k\u001b[39m`);
 		}
 	});
 
@@ -195,7 +209,7 @@ describe("footer", () => {
 			160,
 		);
 		expect(line).toContain("ATELIER");
-		expect(line.endsWith("⌥A MENU")).toBe(true);
+		expect(stripAnsi(line).endsWith("⌥A MENU")).toBe(true);
 		expect(line).not.toContain("xxxxxxxxxx");
 	});
 

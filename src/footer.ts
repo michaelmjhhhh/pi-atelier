@@ -1,5 +1,6 @@
 import { truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { formatTokens } from "./metrics.js";
+import { createPalette, type AtelierPalette, type PaletteRole } from "./palette.js";
 import type { AtelierConfig, AtelierMetrics, AtelierState, SegmentId } from "./types.js";
 
 export interface ThemeLike {
@@ -54,20 +55,25 @@ function contextCore(metrics: AtelierMetrics, compact: boolean, theme: ThemeLike
 	return `${compact ? "" : "◔"}${percent}/${capacity}`;
 }
 
-function contextColor(metrics: AtelierMetrics, config: AtelierConfig): string {
-	if (metrics.contextPercent === null || !Number.isFinite(metrics.contextPercent)) return "dim";
+function contextRole(metrics: AtelierMetrics, config: AtelierConfig): PaletteRole {
+	if (metrics.contextPercent === null || !Number.isFinite(metrics.contextPercent)) return "muted";
 	if (metrics.contextPercent >= config.contextDanger) return "error";
 	if (metrics.contextPercent >= config.contextWarning) return "warning";
-	return "success";
+	return "context";
 }
 
-function telemetry(metrics: AtelierMetrics, config: AtelierConfig, theme: ThemeLike) {
-	const input = theme.fg("syntaxVariable", `↑${usageValue(metrics, metrics.input, theme)}`);
-	const output = theme.fg("success", `↓${usageValue(metrics, metrics.output, theme)}`);
-	const read = theme.fg("syntaxType", `R${usageValue(metrics, metrics.cacheRead, theme)}`);
+function telemetry(
+	metrics: AtelierMetrics,
+	config: AtelierConfig,
+	theme: ThemeLike,
+	palette: AtelierPalette,
+) {
+	const input = palette.paint("input", `↑${usageValue(metrics, metrics.input, theme)}`);
+	const output = palette.paint("output", `↓${usageValue(metrics, metrics.output, theme)}`);
+	const read = palette.paint("cache", `R${usageValue(metrics, metrics.cacheRead, theme)}`);
 	const write =
 		metrics.cacheWrite > 0
-			? theme.fg("syntaxType", `W${usageValue(metrics, metrics.cacheWrite, theme)}`)
+			? palette.paint("cache", `W${usageValue(metrics, metrics.cacheWrite, theme)}`)
 			: "";
 	const hitValue =
 		metrics.cacheHitPercent !== undefined && Number.isFinite(metrics.cacheHitPercent)
@@ -77,14 +83,14 @@ function telemetry(metrics: AtelierMetrics, config: AtelierConfig, theme: ThemeL
 		metrics.cacheHitPercent !== undefined && Number.isFinite(metrics.cacheHitPercent)
 			? `${Math.round(metrics.cacheHitPercent)}%`
 			: unavailable(theme);
-	const hit = theme.fg("syntaxType", `CH${hitValue}`);
-	const compactHit = theme.fg("syntaxType", `CH${compactHitValue}`);
-	const cost = theme.fg("warning", `$${costValue(metrics, config.currencyDecimals, false, theme)}`);
-	const compactCost = theme.fg("warning", `$${costValue(metrics, config.currencyDecimals, true, theme)}`);
+	const hit = palette.paint("cache", `CH${hitValue}`);
+	const compactHit = palette.paint("cache", `CH${compactHitValue}`);
+	const cost = palette.paint("cost", `$${costValue(metrics, config.currencyDecimals, false, theme)}`);
+	const compactCost = palette.paint("cost", `$${costValue(metrics, config.currencyDecimals, true, theme)}`);
 	const subscription = metrics.subscription ? theme.fg("muted", " (sub)") : "";
 	const compactSubscription = metrics.subscription ? theme.fg("muted", "(sub)") : "";
-	const context = theme.fg(contextColor(metrics, config), contextCore(metrics, false, theme));
-	const compactContext = theme.fg(contextColor(metrics, config), contextCore(metrics, true, theme));
+	const context = palette.paint(contextRole(metrics, config), contextCore(metrics, false, theme));
+	const compactContext = palette.paint(contextRole(metrics, config), contextCore(metrics, true, theme));
 	const compaction =
 		metrics.autoCompact === true
 			? theme.fg("muted", " (auto)")
@@ -114,10 +120,10 @@ function telemetry(metrics: AtelierMetrics, config: AtelierConfig, theme: ThemeL
 	};
 }
 
-function activity(state: AtelierState, full: boolean, theme: ThemeLike): string {
+function activity(state: AtelierState, full: boolean, palette: AtelierPalette): string {
 	const labels = { ready: "READY", working: "WORKING", warning: "WARNING", error: "ERROR" } as const;
-	const colors = { ready: "success", working: "accent", warning: "warning", error: "error" } as const;
-	return theme.fg(colors[state.activity], full ? `● ${labels[state.activity]}` : "●");
+	const roles = { ready: "ready", working: "working", warning: "warning", error: "error" } as const;
+	return palette.paint(roles[state.activity], full ? `● ${labels[state.activity]}` : "●");
 }
 
 function bounded(text: string, width: number): string {
@@ -129,15 +135,17 @@ function buildZones(
 	config: AtelierConfig,
 	theme: ThemeLike,
 	mode: ResponsiveMode,
+	colorEnabled: boolean,
 ): FooterZones {
+	const palette = createPalette(theme, colorEnabled);
 	const enabled = new Set<SegmentId>(config.segments);
 	const workspace: string[] = [];
 	if (enabled.has("brand") && config.ornament !== "none") {
-		if (mode === "gallery") workspace.push(theme.fg("accent", theme.bold("◆ ATELIER")));
-		else if (mode === "balanced") workspace.push(theme.fg("accent", theme.bold("◆")));
+		if (mode === "gallery") workspace.push(palette.paint("brand", theme.bold("◆ ATELIER")));
+		else if (mode === "balanced") workspace.push(palette.paint("brand", theme.bold("◆")));
 	}
 	if (enabled.has("activity") && mode !== "telemetry" && mode !== "safe") {
-		workspace.push(activity(state, mode === "gallery" || mode === "balanced", theme));
+		workspace.push(activity(state, mode === "gallery" || mode === "balanced", palette));
 	}
 	if (
 		enabled.has("model") &&
@@ -156,7 +164,7 @@ function buildZones(
 	}
 	if (enabled.has("git") && state.branch && (mode === "gallery" || mode === "balanced")) {
 		const branch = bounded(state.branch, mode === "gallery" ? 18 : 12);
-		workspace.push(`${theme.fg("text", branch)}${state.dirty ? theme.fg("warning", " ✦") : ""}`);
+		workspace.push(`${theme.fg("text", branch)}${state.dirty ? palette.paint("warning", " ✦") : ""}`);
 	}
 	let status: string | undefined;
 	if (enabled.has("statuses") && config.showExtensionStatuses && mode === "gallery") {
@@ -164,10 +172,10 @@ function buildZones(
 		if (statuses && visibleWidth(statuses) <= 24) status = theme.fg("muted", statuses);
 	}
 
-	const metrics = telemetry(state.metrics, config, theme);
+	const metrics = telemetry(state.metrics, config, theme, palette);
 	const shortcut = config.shortcut.toLowerCase() === "alt+a" ? "⌥A" : sanitize(config.shortcut).toUpperCase();
 	const menu = enabled.has("menu")
-		? theme.fg("accent", mode === "gallery" ? `${shortcut} MENU` : shortcut)
+		? palette.paint("brand", mode === "gallery" ? `${shortcut} MENU` : shortcut)
 		: "";
 	const telemetryFull: string[] = [];
 	const telemetryCompact: string[] = [];
@@ -245,15 +253,16 @@ export function renderFooterLine(
 	config: AtelierConfig,
 	theme: ThemeLike,
 	width: number,
+	colorEnabled = true,
 ): string {
 	if (width <= 0) return "";
 	const mode = selectResponsiveMode(width);
-	const zones = buildZones(state, config, theme, mode);
+	const zones = buildZones(state, config, theme, mode, colorEnabled);
 	let line: string;
 	if (mode === "gallery") {
 		line =
 			renderGallery(zones, width) ||
-			renderBalanced(buildZones(state, config, theme, "balanced"), width, theme);
+			renderBalanced(buildZones(state, config, theme, "balanced", colorEnabled), width, theme);
 	} else if (mode === "balanced") line = renderBalanced(zones, width, theme);
 	else if (mode === "focus") line = renderFocus(zones, width, theme);
 	else line = renderTelemetry(zones);
@@ -263,6 +272,7 @@ export function renderFooterLine(
 export interface FooterComponentOptions {
 	getState(): AtelierState;
 	getConfig(): AtelierConfig;
+	colorEnabled?: boolean;
 	requestRender(): void;
 	onBranchChange(callback: () => void): () => void;
 	theme: ThemeLike;
@@ -273,7 +283,15 @@ export function createFooterComponent(options: FooterComponentOptions): Componen
 	const unsubscribe = options.onBranchChange(options.requestRender);
 	return {
 		render(width) {
-			return [renderFooterLine(options.getState(), options.getConfig(), options.theme, width)];
+			return [
+				renderFooterLine(
+					options.getState(),
+					options.getConfig(),
+					options.theme,
+					width,
+					options.colorEnabled ?? true,
+				),
+			];
 		},
 		invalidate() {},
 		dispose() {
