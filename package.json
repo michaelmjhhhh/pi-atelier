@@ -1,0 +1,58 @@
+{
+	"name": "pi-atelier",
+	"version": "0.1.0",
+	"description": "An elegant, information-rich status and menu bar for Pi",
+	"type": "module",
+	"license": "MIT",
+	"keywords": [
+		"pi-package",
+		"pi",
+		"extension",
+		"tui",
+		"status-bar"
+	],
+	"files": [
+		"extensions",
+		"src",
+		"README.md",
+		"CHANGELOG.md",
+		"LICENSE"
+	],
+	"pi": {
+		"extensions": [
+			"./extensions/index.ts"
+		]
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/michaelmjhhhh/pi-atelier.git"
+	},
+	"bugs": {
+		"url": "https://github.com/michaelmjhhhh/pi-atelier/issues"
+	},
+	"homepage": "https://github.com/michaelmjhhhh/pi-atelier#readme",
+	"scripts": {
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"typecheck": "tsc --noEmit",
+		"lint": "biome lint .",
+		"format": "biome format --write .",
+		"format:check": "biome format .",
+		"check": "npm run typecheck && npm run lint && npm run format:check && npm test"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": ">=0.80.7",
+		"@earendil-works/pi-tui": ">=0.80.7"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.4",
+		"@earendil-works/pi-coding-agent": "0.80.7",
+		"@earendil-works/pi-tui": "0.80.7",
+		"@types/node": "24.12.4",
+		"typescript": "5.9.3",
+		"vitest": "4.1.10"
+	},
+	"engines": {
+		"node": ">=22.19.0"
+	}
+}
