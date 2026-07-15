@@ -9,8 +9,10 @@ Pi Atelier replaces Pi's default footer with a responsive editorial-luxe bar whi
 ## Preview
 
 ```text
-◆ ATELIER  ● READY │ ↑324k ↓15k R5.9M CH98.8% $5.041 (sub) │ 27.0%/372k (auto) │ gpt-5.6-sol · medium │ main ✦ │ ⌥A MENU
+◆ ATELIER  ● READY  gpt-5.6-sol · low  main ✦        ↑324k ↓15k  R5.9M CH98.8%  $5.041 (sub)  ◔27.0%/372k (auto)  ⌥A MENU
 ```
+
+Wide terminals use a dual-zone instrument rail: workspace identity stays left while operational telemetry is right-aligned. Semantic jewel-tone colors distinguish input, output, cache, cost, context health, and agent state without hard-coded terminal colors.
 
 ## Features
 
@@ -146,10 +148,13 @@ Unknown or invalid values are ignored with one warning. The required `metrics` a
 
 ## Responsive behavior
 
-- **Wide:** brand, activity, metrics, context, model, thinking, git, extension statuses, menu hint
-- **Medium:** complete metrics/context with reduced ornament and secondary details
-- **Narrow (56+):** compact complete metrics/context; optional workspace segments hide first
-- **Very narrow:** metrics-first ANSI-aware truncation with no wrapping
+- **Gallery (132+):** complete left-aligned workspace zone and right-aligned telemetry zone
+- **Balanced (96–131):** compact brand, model, Git, telemetry, context, and shortcut groups
+- **Focus (72–95):** activity, bounded model identity, core telemetry, context, and shortcut when space permits
+- **Telemetry (56–71):** complete compact operational metrics and context without decorative workspace data
+- **Safe (<56):** metrics-first ANSI-aware truncation with no wrapping
+
+Color remains semantic at every width: input uses the theme's variable color, output uses success, cache uses type color, cost uses warning/gold, and context transitions from success to warning to error at configured thresholds.
 
 ## Privacy and security
 

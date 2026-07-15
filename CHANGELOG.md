@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Add semantic jewel-tone telemetry colors and five deterministic responsive layouts.
+- Add a wide dual-zone instrument rail with elastic workspace/telemetry alignment.
 - Add responsive editorial-luxe Pi footer.
 - Preserve Pi usage, cache, cost, subscription, context, and compaction metrics.
 - Add model, thinking-level, tool, display, and safe session controls.
