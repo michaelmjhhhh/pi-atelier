@@ -1,5 +1,4 @@
 import {
-	DynamicBorder,
 	getSettingsListTheme,
 	type ExtensionAPI,
 	type ExtensionContext,
@@ -17,6 +16,22 @@ import type { AtelierRuntime } from "./state.js";
 import { DEFAULT_CONFIG, type AtelierConfig, type PresetName, type SegmentId } from "./types.js";
 
 export type SaveConfig = typeof saveUserConfig;
+
+interface MenuTheme {
+	fg(color: string, text: string): string;
+	bold(text: string): string;
+}
+
+export function renderMenuBorder(theme: MenuTheme, width: number): string {
+	return theme.bold(theme.fg("borderAccent", "━".repeat(Math.max(1, width))));
+}
+
+function createMenuBorder(theme: MenuTheme) {
+	return {
+		render: (width: number) => [renderMenuBorder(theme, width)],
+		invalidate() {},
+	};
+}
 
 const PRESET_CONFIG: Record<PresetName, Partial<AtelierConfig>> = {
 	editorial: DEFAULT_CONFIG,
@@ -163,7 +178,7 @@ async function showSelection(
 	return ctx.ui.custom<string | undefined>(
 		(tui, theme, _keybindings, done) => {
 			const container = new Container();
-			container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
+			container.addChild(createMenuBorder(theme));
 			container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
 			const list = new SelectList(items, Math.min(items.length, 12), {
 				selectedPrefix: (text) => theme.fg("accent", text),
@@ -176,7 +191,7 @@ async function showSelection(
 			list.onCancel = () => done(undefined);
 			container.addChild(list);
 			container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc back"), 1, 0));
-			container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
+			container.addChild(createMenuBorder(theme));
 			return {
 				render: (width) => container.render(width),
 				invalidate: () => container.invalidate(),

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMenuActions } from "../src/menu.js";
+import { createMenuActions, renderMenuBorder } from "../src/menu.js";
 import { DEFAULT_CONFIG } from "../src/types.js";
 
 function harness() {
@@ -29,6 +29,18 @@ function harness() {
 	const actions = createMenuActions(pi as never, ctx as never, runtime as never, "/tmp/user.json", save);
 	return { actions, pi, ctx, runtime, save };
 }
+
+describe("menu presentation", () => {
+	it("uses a heavy theme-aware border that fills the available width", () => {
+		const theme = {
+			fg: vi.fn((_color: string, text: string) => text),
+			bold: vi.fn((text: string) => text),
+		};
+		expect(renderMenuBorder(theme, 6)).toBe("━━━━━━");
+		expect(theme.fg).toHaveBeenCalledWith("borderAccent", "━━━━━━");
+		expect(theme.bold).toHaveBeenCalled();
+	});
+});
 
 describe("menu actions", () => {
 	it("keeps the prior model when authentication fails", async () => {
