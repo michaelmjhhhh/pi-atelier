@@ -9,6 +9,7 @@ import {
 import type { KeyId } from "@earendil-works/pi-tui";
 import { loadConfig } from "../src/config.js";
 import { createFooterComponent, type ThemeLike } from "../src/footer.js";
+import { openAtelierMenu } from "../src/menu.js";
 import { AtelierRuntime } from "../src/state.js";
 import type { AtelierState } from "../src/types.js";
 
@@ -18,6 +19,14 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 	let requestRender: () => void = () => undefined;
 	let enabled = true;
 	let shortcutRegistered = false;
+
+	async function openMenu(ctx: ExtensionContext): Promise<void> {
+		if (!runtime) {
+			ctx.ui.notify("Pi Atelier is not active in this session", "warning");
+			return;
+		}
+		await openAtelierMenu(pi, ctx, runtime, join(getAgentDir(), "pi-atelier.json"));
+	}
 
 	function installFooter(ctx: ExtensionContext): void {
 		if (!runtime || ctx.mode !== "tui") return;
@@ -62,11 +71,7 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 				ctx.ui.notify("Pi Atelier enabled", "info");
 				return;
 			}
-			if (ctx.mode !== "tui") {
-				ctx.ui.notify("Pi Atelier menu requires TUI mode", "warning");
-				return;
-			}
-			ctx.ui.notify("Pi Atelier menu is loading", "info");
+			await openMenu(ctx);
 		},
 	});
 
@@ -103,16 +108,12 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 				try {
 					pi.registerShortcut(loaded.config.shortcut as KeyId, {
 						description: "Open Pi Atelier",
-						handler: async (shortcutContext) => {
-							await pi.getCommands().find((command) => command.name === "atelier");
-							shortcutContext.ui.notify("Use /atelier to open the menu", "info");
-						},
+						handler: async (shortcutContext) => openMenu(shortcutContext),
 					});
 				} catch {
 					pi.registerShortcut("alt+a" as KeyId, {
 						description: "Open Pi Atelier",
-						handler: async (shortcutContext) =>
-							shortcutContext.ui.notify("Use /atelier to open the menu", "info"),
+						handler: async (shortcutContext) => openMenu(shortcutContext),
 					});
 					ctx.ui.notify(`Invalid Atelier shortcut "${loaded.config.shortcut}"; using alt+a`, "warning");
 				}
