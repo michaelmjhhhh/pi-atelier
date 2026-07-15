@@ -117,6 +117,88 @@ describe("footer", () => {
 		expect(line).not.toContain("ATELIER");
 	});
 
+	it("honors ornament, density, and configured telemetry order", () => {
+		const noOrnament = renderFooterLine(state, { ...DEFAULT_CONFIG, ornament: "none" }, plainTheme, 160);
+		expect(noOrnament).not.toContain("ATELIER");
+		const compact = renderFooterLine(state, { ...DEFAULT_CONFIG, density: "compact" }, plainTheme, 160);
+		expect(compact).toContain("CH99%");
+		const reordered = renderFooterLine(
+			state,
+			{ ...DEFAULT_CONFIG, ornament: "none", segments: ["context", "metrics"] },
+			plainTheme,
+			160,
+		);
+		expect(reordered.indexOf("◔27.0%")).toBeLessThan(reordered.indexOf("↑324k"));
+		const contextOnly = renderFooterLine(
+			state,
+			{ ...DEFAULT_CONFIG, ornament: "none", segments: ["context"] },
+			plainTheme,
+			160,
+		);
+		expect(contextOnly).not.toContain("↑324k");
+	});
+
+	it("renders unavailable and non-finite telemetry safely", () => {
+		const { cacheHitPercent: _cacheHitPercent, ...metricsWithoutHit } = state.metrics;
+		const unavailableState: AtelierState = {
+			...state,
+			metrics: {
+				...metricsWithoutHit,
+				usageAvailable: false,
+				costAvailable: false,
+				contextPercent: null,
+				autoCompact: null,
+			},
+		};
+		const unavailableLine = renderFooterLine(unavailableState, DEFAULT_CONFIG, plainTheme, 160);
+		for (const marker of ["↑—", "↓—", "R—", "CH—", "$—", "◔—/372k", "(—)"]) {
+			expect(unavailableLine).toContain(marker);
+		}
+		const invalidLine = renderFooterLine(
+			{
+				...state,
+				metrics: {
+					...state.metrics,
+					cacheHitPercent: Number.NaN,
+					contextPercent: Number.POSITIVE_INFINITY,
+					cost: Number.NaN,
+				},
+			},
+			DEFAULT_CONFIG,
+			plainTheme,
+			160,
+		);
+		expect(invalidLine).not.toMatch(/NaN|Infinity/);
+	});
+
+	it("uses warning and error context colors at exact thresholds", () => {
+		for (const [percent, color] of [
+			[70, "warning"],
+			[90, "error"],
+		] as const) {
+			const fg = vi.fn((_color: string, text: string) => text);
+			renderFooterLine(
+				{ ...state, metrics: { ...state.metrics, contextPercent: percent } },
+				DEFAULT_CONFIG,
+				{ fg, bold: (text) => text },
+				160,
+			);
+			expect(fg).toHaveBeenCalledWith(color, `◔${percent.toFixed(1)}%/372k`);
+		}
+	});
+
+	it("omits oversized optional statuses without downgrading Gallery", () => {
+		const line = renderFooterLine(
+			{ ...state, extensionStatuses: ["x".repeat(200)] },
+			DEFAULT_CONFIG,
+			plainTheme,
+			160,
+		);
+		expect(line).toContain("ATELIER");
+		expect(line.endsWith("⌥A MENU")).toBe(true);
+		expect(line).not.toContain("xxxxxxxxxx");
+	});
+
 	it("sanitizes extension status and honors optional visibility", () => {
 		const line = renderFooterLine(
 			{ ...state, extensionStatuses: ["workflow:\nrunning\t now"] },

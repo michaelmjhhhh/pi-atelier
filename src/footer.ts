@@ -11,6 +11,7 @@ export type ResponsiveMode = "gallery" | "balanced" | "focus" | "telemetry" | "s
 
 interface FooterZones {
 	workspace: string[];
+	status?: string;
 	telemetryFull: string[];
 	telemetryCompact: string[];
 }
@@ -31,22 +32,26 @@ export function selectResponsiveMode(width: number): ResponsiveMode {
 
 const unavailable = (theme: ThemeLike): string => theme.fg("dim", "—");
 const usageValue = (metrics: AtelierMetrics, amount: number, theme: ThemeLike): string =>
-	metrics.usageAvailable ? formatTokens(amount) : unavailable(theme);
+	metrics.usageAvailable && Number.isFinite(amount) ? formatTokens(amount) : unavailable(theme);
 
 function costValue(metrics: AtelierMetrics, decimals: number, compact: boolean, theme: ThemeLike): string {
-	if (!metrics.costAvailable) return unavailable(theme);
+	if (!metrics.costAvailable || !Number.isFinite(metrics.cost)) return unavailable(theme);
 	if (compact && metrics.cost >= 1_000) return formatTokens(metrics.cost);
 	return metrics.cost.toFixed(compact ? Math.min(2, decimals) : decimals);
 }
 
 function contextCore(metrics: AtelierMetrics, compact: boolean): string {
-	const percent = metrics.contextPercent === null ? "?" : `${metrics.contextPercent.toFixed(1)}%`;
+	const percent =
+		metrics.contextPercent === null || !Number.isFinite(metrics.contextPercent)
+			? "—"
+			: `${metrics.contextPercent.toFixed(1)}%`;
 	return `${compact ? "" : "◔"}${percent}/${formatTokens(metrics.contextWindow)}`;
 }
 
 function contextColor(metrics: AtelierMetrics, config: AtelierConfig): string {
-	if (metrics.contextPercent !== null && metrics.contextPercent >= config.contextDanger) return "error";
-	if (metrics.contextPercent !== null && metrics.contextPercent >= config.contextWarning) return "warning";
+	if (metrics.contextPercent === null || !Number.isFinite(metrics.contextPercent)) return "dim";
+	if (metrics.contextPercent >= config.contextDanger) return "error";
+	if (metrics.contextPercent >= config.contextWarning) return "warning";
 	return "success";
 }
 
@@ -58,14 +63,16 @@ function telemetry(metrics: AtelierMetrics, config: AtelierConfig, theme: ThemeL
 		metrics.cacheWrite > 0
 			? theme.fg("syntaxType", `W${usageValue(metrics, metrics.cacheWrite, theme)}`)
 			: "";
-	const hit =
-		metrics.cacheHitPercent === undefined
-			? ""
-			: theme.fg("syntaxType", `CH${metrics.cacheHitPercent.toFixed(1)}%`);
-	const compactHit =
-		metrics.cacheHitPercent === undefined
-			? ""
-			: theme.fg("syntaxType", `CH${Math.round(metrics.cacheHitPercent)}%`);
+	const hitValue =
+		metrics.cacheHitPercent !== undefined && Number.isFinite(metrics.cacheHitPercent)
+			? `${metrics.cacheHitPercent.toFixed(1)}%`
+			: unavailable(theme);
+	const compactHitValue =
+		metrics.cacheHitPercent !== undefined && Number.isFinite(metrics.cacheHitPercent)
+			? `${Math.round(metrics.cacheHitPercent)}%`
+			: unavailable(theme);
+	const hit = theme.fg("syntaxType", `CH${hitValue}`);
+	const compactHit = theme.fg("syntaxType", `CH${compactHitValue}`);
 	const cost = theme.fg("warning", `$${costValue(metrics, config.currencyDecimals, false, theme)}`);
 	const compactCost = theme.fg("warning", `$${costValue(metrics, config.currencyDecimals, true, theme)}`);
 	const subscription = metrics.subscription ? theme.fg("muted", " (sub)") : "";
@@ -86,18 +93,18 @@ function telemetry(metrics: AtelierMetrics, config: AtelierConfig, theme: ThemeL
 				: "";
 
 	return {
-		full: [
+		metricsFull: [
 			`${input} ${output}`,
 			[read, write, hit].filter(Boolean).join(" "),
 			`${cost}${subscription}`,
-			`${context}${compaction}`,
 		],
-		compact: [
+		metricsCompact: [
 			`${input}${output}`,
 			`${read}${write}`,
 			`${compactHit}${compactCost}${compactSubscription}`,
-			`${compactContext}${compactCompaction}`,
 		],
+		contextFull: `${context}${compaction}`,
+		contextCompact: `${compactContext}${compactCompaction}`,
 	};
 }
 
@@ -119,7 +126,7 @@ function buildZones(
 ): FooterZones {
 	const enabled = new Set<SegmentId>(config.segments);
 	const workspace: string[] = [];
-	if (enabled.has("brand")) {
+	if (enabled.has("brand") && config.ornament !== "none") {
 		if (mode === "gallery") workspace.push(theme.fg("accent", theme.bold("◆ ATELIER")));
 		else if (mode === "balanced") workspace.push(theme.fg("accent", theme.bold("◆")));
 	}
@@ -145,9 +152,10 @@ function buildZones(
 		const branch = bounded(state.branch, mode === "gallery" ? 18 : 12);
 		workspace.push(`${theme.fg("text", branch)}${state.dirty ? theme.fg("warning", " ✦") : ""}`);
 	}
+	let status: string | undefined;
 	if (enabled.has("statuses") && config.showExtensionStatuses && mode === "gallery") {
 		const statuses = state.extensionStatuses.map(sanitize).filter(Boolean).join(" ");
-		if (statuses) workspace.push(theme.fg("muted", bounded(statuses, 24)));
+		if (statuses && visibleWidth(statuses) <= 24) status = theme.fg("muted", statuses);
 	}
 
 	const metrics = telemetry(state.metrics, config, theme);
@@ -155,10 +163,25 @@ function buildZones(
 	const menu = enabled.has("menu")
 		? theme.fg("accent", mode === "gallery" ? `${shortcut} MENU` : shortcut)
 		: "";
+	const telemetryFull: string[] = [];
+	const telemetryCompact: string[] = [];
+	for (const id of config.segments) {
+		if (id === "metrics") {
+			telemetryFull.push(...metrics.metricsFull);
+			telemetryCompact.push(...metrics.metricsCompact);
+		} else if (id === "context") {
+			telemetryFull.push(metrics.contextFull);
+			telemetryCompact.push(metrics.contextCompact);
+		} else if (id === "menu" && menu) {
+			telemetryFull.push(menu);
+			telemetryCompact.push(menu);
+		}
+	}
 	return {
 		workspace,
-		telemetryFull: [...metrics.full, ...(menu ? [menu] : [])],
-		telemetryCompact: [...metrics.compact, ...(menu ? [menu] : [])],
+		...(status ? { status } : {}),
+		telemetryFull: config.density === "compact" ? telemetryCompact : telemetryFull,
+		telemetryCompact,
 	};
 }
 
@@ -167,8 +190,12 @@ function joinGroups(groups: string[], separator: string): string {
 }
 
 function renderGallery(zones: FooterZones, width: number): string {
-	const left = joinGroups(zones.workspace, "  ");
 	const right = joinGroups(zones.telemetryFull, "  ");
+	let left = joinGroups(zones.workspace, "  ");
+	if (zones.status) {
+		const withStatus = joinGroups([...zones.workspace, zones.status], "  ");
+		if (width - visibleWidth(withStatus) - visibleWidth(right) >= 2) left = withStatus;
+	}
 	const padding = width - visibleWidth(left) - visibleWidth(right);
 	if (padding >= 2) return `${left}${" ".repeat(padding)}${right}`;
 	return "";
