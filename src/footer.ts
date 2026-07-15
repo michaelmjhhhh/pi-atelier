@@ -87,8 +87,16 @@ function buildSegment(
 				const text = state.extensionStatuses.map(sanitize).filter(Boolean).join(" ");
 				return text ? { id, priority: 1, required: false, text: theme.fg("dim", text) } : undefined;
 			}
-			case "menu":
-				return { id, priority: 2, required: false, text: theme.fg("accent", compact ? "⌥A" : "⌥A MENU") };
+			case "menu": {
+				const shortcut =
+					config.shortcut.toLowerCase() === "alt+a" ? "⌥A" : sanitize(config.shortcut).toUpperCase();
+				return {
+					id,
+					priority: 2,
+					required: false,
+					text: theme.fg("accent", compact ? shortcut : `${shortcut} MENU`),
+				};
+			}
 		}
 	} catch {
 		return id === "metrics" || id === "context"
@@ -132,24 +140,12 @@ export interface FooterComponentOptions {
 
 export function createFooterComponent(options: FooterComponentOptions): Component & { dispose(): void } {
 	let disposed = false;
-	let cache: { width: number; line: string } | undefined;
-	const unsubscribe = options.onBranchChange(() => {
-		cache = undefined;
-		options.requestRender();
-	});
+	const unsubscribe = options.onBranchChange(options.requestRender);
 	return {
 		render(width) {
-			if (!cache || cache.width !== width) {
-				cache = {
-					width,
-					line: renderFooterLine(options.getState(), options.getConfig(), options.theme, width),
-				};
-			}
-			return [cache.line];
+			return [renderFooterLine(options.getState(), options.getConfig(), options.theme, width)];
 		},
-		invalidate() {
-			cache = undefined;
-		},
+		invalidate() {},
 		dispose() {
 			if (disposed) return;
 			disposed = true;

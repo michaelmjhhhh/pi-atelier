@@ -4,3 +4,4 @@ coverage/
 *.log
 .DS_Store
 .tmp/
+.pi-subagents/

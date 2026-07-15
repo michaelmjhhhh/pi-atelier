@@ -43,6 +43,7 @@ export function createMenuActions(
 ) {
 	return {
 		async selectModel(model: Parameters<ExtensionAPI["setModel"]>[0]): Promise<void> {
+			const previous = ctx.model;
 			try {
 				if (!(await pi.setModel(model))) {
 					ctx.ui.notify(`Model ${model.provider}/${model.id} has no available authentication`, "error");
@@ -50,6 +51,11 @@ export function createMenuActions(
 				}
 				runtime.refreshUsage();
 			} catch (error) {
+				if (previous) {
+					try {
+						await pi.setModel(previous);
+					} catch {}
+				}
 				ctx.ui.notify(
 					`Could not change model: ${error instanceof Error ? error.message : String(error)}`,
 					"error",
@@ -57,15 +63,51 @@ export function createMenuActions(
 			}
 		},
 		setThinkingLevel(level: Parameters<ExtensionAPI["setThinkingLevel"]>[0]): void {
-			pi.setThinkingLevel(level);
-			runtime.refreshUsage();
+			const previous = pi.getThinkingLevel();
+			try {
+				pi.setThinkingLevel(level);
+				runtime.refreshUsage();
+			} catch (error) {
+				try {
+					pi.setThinkingLevel(previous);
+				} catch {}
+				ctx.ui.notify(
+					`Could not change thinking level: ${error instanceof Error ? error.message : String(error)}`,
+					"error",
+				);
+			}
 		},
 		setTools(names: string[]): void {
-			const known = new Set(pi.getAllTools().map((tool) => tool.name));
-			pi.setActiveTools([...new Set(names.filter((name) => known.has(name)))]);
+			const previous = pi.getActiveTools();
+			try {
+				const known = new Set(pi.getAllTools().map((tool) => tool.name));
+				pi.setActiveTools([...new Set(names.filter((name) => known.has(name)))]);
+			} catch (error) {
+				try {
+					pi.setActiveTools(previous);
+				} catch {}
+				ctx.ui.notify(
+					`Could not change tools: ${error instanceof Error ? error.message : String(error)}`,
+					"error",
+				);
+			}
 		},
 		setPreset(preset: PresetName): void {
 			runtime.setConfig({ ...runtime.getConfig(), ...PRESET_CONFIG[preset], preset });
+		},
+		setDensity(density: AtelierConfig["density"]): void {
+			runtime.setConfig({ ...runtime.getConfig(), density });
+		},
+		setOrnament(ornament: AtelierConfig["ornament"]): void {
+			runtime.setConfig({ ...runtime.getConfig(), ornament });
+		},
+		moveSegment(id: SegmentId, direction: "earlier" | "later"): void {
+			const segments = [...runtime.getConfig().segments];
+			const index = segments.indexOf(id);
+			const target = direction === "earlier" ? index - 1 : index + 1;
+			if (index < 0 || target < 0 || target >= segments.length) return;
+			[segments[index], segments[target]] = [segments[target] as SegmentId, segments[index] as SegmentId];
+			runtime.setConfig({ ...runtime.getConfig(), segments });
 		},
 		setSegments(segments: SegmentId[]): void {
 			const required: SegmentId[] = [...segments, "metrics", "context"];
@@ -86,15 +128,29 @@ export function createMenuActions(
 			}
 		},
 		async renameSession(): Promise<void> {
-			const name = (await ctx.ui.input("Session name", "Release prep"))?.trim();
-			if (name) pi.setSessionName(name);
+			try {
+				const name = (await ctx.ui.input("Session name", "Release prep"))?.trim();
+				if (name) pi.setSessionName(name);
+			} catch (error) {
+				ctx.ui.notify(
+					`Could not rename session: ${error instanceof Error ? error.message : String(error)}`,
+					"error",
+				);
+			}
 		},
 		async compactSession(): Promise<void> {
-			if (!(await ctx.ui.confirm("Compact session", "Summarize older context now?"))) return;
-			ctx.compact({
-				onError: (error) => ctx.ui.notify(`Compaction failed: ${error.message}`, "error"),
-				onComplete: () => ctx.ui.notify("Session compacted", "info"),
-			});
+			try {
+				if (!(await ctx.ui.confirm("Compact session", "Summarize older context now?"))) return;
+				ctx.compact({
+					onError: (error) => ctx.ui.notify(`Compaction failed: ${error.message}`, "error"),
+					onComplete: () => ctx.ui.notify("Session compacted", "info"),
+				});
+			} catch (error) {
+				ctx.ui.notify(
+					`Could not compact session: ${error instanceof Error ? error.message : String(error)}`,
+					"error",
+				);
+			}
 		},
 	};
 }
@@ -232,11 +288,38 @@ export async function openAtelierMenu(
 				"Editorial preset",
 				"Minimal preset",
 				"Classic preset",
+				"Toggle segments",
+				"Reorder segments",
+				"Density",
+				"Ornament",
 				"Save as user default",
 				"Back",
 			]);
 			if (action?.endsWith("preset")) actions.setPreset(action.split(" ")[0]?.toLowerCase() as PresetName);
-			if (action === "Save as user default") await actions.saveDisplayDefaults();
+			else if (action === "Toggle segments") {
+				const current = runtime.getConfig().segments;
+				const optional: SegmentId[] = ["brand", "activity", "model", "git", "statuses", "menu"];
+				const labels = optional.map((id) => `${current.includes(id) ? "✓" : "○"} ${id}`);
+				const selected = await ctx.ui.select("Toggle footer segment", labels);
+				const id = optional[labels.indexOf(selected ?? "")];
+				if (id)
+					actions.setSegments(
+						current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+					);
+			} else if (action === "Reorder segments") {
+				const current = runtime.getConfig().segments;
+				const selected = await ctx.ui.select("Choose segment", current);
+				if (selected) {
+					const direction = await ctx.ui.select("Move segment", ["earlier", "later"]);
+					if (direction) actions.moveSegment(selected as SegmentId, direction as "earlier" | "later");
+				}
+			} else if (action === "Density") {
+				const density = await ctx.ui.select("Footer density", ["comfortable", "compact"]);
+				if (density) actions.setDensity(density as AtelierConfig["density"]);
+			} else if (action === "Ornament") {
+				const ornament = await ctx.ui.select("Footer ornament", ["restrained", "none"]);
+				if (ornament) actions.setOrnament(ornament as AtelierConfig["ornament"]);
+			} else if (action === "Save as user default") await actions.saveDisplayDefaults();
 		} else if (section === "session") {
 			const options = runtime.getConfig().showSessionActions
 				? ["Show details", "Rename session", "Compact session", "Back"]

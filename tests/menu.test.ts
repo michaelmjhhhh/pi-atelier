@@ -13,12 +13,15 @@ function harness() {
 	};
 	const pi = {
 		setModel: vi.fn().mockResolvedValue(true),
+		getThinkingLevel: vi.fn().mockReturnValue("medium"),
 		setThinkingLevel: vi.fn(),
 		getAllTools: vi.fn().mockReturnValue([{ name: "read" }, { name: "bash" }]),
+		getActiveTools: vi.fn().mockReturnValue(["read"]),
 		setActiveTools: vi.fn(),
 		setSessionName: vi.fn(),
 	};
 	const ctx = {
+		model: { id: "old", provider: "provider" },
 		ui: { notify: vi.fn(), input: vi.fn(), confirm: vi.fn() },
 		compact: vi.fn(),
 	};
@@ -34,6 +37,17 @@ describe("menu actions", () => {
 		await h.actions.selectModel({ id: "new", provider: "provider" } as never);
 		expect(h.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("authentication"), "error");
 		expect(h.runtime.refreshUsage).not.toHaveBeenCalled();
+	});
+
+	it("restores model and thinking level when refresh fails after mutation", async () => {
+		const h = harness();
+		h.runtime.refreshUsage.mockImplementation(() => {
+			throw new Error("refresh failed");
+		});
+		await h.actions.selectModel({ id: "new", provider: "provider" } as never);
+		expect(h.pi.setModel).toHaveBeenLastCalledWith(h.ctx.model);
+		h.actions.setThinkingLevel("high");
+		expect(h.pi.setThinkingLevel).toHaveBeenLastCalledWith("medium");
 	});
 
 	it("filters unknown tools before applying selection", () => {
@@ -56,6 +70,27 @@ describe("menu actions", () => {
 		h.ctx.ui.input.mockResolvedValue("  Release prep  ");
 		await h.actions.renameSession();
 		expect(h.pi.setSessionName).toHaveBeenCalledWith("Release prep");
+	});
+
+	it("rolls back tools and reports synchronous action failures", () => {
+		const h = harness();
+		h.pi.setActiveTools.mockImplementationOnce(() => {
+			throw new Error("tool failure");
+		});
+		h.actions.setTools(["bash"]);
+		expect(h.pi.setActiveTools).toHaveBeenLastCalledWith(["read"]);
+		expect(h.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("tool failure"), "error");
+	});
+
+	it("updates density, ornament, and segment order through display controls", () => {
+		const h = harness();
+		h.actions.setDensity("compact");
+		h.actions.setOrnament("none");
+		h.actions.moveSegment("context", "earlier");
+		expect(h.runtime.getConfig()).toMatchObject({ density: "compact", ornament: "none" });
+		expect(h.runtime.getConfig().segments.indexOf("context")).toBeLessThan(
+			h.runtime.getConfig().segments.indexOf("metrics"),
+		);
 	});
 
 	it("does not compact without confirmation", async () => {

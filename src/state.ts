@@ -6,14 +6,14 @@ export interface RuntimeDependencies {
 	pi: ExtensionAPI;
 	ctx: ExtensionContext;
 	config: AtelierConfig;
-	autoCompact: boolean;
+	autoCompact: boolean | null;
 	requestRender(): void;
 }
 
 export class AtelierRuntime {
 	readonly #pi: ExtensionAPI;
 	readonly #ctx: ExtensionContext;
-	readonly #autoCompact: boolean;
+	readonly #autoCompact: boolean | null;
 	readonly #requestRender: () => void;
 	#config: AtelierConfig;
 	#disposed = false;
@@ -69,8 +69,9 @@ export class AtelierRuntime {
 		const model = this.#ctx.model;
 		const context = this.#ctx.getContextUsage();
 		const subscription = model ? this.#ctx.modelRegistry.isUsingOAuth(model) : false;
+		const { modelId: _modelId, provider: _provider, ...stateWithoutModel } = this.#state;
 		this.#state = {
-			...this.#state,
+			...stateWithoutModel,
 			...(model ? { modelId: model.id, provider: model.provider } : {}),
 			thinkingLevel: this.#pi.getThinkingLevel?.(),
 			metrics: aggregateMetrics(messages, {

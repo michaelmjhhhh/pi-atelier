@@ -18,6 +18,8 @@ export interface AtelierConfig {
 }
 
 export interface AtelierMetrics {
+	usageAvailable: boolean;
+	costAvailable: boolean;
 	input: number;
 	output: number;
 	cacheRead: number;
@@ -28,7 +30,7 @@ export interface AtelierMetrics {
 	contextTokens: number | null;
 	contextWindow: number;
 	contextPercent: number | null;
-	autoCompact: boolean;
+	autoCompact: boolean | null;
 }
 
 export interface AtelierState {

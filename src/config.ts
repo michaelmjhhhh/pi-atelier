@@ -42,19 +42,19 @@ export function validateConfig(input: unknown, base: AtelierConfig = DEFAULT_CON
 	if (typeof input.preset === "string") {
 		if (presets.has(input.preset)) config.preset = input.preset as AtelierConfig["preset"];
 		else warnings.push(`Unknown preset: ${input.preset}`);
-	}
+	} else if ("preset" in input) warnings.push("preset must be a string");
 	if (typeof input.shortcut === "string") {
 		if (input.shortcut.trim()) config.shortcut = input.shortcut.trim();
 		else warnings.push("Shortcut cannot be empty");
-	}
+	} else if ("shortcut" in input) warnings.push("shortcut must be a string");
 	if (typeof input.density === "string") {
 		if (densities.has(input.density)) config.density = input.density as AtelierConfig["density"];
 		else warnings.push(`Unknown density: ${input.density}`);
-	}
+	} else if ("density" in input) warnings.push("density must be a string");
 	if (typeof input.ornament === "string") {
 		if (ornaments.has(input.ornament)) config.ornament = input.ornament as AtelierConfig["ornament"];
 		else warnings.push(`Unknown ornament: ${input.ornament}`);
-	}
+	} else if ("ornament" in input) warnings.push("ornament must be a string");
 
 	if (Array.isArray(input.segments)) {
 		const seen = new Set<string>();
@@ -75,11 +75,16 @@ export function validateConfig(input: unknown, base: AtelierConfig = DEFAULT_CON
 			if (!seen.has(required)) valid.push(required);
 		}
 		config.segments = valid;
-	}
+	} else if ("segments" in input) warnings.push("segments must be an array");
 
+	const invalidThresholdType =
+		("contextWarning" in input && typeof input.contextWarning !== "number") ||
+		("contextDanger" in input && typeof input.contextDanger !== "number");
 	const warning = typeof input.contextWarning === "number" ? input.contextWarning : config.contextWarning;
 	const danger = typeof input.contextDanger === "number" ? input.contextDanger : config.contextDanger;
-	if (warning >= 0 && warning < danger && danger <= 100) {
+	if (invalidThresholdType) {
+		warnings.push("context thresholds must be numbers");
+	} else if (warning >= 0 && warning < danger && danger <= 100) {
 		config.contextWarning = warning;
 		config.contextDanger = danger;
 	} else if ("contextWarning" in input || "contextDanger" in input) {

@@ -14,6 +14,7 @@
 	"files": [
 		"extensions",
 		"src",
+		"assets",
 		"README.md",
 		"CHANGELOG.md",
 		"LICENSE"
@@ -21,7 +22,8 @@
 	"pi": {
 		"extensions": [
 			"./extensions/index.ts"
-		]
+		],
+		"image": "https://raw.githubusercontent.com/michaelmjhhhh/pi-atelier/main/assets/preview.png"
 	},
 	"repository": {
 		"type": "git",
@@ -38,7 +40,8 @@
 		"lint": "biome lint .",
 		"format": "biome format --write .",
 		"format:check": "biome format .",
-		"check": "npm run typecheck && npm run lint && npm run format:check && npm test"
+		"check:pack": "node scripts/verify-pack.mjs",
+		"check": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run check:pack"
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-coding-agent": ">=0.80.7",

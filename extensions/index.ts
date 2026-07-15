@@ -49,7 +49,11 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 						throw new Error("Pi Atelier config unavailable");
 					})(),
 				requestRender,
-				onBranchChange: (callback) => footerData.onBranchChange(callback),
+				onBranchChange: (callback) =>
+					footerData.onBranchChange(() => {
+						void runtime?.refreshGitDirty();
+						callback();
+					}),
 				theme: theme as unknown as ThemeLike,
 			});
 		});
@@ -87,13 +91,13 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 				projectTrusted: ctx.isProjectTrusted(),
 			});
 			for (const warning of loaded.warnings) ctx.ui.notify(warning, "warning");
-			let autoCompact = true;
+			let autoCompact: boolean | null = null;
 			try {
 				autoCompact = SettingsManager.create(
 					ctx.isProjectTrusted() ? ctx.cwd : getAgentDir(),
 				).getCompactionSettings().enabled;
 			} catch {
-				ctx.ui.notify("Could not read Pi compaction settings; assuming automatic compaction", "warning");
+				ctx.ui.notify("Could not read Pi compaction settings; compaction mode is unavailable", "warning");
 			}
 			runtime?.dispose();
 			runtime = new AtelierRuntime({
@@ -121,6 +125,8 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 			}
 			if (enabled) installFooter(ctx);
 		} catch (error) {
+			runtime?.dispose();
+			runtime = undefined;
 			ctx.ui.setFooter(undefined);
 			ctx.ui.notify(
 				`Pi Atelier could not start: ${error instanceof Error ? error.message : String(error)}`,

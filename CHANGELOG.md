@@ -1,0 +1,11 @@
+# Changelog
+
+## 0.1.0
+
+- Add responsive editorial-luxe Pi footer.
+- Preserve Pi usage, cache, cost, subscription, context, and compaction metrics.
+- Add model, thinking-level, tool, display, and safe session controls.
+- Add editorial, minimal, and classic presets.
+- Add layered user and trusted-project JSON configuration.
+- Add width, lifecycle, failure, privacy, and package contract tests.
+- Require Pi 0.80.7+ and Node.js 22.19+.

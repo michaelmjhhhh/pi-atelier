@@ -16,6 +16,8 @@ const state: AtelierState = {
 	branch: "main",
 	dirty: true,
 	metrics: {
+		usageAvailable: true,
+		costAvailable: true,
 		input: 324_000,
 		output: 15_000,
 		cacheRead: 5_900_000,
@@ -65,6 +67,42 @@ describe("footer", () => {
 		);
 		expect(line).toContain("workflow: running now");
 		expect(line).not.toContain("\n");
+	});
+
+	it("preserves every required category for worst-case values at 56 columns", () => {
+		const extreme = {
+			...state,
+			metrics: {
+				...state.metrics,
+				input: 999_000_000,
+				output: 999_000_000,
+				cacheRead: 999_000_000,
+				cacheWrite: 999_000_000,
+				cacheHitPercent: 100,
+				cost: 999_000_000,
+				contextPercent: 100,
+				contextWindow: 999_000_000,
+			},
+		};
+		const line = renderFooterLine(extreme, DEFAULT_CONFIG, plainTheme, 56);
+		for (const marker of ["↑", "↓", "R", "W", "CH", "$", "(sub)", "/", "(auto)"]) {
+			expect(line).toContain(marker);
+		}
+		expect(visibleWidth(line)).toBeLessThanOrEqual(56);
+	});
+
+	it("rerenders changed state at the same width", () => {
+		let current = state;
+		const component = createFooterComponent({
+			getState: () => current,
+			getConfig: () => DEFAULT_CONFIG,
+			requestRender: vi.fn(),
+			onBranchChange: () => vi.fn(),
+			theme: plainTheme,
+		});
+		expect(component.render(160)[0]).toContain("READY");
+		current = { ...state, activity: "working" };
+		expect(component.render(160)[0]).toContain("WORKING");
 	});
 
 	it("disposes its branch subscription exactly once", () => {

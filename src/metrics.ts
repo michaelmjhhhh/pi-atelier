@@ -1,7 +1,7 @@
 import type { AtelierMetrics } from "./types.js";
 
 export interface UsageMessage {
-	usage: {
+	usage?: {
 		input?: number;
 		output?: number;
 		cacheRead?: number;
@@ -13,7 +13,7 @@ export interface UsageMessage {
 export interface AggregateOptions {
 	subscription: boolean;
 	context?: { tokens: number | null; contextWindow: number; percent: number | null };
-	autoCompact: boolean;
+	autoCompact: boolean | null;
 }
 
 const finite = (value: number | undefined): number => (Number.isFinite(value) ? (value ?? 0) : 0);
@@ -28,9 +28,22 @@ export function aggregateMetrics(
 	let cacheWrite = 0;
 	let cost = 0;
 	let cacheHitPercent: number | undefined;
+	let usageAvailable = false;
+	let costAvailable = false;
 
 	for (const message of messages) {
 		const usage = message.usage;
+		if (
+			!usage ||
+			typeof usage !== "object" ||
+			![usage.input, usage.output, usage.cacheRead, usage.cacheWrite].every(
+				(value) => typeof value === "number" && Number.isFinite(value),
+			)
+		) {
+			continue;
+		}
+		usageAvailable = true;
+		costAvailable ||= typeof usage.cost?.total === "number" && Number.isFinite(usage.cost.total);
 		input += finite(usage.input);
 		output += finite(usage.output);
 		cacheRead += finite(usage.cacheRead);
@@ -42,6 +55,8 @@ export function aggregateMetrics(
 
 	const context = options.context;
 	return {
+		usageAvailable,
+		costAvailable,
 		input,
 		output,
 		cacheRead,
@@ -66,42 +81,50 @@ export function formatTokens(count: number): string {
 }
 
 const decimals = (value: number): number => Math.min(6, Math.max(0, Math.trunc(finite(value))));
+const usageValue = (metrics: AtelierMetrics, amount: number): string =>
+	metrics.usageAvailable ? formatTokens(amount) : "—";
 
 export function formatMetrics(metrics: AtelierMetrics, currencyDecimals: number): string {
 	const parts = [
-		`↑${formatTokens(metrics.input)}`,
-		`↓${formatTokens(metrics.output)}`,
-		`R${formatTokens(metrics.cacheRead)}`,
+		`↑${usageValue(metrics, metrics.input)}`,
+		`↓${usageValue(metrics, metrics.output)}`,
+		`R${usageValue(metrics, metrics.cacheRead)}`,
 	];
-	if (metrics.cacheWrite > 0) parts.push(`W${formatTokens(metrics.cacheWrite)}`);
+	if (metrics.cacheWrite > 0) parts.push(`W${usageValue(metrics, metrics.cacheWrite)}`);
 	if (metrics.cacheHitPercent !== undefined && Number.isFinite(metrics.cacheHitPercent)) {
 		parts.push(`CH${metrics.cacheHitPercent.toFixed(1)}%`);
 	}
-	parts.push(
-		`$${finite(metrics.cost).toFixed(decimals(currencyDecimals))}${metrics.subscription ? " (sub)" : ""}`,
-	);
+	const cost = metrics.costAvailable ? finite(metrics.cost).toFixed(decimals(currencyDecimals)) : "—";
+	parts.push(`$${cost}${metrics.subscription ? " (sub)" : ""}`);
 	return parts.join(" ");
 }
 
 export function formatContext(metrics: AtelierMetrics): string {
 	const usage = metrics.contextPercent === null ? "?" : `${finite(metrics.contextPercent).toFixed(1)}%`;
-	return `${usage}/${formatTokens(metrics.contextWindow)}${metrics.autoCompact ? " (auto)" : ""}`;
+	const compaction = metrics.autoCompact === true ? " (auto)" : metrics.autoCompact === null ? " (—)" : "";
+	return `${usage}/${formatTokens(metrics.contextWindow)}${compaction}`;
 }
 
 export function formatCompactMetrics(metrics: AtelierMetrics, currencyDecimals: number): string {
-	const first = `↑${formatTokens(metrics.input)}↓${formatTokens(metrics.output)}`;
-	const parts = [first, `R${formatTokens(metrics.cacheRead)}`];
-	if (metrics.cacheWrite > 0) parts.push(`W${formatTokens(metrics.cacheWrite)}`);
+	const parts = [
+		`↑${usageValue(metrics, metrics.input)}↓${usageValue(metrics, metrics.output)}`,
+		`R${usageValue(metrics, metrics.cacheRead)}${metrics.cacheWrite > 0 ? `W${usageValue(metrics, metrics.cacheWrite)}` : ""}`,
+	];
 	if (metrics.cacheHitPercent !== undefined && Number.isFinite(metrics.cacheHitPercent)) {
 		parts.push(`CH${Math.round(metrics.cacheHitPercent)}%`);
 	}
-	parts.push(
-		`$${finite(metrics.cost).toFixed(Math.min(2, decimals(currencyDecimals)))}${metrics.subscription ? "s" : ""}`,
-	);
-	return parts.join(" ");
+	const numericCost = finite(metrics.cost);
+	const cost = !metrics.costAvailable
+		? "—"
+		: numericCost >= 1_000
+			? formatTokens(numericCost)
+			: numericCost.toFixed(Math.min(2, decimals(currencyDecimals)));
+	parts.push(`$${cost}${metrics.subscription ? "(sub)" : ""}`);
+	return `${parts[0]} ${parts[1]} ${parts.slice(2).join("")}`;
 }
 
 export function formatCompactContext(metrics: AtelierMetrics): string {
 	const usage = metrics.contextPercent === null ? "?" : `${finite(metrics.contextPercent).toFixed(1)}%`;
-	return `${usage}/${formatTokens(metrics.contextWindow)}${metrics.autoCompact ? " a" : ""}`;
+	const compaction = metrics.autoCompact === true ? "(auto)" : metrics.autoCompact === null ? "(—)" : "";
+	return `${usage}/${formatTokens(metrics.contextWindow)}${compaction}`;
 }
