@@ -2,6 +2,7 @@
 
 ## 0.1.0
 
+- Add the blue-purple-orange Midnight Amethyst palette with neutral `NO_COLOR` fallback.
 - Add semantic jewel-tone telemetry colors and five deterministic responsive layouts.
 - Add a wide dual-zone instrument rail with elastic workspace/telemetry alignment.
 - Add responsive editorial-luxe Pi footer.

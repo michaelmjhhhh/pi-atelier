@@ -12,7 +12,17 @@ Pi Atelier replaces Pi's default footer with a responsive editorial-luxe bar whi
 ◆ ATELIER  ● READY  gpt-5.6-sol · low  main ✦        ↑324k ↓15k  R5.9M CH98.8%  $5.041 (sub)  ◔27.0%/372k (auto)  ⌥A MENU
 ```
 
-Wide terminals use a dual-zone instrument rail: workspace identity stays left while operational telemetry is right-aligned. Semantic jewel-tone colors distinguish input, output, cache, cost, context health, and agent state without hard-coded terminal colors.
+Wide terminals use a dual-zone instrument rail: workspace identity stays left while operational telemetry is right-aligned.
+
+### Midnight Amethyst palette
+
+- **Purple `#B18CFF`:** Atelier, Working, output tokens
+- **Blue `#6EA8FE`:** Ready, input tokens, healthy context
+- **Ice blue `#7DD3FC`:** cache telemetry
+- **Orange `#FF9F43`:** cost, Git dirty, context warning
+- **Red `#FF5D73`:** errors and dangerous context only
+
+No green or yellow is used by the normal footer palette. With `NO_COLOR` enabled, Pi Atelier falls back to neutral Pi theme colors rather than green/yellow semantic colors.
 
 ## Features
 
@@ -154,7 +164,7 @@ Unknown or invalid values are ignored with one warning. The required `metrics` a
 - **Telemetry (56–71):** complete compact operational metrics and context without decorative workspace data
 - **Safe (<56):** metrics-first ANSI-aware truncation with no wrapping
 
-Color remains semantic at every width: input uses the theme's variable color, output uses success, cache uses type color, cost uses warning/gold, and context transitions from success to warning to error at configured thresholds.
+Color remains semantic at every width: input and healthy context are blue, output is purple, cache is ice blue, cost and warnings are orange, and only dangerous context or errors use red.
 
 ## Privacy and security
 

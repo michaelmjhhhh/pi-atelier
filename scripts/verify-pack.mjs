@@ -14,6 +14,7 @@ const required = [
 	"src/footer.ts",
 	"src/state.ts",
 	"src/menu.ts",
+	"src/palette.ts",
 	"assets/preview.png",
 	"CHANGELOG.md",
 	"README.md",
