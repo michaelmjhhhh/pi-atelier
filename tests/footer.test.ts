@@ -91,6 +91,18 @@ describe("footer", () => {
 		expect(visibleWidth(line)).toBeLessThanOrEqual(160);
 	});
 
+	it("keeps ANSI-heavy themed output within every responsive width", () => {
+		const ansiTheme = {
+			fg: (_color: string, text: string) => `\u001b[38;5;45m${text}\u001b[0m`,
+			bold: (text: string) => `\u001b[1m${text}\u001b[22m`,
+		};
+		for (const width of [132, 131, 96, 95, 72, 71, 56, 55, 20]) {
+			expect(visibleWidth(renderFooterLine(state, DEFAULT_CONFIG, ansiTheme, width))).toBeLessThanOrEqual(
+				width,
+			);
+		}
+	});
+
 	it.each([160, 100, 80, 56, 40, 12])("never exceeds width %d", (width) => {
 		expect(visibleWidth(renderFooterLine(state, DEFAULT_CONFIG, plainTheme, width))).toBeLessThanOrEqual(
 			width,
