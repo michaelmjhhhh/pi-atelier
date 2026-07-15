@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMenuActions, renderMenuBorder } from "../src/menu.js";
+import { createMenuActions, renderMenuBorder, renderMenuFrame } from "../src/menu.js";
 import { DEFAULT_CONFIG } from "../src/types.js";
 
 function harness() {
@@ -39,6 +39,14 @@ describe("menu presentation", () => {
 		expect(renderMenuBorder(theme, 6)).toBe("━━━━━━");
 		expect(theme.fg).toHaveBeenCalledWith("borderAccent", "━━━━━━");
 		expect(theme.bold).toHaveBeenCalled();
+	});
+
+	it("frames every content row with heavy vertical borders and corners", () => {
+		const theme = {
+			fg: (_color: string, text: string) => text,
+			bold: (text: string) => text,
+		};
+		expect(renderMenuFrame(theme, ["Hi"], 8)).toEqual(["┏━━━━━━┓", "┃Hi    ┃", "┗━━━━━━┛"]);
 	});
 });
 

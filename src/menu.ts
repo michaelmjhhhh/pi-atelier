@@ -10,6 +10,8 @@ import {
 	type SettingItem,
 	SettingsList,
 	Text,
+	truncateToWidth,
+	visibleWidth,
 } from "@earendil-works/pi-tui";
 import { saveUserConfig } from "./config.js";
 import type { AtelierRuntime } from "./state.js";
@@ -26,11 +28,16 @@ export function renderMenuBorder(theme: MenuTheme, width: number): string {
 	return theme.bold(theme.fg("borderAccent", "━".repeat(Math.max(1, width))));
 }
 
-function createMenuBorder(theme: MenuTheme) {
-	return {
-		render: (width: number) => [renderMenuBorder(theme, width)],
-		invalidate() {},
-	};
+export function renderMenuFrame(theme: MenuTheme, lines: string[], width: number): string[] {
+	if (width <= 1) return [truncateToWidth(renderMenuBorder(theme, 1), Math.max(0, width), "")];
+	const innerWidth = width - 2;
+	const border = (text: string) => theme.bold(theme.fg("borderAccent", text));
+	const framed = lines.map((line) => {
+		const content = truncateToWidth(line, innerWidth, "");
+		const padding = " ".repeat(Math.max(0, innerWidth - visibleWidth(content)));
+		return `${border("┃")}${content}${padding}${border("┃")}`;
+	});
+	return [border(`┏${"━".repeat(innerWidth)}┓`), ...framed, border(`┗${"━".repeat(innerWidth)}┛`)];
 }
 
 const PRESET_CONFIG: Record<PresetName, Partial<AtelierConfig>> = {
@@ -178,7 +185,6 @@ async function showSelection(
 	return ctx.ui.custom<string | undefined>(
 		(tui, theme, _keybindings, done) => {
 			const container = new Container();
-			container.addChild(createMenuBorder(theme));
 			container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
 			const list = new SelectList(items, Math.min(items.length, 12), {
 				selectedPrefix: (text) => theme.fg("accent", text),
@@ -191,9 +197,8 @@ async function showSelection(
 			list.onCancel = () => done(undefined);
 			container.addChild(list);
 			container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc back"), 1, 0));
-			container.addChild(createMenuBorder(theme));
 			return {
-				render: (width) => container.render(width),
+				render: (width) => renderMenuFrame(theme, container.render(Math.max(1, width - 2)), width),
 				invalidate: () => container.invalidate(),
 				handleInput: (data) => {
 					list.handleInput(data);
