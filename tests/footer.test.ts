@@ -1,6 +1,6 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import { createFooterComponent, renderFooterLine } from "../src/footer.js";
+import { createFooterComponent, renderFooterLine, selectResponsiveMode } from "../src/footer.js";
 import { DEFAULT_CONFIG, type AtelierState } from "../src/types.js";
 
 const plainTheme = {
@@ -34,11 +34,58 @@ const state: AtelierState = {
 };
 
 describe("footer", () => {
+	it("selects exact responsive modes", () => {
+		expect([132, 131, 96, 95, 72, 71, 56, 55].map(selectResponsiveMode)).toEqual([
+			"gallery",
+			"balanced",
+			"balanced",
+			"focus",
+			"focus",
+			"telemetry",
+			"telemetry",
+			"safe",
+		]);
+	});
+
+	it("uses semantic jewel-tone theme groups", () => {
+		const fg = vi.fn((_color: string, text: string) => text);
+		const theme = { fg, bold: (text: string) => text };
+		renderFooterLine(state, DEFAULT_CONFIG, theme, 180);
+		expect(fg).toHaveBeenCalledWith("syntaxVariable", "↑324k");
+		expect(fg).toHaveBeenCalledWith("success", "↓15k");
+		expect(fg).toHaveBeenCalledWith("syntaxType", "R5.9M");
+		expect(fg).toHaveBeenCalledWith("warning", "$5.041");
+		expect(fg).toHaveBeenCalledWith("success", "◔27.0%/372k");
+	});
+	it.each([
+		[132, true, true, true, true],
+		[131, false, true, true, true],
+		[95, false, true, false, true],
+		[71, false, false, false, false],
+		[55, false, false, false, false],
+	] as const)("organizes width %d intentionally", (width, brand, model, git, menu) => {
+		const line = renderFooterLine(state, DEFAULT_CONFIG, plainTheme, width);
+		expect(line.includes("ATELIER")).toBe(brand);
+		expect(line.includes("gpt-5.6-sol")).toBe(model);
+		expect(line.includes("main")).toBe(git);
+		expect(line.includes("⌥A")).toBe(menu);
+		expect(line).not.toMatch(/^\s*[│·]/);
+		expect(line).not.toMatch(/[│·]\s*$/);
+		expect(line).not.toContain("│ │");
+	});
+
+	it("right-aligns telemetry in gallery mode", () => {
+		const line = renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 180);
+		expect(visibleWidth(line)).toBe(180);
+		expect(line.endsWith("⌥A MENU")).toBe(true);
+	});
+
 	it("renders the full editorial layout at wide widths", () => {
 		const line = renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 160);
 		expect(line).toContain("◆ ATELIER");
-		expect(line).toContain("↑324k ↓15k R5.9M CH98.8% $5.041 (sub)");
-		expect(line).toContain("27.0%/372k (auto)");
+		for (const group of ["↑324k ↓15k", "R5.9M CH98.8%", "$5.041 (sub)", "◔27.0%/372k (auto)"]) {
+			expect(line).toContain(group);
+		}
 		expect(line).toContain("gpt-5.6-sol · medium");
 		expect(line).toContain("main ✦");
 		expect(visibleWidth(line)).toBeLessThanOrEqual(160);
