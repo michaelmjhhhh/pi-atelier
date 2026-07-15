@@ -12,8 +12,10 @@ export type ResponsiveMode = "gallery" | "balanced" | "focus" | "telemetry" | "s
 interface FooterZones {
 	workspace: string[];
 	status?: string;
+	menu?: string;
 	telemetryFull: string[];
-	telemetryCompact: string[];
+	requiredFull: string[];
+	requiredCompact: string[];
 }
 
 const sanitize = (text: string): string =>
@@ -40,12 +42,16 @@ function costValue(metrics: AtelierMetrics, decimals: number, compact: boolean, 
 	return metrics.cost.toFixed(compact ? Math.min(2, decimals) : decimals);
 }
 
-function contextCore(metrics: AtelierMetrics, compact: boolean): string {
+function contextCore(metrics: AtelierMetrics, compact: boolean, theme: ThemeLike): string {
 	const percent =
 		metrics.contextPercent === null || !Number.isFinite(metrics.contextPercent)
 			? "—"
 			: `${metrics.contextPercent.toFixed(1)}%`;
-	return `${compact ? "" : "◔"}${percent}/${formatTokens(metrics.contextWindow)}`;
+	const capacity =
+		Number.isFinite(metrics.contextWindow) && metrics.contextWindow >= 0
+			? formatTokens(metrics.contextWindow)
+			: unavailable(theme);
+	return `${compact ? "" : "◔"}${percent}/${capacity}`;
 }
 
 function contextColor(metrics: AtelierMetrics, config: AtelierConfig): string {
@@ -77,8 +83,8 @@ function telemetry(metrics: AtelierMetrics, config: AtelierConfig, theme: ThemeL
 	const compactCost = theme.fg("warning", `$${costValue(metrics, config.currencyDecimals, true, theme)}`);
 	const subscription = metrics.subscription ? theme.fg("muted", " (sub)") : "";
 	const compactSubscription = metrics.subscription ? theme.fg("muted", "(sub)") : "";
-	const context = theme.fg(contextColor(metrics, config), contextCore(metrics, false));
-	const compactContext = theme.fg(contextColor(metrics, config), contextCore(metrics, true));
+	const context = theme.fg(contextColor(metrics, config), contextCore(metrics, false, theme));
+	const compactContext = theme.fg(contextColor(metrics, config), contextCore(metrics, true, theme));
 	const compaction =
 		metrics.autoCompact === true
 			? theme.fg("muted", " (auto)")
@@ -165,13 +171,19 @@ function buildZones(
 		: "";
 	const telemetryFull: string[] = [];
 	const telemetryCompact: string[] = [];
+	const requiredFull: string[] = [];
+	const requiredCompact: string[] = [];
 	for (const id of config.segments) {
 		if (id === "metrics") {
 			telemetryFull.push(...metrics.metricsFull);
 			telemetryCompact.push(...metrics.metricsCompact);
+			requiredFull.push(...metrics.metricsFull);
+			requiredCompact.push(...metrics.metricsCompact);
 		} else if (id === "context") {
 			telemetryFull.push(metrics.contextFull);
 			telemetryCompact.push(metrics.contextCompact);
+			requiredFull.push(metrics.contextFull);
+			requiredCompact.push(metrics.contextCompact);
 		} else if (id === "menu" && menu) {
 			telemetryFull.push(menu);
 			telemetryCompact.push(menu);
@@ -180,8 +192,10 @@ function buildZones(
 	return {
 		workspace,
 		...(status ? { status } : {}),
+		...(menu ? { menu } : {}),
 		telemetryFull: config.density === "compact" ? telemetryCompact : telemetryFull,
-		telemetryCompact,
+		requiredFull,
+		requiredCompact,
 	};
 }
 
@@ -201,36 +215,29 @@ function renderGallery(zones: FooterZones, width: number): string {
 	return "";
 }
 
-function renderBalanced(zones: FooterZones, width: number, theme: ThemeLike): string {
-	const separator = theme.fg("borderMuted", " │ ");
+function renderWithOptionalWorkspace(zones: FooterZones, width: number, separator: string): string {
 	let workspace = [...zones.workspace];
-	const telemetry = zones.telemetryCompact;
-	while (workspace.length > 1 && visibleWidth(joinGroups([...workspace, ...telemetry], separator)) > width) {
+	const required = zones.requiredCompact;
+	while (workspace.length > 0 && visibleWidth(joinGroups([...workspace, ...required], separator)) > width) {
 		workspace.pop();
 	}
-	return joinGroups([...workspace, ...telemetry], separator);
+	let groups = [...workspace, ...required];
+	if (zones.menu && visibleWidth(joinGroups([...groups, zones.menu], separator)) <= width) {
+		groups = [...groups, zones.menu];
+	}
+	return joinGroups(groups, separator);
+}
+
+function renderBalanced(zones: FooterZones, width: number, theme: ThemeLike): string {
+	return renderWithOptionalWorkspace(zones, width, theme.fg("borderMuted", " │ "));
 }
 
 function renderFocus(zones: FooterZones, width: number, theme: ThemeLike): string {
-	const separator = theme.fg("borderMuted", " · ");
-	let workspace = [...zones.workspace];
-	let telemetry = [...zones.telemetryCompact];
-	while (visibleWidth(joinGroups([...workspace, ...telemetry], separator)) > width && workspace.length > 1) {
-		workspace.pop();
-	}
-	if (visibleWidth(joinGroups([...workspace, ...telemetry], separator)) > width)
-		workspace = workspace.slice(0, 1);
-	if (
-		visibleWidth(joinGroups([...workspace, ...telemetry], separator)) > width &&
-		telemetry.at(-1)?.includes("⌥")
-	) {
-		telemetry = telemetry.slice(0, -1);
-	}
-	return joinGroups([...workspace, ...telemetry], separator);
+	return renderWithOptionalWorkspace(zones, width, theme.fg("borderMuted", " · "));
 }
 
 function renderTelemetry(zones: FooterZones): string {
-	return joinGroups(zones.telemetryCompact.slice(0, 4), " ");
+	return joinGroups(zones.requiredCompact, " ");
 }
 
 export function renderFooterLine(

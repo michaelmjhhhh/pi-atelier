@@ -210,6 +210,25 @@ describe("footer", () => {
 		expect(line).not.toContain("\n");
 	});
 
+	it.each([
+		["menu", "metrics", "context"],
+		["context", "menu", "metrics"],
+	] as const)("preserves required telemetry at 56 columns for order %j", (...order) => {
+		const line = renderFooterLine(state, { ...DEFAULT_CONFIG, segments: [...order] }, plainTheme, 56);
+		for (const marker of ["↑", "↓", "R", "CH", "$", "/", "(auto)"]) expect(line).toContain(marker);
+	});
+
+	it("renders malformed context capacity as unavailable", () => {
+		const line = renderFooterLine(
+			{ ...state, metrics: { ...state.metrics, contextWindow: Number.POSITIVE_INFINITY } },
+			DEFAULT_CONFIG,
+			plainTheme,
+			160,
+		);
+		expect(line).toContain("◔27.0%/—");
+		expect(line).not.toContain("Infinity");
+	});
+
 	it("preserves every required category for worst-case values at 56 columns", () => {
 		const extreme = {
 			...state,
