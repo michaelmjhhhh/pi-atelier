@@ -5,3 +5,4 @@ coverage/
 .DS_Store
 .tmp/
 .pi-subagents/
+.worktrees/
