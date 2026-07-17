@@ -121,7 +121,12 @@ function telemetry(
 }
 
 function activity(state: AtelierState, full: boolean, palette: AtelierPalette): string {
-	const labels = { ready: "READY", working: "WORKING", warning: "WARNING", error: "ERROR" } as const;
+	const labels = {
+		ready: "READY",
+		working: state.workingLabel ?? "WORKING",
+		warning: "WARNING",
+		error: "ERROR",
+	} as const;
 	const roles = { ready: "ready", working: "working", warning: "warning", error: "error" } as const;
 	return palette.paint(roles[state.activity], full ? `● ${labels[state.activity]}` : "●");
 }

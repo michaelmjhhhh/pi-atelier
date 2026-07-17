@@ -265,7 +265,7 @@ describe("footer", () => {
 		expect(visibleWidth(line)).toBeLessThanOrEqual(56);
 	});
 
-	it("rerenders changed state at the same width", () => {
+	it("renders the selected working phrase without changing it across redraws", () => {
 		let current = state;
 		const component = createFooterComponent({
 			getState: () => current,
@@ -274,9 +274,31 @@ describe("footer", () => {
 			onBranchChange: () => vi.fn(),
 			theme: plainTheme,
 		});
+
 		expect(component.render(160)[0]).toContain("READY");
-		current = { ...state, activity: "working" };
-		expect(component.render(160)[0]).toContain("WORKING");
+		current = { ...state, activity: "working", workingLabel: "PHOTOSYNTHESIZING" };
+		expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING");
+		expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING");
+		expect(component.render(160)[0]).not.toContain("WORKING");
+	});
+
+	it.each([
+		["ready", "READY"],
+		["warning", "WARNING"],
+		["error", "ERROR"],
+		["working", "WORKING"],
+	] as const)("renders %s with the expected fallback label", (activity, expected) => {
+		const line = renderFooterLine({ ...state, activity }, DEFAULT_CONFIG, plainTheme, 160);
+		expect(line).toContain(expected);
+	});
+
+	it("keeps the longest working phrase within responsive width limits", () => {
+		const working = { ...state, activity: "working" as const, workingLabel: "PHOTOSYNTHESIZING" };
+		for (const width of [132, 131, 96, 95, 72, 71, 56, 55, 20]) {
+			expect(visibleWidth(renderFooterLine(working, DEFAULT_CONFIG, plainTheme, width))).toBeLessThanOrEqual(
+				width,
+			);
+		}
 	});
 
 	it("disposes its branch subscription exactly once", () => {
