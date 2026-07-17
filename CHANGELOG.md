@@ -2,6 +2,7 @@
 
 ## 0.1.0
 
+- Replace the fixed `WORKING` footer label with one stable, randomly selected activity phrase per work cycle.
 - Add the blue-purple-orange Midnight Amethyst palette with neutral `NO_COLOR` fallback.
 - Add semantic jewel-tone telemetry colors and five deterministic responsive layouts.
 - Add a wide dual-zone instrument rail with elastic workspace/telemetry alignment.

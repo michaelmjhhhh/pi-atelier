@@ -9,14 +9,14 @@ Pi Atelier replaces Pi's default footer with a responsive editorial-luxe bar whi
 ## Preview
 
 ```text
-◆ ATELIER  ● READY  gpt-5.6-sol · low  main ✦        ↑324k ↓15k  R5.9M CH98.8%  $5.041 (sub)  ◔27.0%/372k (auto)  ⌥A MENU
+◆ ATELIER  ● PONDERING  gpt-5.6-sol · low  main ✦    ↑324k ↓15k  R5.9M CH98.8%  $5.041 (sub)  ◔27.0%/372k (auto)  ⌥A MENU
 ```
 
 Wide terminals use a dual-zone instrument rail: workspace identity stays left while operational telemetry is right-aligned.
 
 ### Midnight Amethyst palette
 
-- **Purple `#B18CFF`:** Atelier, Working, output tokens
+- **Purple `#B18CFF`:** Atelier, randomized working phrases, output tokens
 - **Blue `#6EA8FE`:** Ready, input tokens, healthy context
 - **Ice blue `#7DD3FC`:** cache telemetry
 - **Orange `#FF9F43`:** cost, Git dirty, context warning
@@ -81,6 +81,8 @@ pi -e .
 - `(sub)` OAuth subscription-backed access
 - `(auto)` automatic context compaction
 - `✦` tracked working-tree changes
+
+`READY` remains fixed when idle. During each work cycle, the working label is selected once from a playful built-in phrase set—such as `KNEADING`, `MOONWALKING`, or `PONDERING`—and remains stable until the cycle ends.
 
 At 56 columns or wider, required metrics and context remain visible. Below 56 columns, Pi Atelier prioritizes the compact metrics cluster and truncates safely rather than wrapping.
 
