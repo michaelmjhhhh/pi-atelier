@@ -1,6 +1,6 @@
 {
 	"name": "pi-atelier",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "An elegant, information-rich status and menu bar for Pi",
 	"type": "module",
 	"license": "MIT",
