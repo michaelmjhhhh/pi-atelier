@@ -35,6 +35,7 @@ export interface AtelierMetrics {
 
 export interface AtelierState {
 	activity: ActivityState;
+	workingLabel?: string;
 	modelId?: string;
 	provider?: string;
 	thinkingLevel?: string;

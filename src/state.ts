@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { selectWorkingPhrase } from "./activity.js";
 import { aggregateMetrics, type UsageMessage } from "./metrics.js";
 import type { ActivityState, AtelierConfig, AtelierState } from "./types.js";
 
@@ -7,6 +8,7 @@ export interface RuntimeDependencies {
 	ctx: ExtensionContext;
 	config: AtelierConfig;
 	autoCompact: boolean | null;
+	random?: () => number;
 	requestRender(): void;
 }
 
@@ -14,6 +16,7 @@ export class AtelierRuntime {
 	readonly #pi: ExtensionAPI;
 	readonly #ctx: ExtensionContext;
 	readonly #autoCompact: boolean | null;
+	readonly #random: () => number;
 	readonly #requestRender: () => void;
 	#config: AtelierConfig;
 	#disposed = false;
@@ -24,6 +27,7 @@ export class AtelierRuntime {
 		this.#ctx = dependencies.ctx;
 		this.#config = dependencies.config;
 		this.#autoCompact = dependencies.autoCompact;
+		this.#random = dependencies.random ?? Math.random;
 		this.#requestRender = dependencies.requestRender;
 		const context = this.#ctx.getContextUsage();
 		this.#state = {
@@ -54,7 +58,10 @@ export class AtelierRuntime {
 
 	setActivity(activity: ActivityState): void {
 		if (this.#state.activity === activity) return;
-		this.#state = { ...this.#state, activity };
+		this.#state =
+			activity === "working"
+				? { ...this.#state, activity, workingLabel: selectWorkingPhrase(this.#random()) }
+				: { ...this.#state, activity };
 		this.#invalidate();
 	}
 

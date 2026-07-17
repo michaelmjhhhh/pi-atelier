@@ -10,7 +10,10 @@ const assistant = {
 	},
 };
 
-function createRuntime(execResult = { stdout: "", stderr: "", code: 0, killed: false }) {
+function createRuntime(
+	execResult = { stdout: "", stderr: "", code: 0, killed: false },
+	random: () => number = Math.random,
+) {
 	const requestRender = vi.fn();
 	const exec = vi.fn().mockResolvedValue(execResult);
 	const ctx = {
@@ -24,6 +27,7 @@ function createRuntime(execResult = { stdout: "", stderr: "", code: 0, killed: f
 		ctx: ctx as never,
 		config: DEFAULT_CONFIG,
 		autoCompact: true,
+		random,
 		requestRender,
 	});
 	return { runtime, exec, requestRender };
@@ -57,13 +61,36 @@ describe("AtelierRuntime", () => {
 		expect(runtime.getState().dirty).toBe(false);
 	});
 
-	it("updates activity and configuration with render invalidation", () => {
-		const { runtime, requestRender } = createRuntime();
+	it("selects one stable label when a work cycle starts", () => {
+		const random = vi.fn().mockReturnValue(0.5);
+		const { runtime, requestRender } = createRuntime(undefined, random);
 		requestRender.mockClear();
+
+		runtime.setActivity("working");
+		const selected = runtime.getState().workingLabel;
+		runtime.setActivity("working");
+		runtime.refreshUsage();
+
+		expect(selected).toBe("PONDERING");
+		expect(runtime.getState()).toMatchObject({ activity: "working", workingLabel: "PONDERING" });
+		expect(random).toHaveBeenCalledOnce();
+		expect(requestRender).toHaveBeenCalledTimes(2);
+	});
+
+	it("selects again for the next work cycle and still updates configuration", () => {
+		const random = vi.fn().mockReturnValueOnce(0).mockReturnValueOnce(0.999_999);
+		const { runtime, requestRender } = createRuntime(undefined, random);
+		requestRender.mockClear();
+
+		runtime.setActivity("working");
+		expect(runtime.getState().workingLabel).toBe("KNEADING");
+		runtime.setActivity("ready");
 		runtime.setActivity("working");
 		runtime.setConfig({ ...DEFAULT_CONFIG, preset: "minimal" });
-		expect(runtime.getState().activity).toBe("working");
+
+		expect(runtime.getState()).toMatchObject({ activity: "working", workingLabel: "COMBOBULATING" });
 		expect(runtime.getConfig().preset).toBe("minimal");
-		expect(requestRender).toHaveBeenCalledTimes(2);
+		expect(random).toHaveBeenCalledTimes(2);
+		expect(requestRender).toHaveBeenCalledTimes(4);
 	});
 });
