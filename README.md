@@ -82,7 +82,7 @@ pi -e .
 - `(auto)` automatic context compaction
 - `✦` tracked working-tree changes
 
-`READY` remains fixed when idle. During each work cycle, the working label is selected once from a playful built-in phrase set—such as `KNEADING`, `MOONWALKING`, or `PONDERING`—and remains stable until the cycle ends. In Gallery and Balanced layouts, the active phrase is orange and italic with an ellipsis that shrinks from `...` to `..` to `.` every 400 ms. Narrower layouts retain the compact static activity bullet.
+`READY` remains fixed when idle. During each work cycle, the working label is selected once from a playful built-in phrase set—such as `KNEADING`, `MOONWALKING`, or `PONDERING`—and remains stable until the cycle ends. In Gallery and Balanced layouts, the active bullet is orange and remains upright, while the stable working phrase and its animated dots are orange and italic; the ellipsis shrinks from `...` to `..` to `.` every 400 ms. Narrower layouts retain the compact static activity bullet.
 
 At 56 columns or wider, required metrics and context remain visible. Below 56 columns, Pi Atelier prioritizes the compact metrics cluster and truncates safely rather than wrapping.
 
