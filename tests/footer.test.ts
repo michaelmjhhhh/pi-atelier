@@ -6,6 +6,7 @@ import { DEFAULT_CONFIG, type AtelierState } from "../src/types.js";
 const plainTheme = {
 	fg: (_color: string, text: string) => text,
 	bold: (text: string) => text,
+	italic: (text: string) => text,
 };
 const stripAnsi = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "");
 
@@ -50,7 +51,12 @@ describe("footer", () => {
 
 	it("uses the Midnight Amethyst palette without green or yellow theme roles", () => {
 		const fg = vi.fn((_color: string, text: string) => text);
-		const line = renderFooterLine(state, DEFAULT_CONFIG, { fg, bold: (text) => text }, 180);
+		const line = renderFooterLine(
+			state,
+			DEFAULT_CONFIG,
+			{ fg, bold: (text) => text, italic: (text) => text },
+			180,
+		);
 		expect(line).toContain("\u001b[38;2;110;168;254m↑324k\u001b[39m");
 		expect(line).toContain("\u001b[38;2;177;140;255m↓15k\u001b[39m");
 		expect(line).toContain("\u001b[38;2;125;211;252mR5.9M\u001b[39m");
@@ -62,7 +68,7 @@ describe("footer", () => {
 
 	it("uses neutral theme colors when true color is disabled", () => {
 		const fg = vi.fn((_color: string, text: string) => text);
-		renderFooterLine(state, DEFAULT_CONFIG, { fg, bold: (text) => text }, 180, false);
+		renderFooterLine(state, DEFAULT_CONFIG, { fg, bold: (text) => text, italic: (text) => text }, 180, false);
 		const colors = fg.mock.calls.map(([color]) => color);
 		expect(colors).not.toContain("success");
 		expect(colors).not.toContain("warning");
@@ -110,6 +116,7 @@ describe("footer", () => {
 		const ansiTheme = {
 			fg: (_color: string, text: string) => `\u001b[38;5;45m${text}\u001b[0m`,
 			bold: (text: string) => `\u001b[1m${text}\u001b[22m`,
+			italic: (text: string) => `\u001b[3m${text}\u001b[23m`,
 		};
 		for (const width of [132, 131, 96, 95, 72, 71, 56, 55, 20]) {
 			expect(visibleWidth(renderFooterLine(state, DEFAULT_CONFIG, ansiTheme, width))).toBeLessThanOrEqual(
@@ -282,6 +289,19 @@ describe("footer", () => {
 		expect(component.render(160)[0]).not.toContain("WORKING");
 	});
 
+	it("renders the full working phrase and dots in orange italics without italicizing the bullet", () => {
+		const theme = {
+			fg: (_color: string, text: string) => text,
+			bold: (text: string) => text,
+			italic: (text: string) => `<i>${text}</i>`,
+		};
+		const working = { ...state, activity: "working" as const, workingLabel: "PONDERING" };
+		const line = renderFooterLine(working, DEFAULT_CONFIG, theme, 160, true, "..");
+
+		expect(line).toContain("\u001b[38;2;255;159;67m● <i>PONDERING..</i>\u001b[39m");
+		expect(line).not.toContain("<i>●");
+	});
+
 	it.each([
 		["ready", "READY"],
 		["warning", "WARNING"],
@@ -289,7 +309,7 @@ describe("footer", () => {
 		["working", "WORKING"],
 	] as const)("renders %s with the expected fallback label", (activity, expected) => {
 		const line = renderFooterLine({ ...state, activity }, DEFAULT_CONFIG, plainTheme, 160);
-		expect(line).toContain(expected);
+		expect(line).toContain(activity === "working" ? `${expected}...` : expected);
 	});
 
 	it("keeps the longest working phrase within responsive width limits", () => {

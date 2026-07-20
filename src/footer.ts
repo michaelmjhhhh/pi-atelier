@@ -6,6 +6,7 @@ import type { AtelierConfig, AtelierMetrics, AtelierState, SegmentId } from "./t
 export interface ThemeLike {
 	fg(color: string, text: string): string;
 	bold(text: string): string;
+	italic(text: string): string;
 }
 
 export type ResponsiveMode = "gallery" | "balanced" | "focus" | "telemetry" | "safe";
@@ -120,7 +121,13 @@ function telemetry(
 	};
 }
 
-function activity(state: AtelierState, full: boolean, palette: AtelierPalette): string {
+function activity(
+	state: AtelierState,
+	full: boolean,
+	palette: AtelierPalette,
+	theme: ThemeLike,
+	workingDots: string,
+): string {
 	const labels = {
 		ready: "READY",
 		working: state.workingLabel ?? "WORKING",
@@ -128,7 +135,11 @@ function activity(state: AtelierState, full: boolean, palette: AtelierPalette): 
 		error: "ERROR",
 	} as const;
 	const roles = { ready: "ready", working: "working", warning: "warning", error: "error" } as const;
-	return palette.paint(roles[state.activity], full ? `● ${labels[state.activity]}` : "●");
+	if (!full) return palette.paint(roles[state.activity], "●");
+	if (state.activity === "working") {
+		return palette.paint("working", `● ${theme.italic(`${labels.working}${workingDots}`)}`);
+	}
+	return palette.paint(roles[state.activity], `● ${labels[state.activity]}`);
 }
 
 function bounded(text: string, width: number): string {
@@ -141,6 +152,7 @@ function buildZones(
 	theme: ThemeLike,
 	mode: ResponsiveMode,
 	colorEnabled: boolean,
+	workingDots: string,
 ): FooterZones {
 	const palette = createPalette(theme, colorEnabled);
 	const enabled = new Set<SegmentId>(config.segments);
@@ -150,7 +162,7 @@ function buildZones(
 		else if (mode === "balanced") workspace.push(palette.paint("brand", theme.bold("◆")));
 	}
 	if (enabled.has("activity") && mode !== "telemetry" && mode !== "safe") {
-		workspace.push(activity(state, mode === "gallery" || mode === "balanced", palette));
+		workspace.push(activity(state, mode === "gallery" || mode === "balanced", palette, theme, workingDots));
 	}
 	if (
 		enabled.has("model") &&
@@ -259,15 +271,16 @@ export function renderFooterLine(
 	theme: ThemeLike,
 	width: number,
 	colorEnabled = true,
+	workingDots = "...",
 ): string {
 	if (width <= 0) return "";
 	const mode = selectResponsiveMode(width);
-	const zones = buildZones(state, config, theme, mode, colorEnabled);
+	const zones = buildZones(state, config, theme, mode, colorEnabled, workingDots);
 	let line: string;
 	if (mode === "gallery") {
 		line =
 			renderGallery(zones, width) ||
-			renderBalanced(buildZones(state, config, theme, "balanced", colorEnabled), width, theme);
+			renderBalanced(buildZones(state, config, theme, "balanced", colorEnabled, workingDots), width, theme);
 	} else if (mode === "balanced") line = renderBalanced(zones, width, theme);
 	else if (mode === "focus") line = renderFocus(zones, width, theme);
 	else line = renderTelemetry(zones);

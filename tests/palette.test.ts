@@ -9,6 +9,7 @@ describe("Midnight Amethyst palette", () => {
 	it.each([
 		["brand", "\u001b[38;2;177;140;255mX\u001b[39m"],
 		["ready", "\u001b[38;2;110;168;254mX\u001b[39m"],
+		["working", "\u001b[38;2;255;159;67mX\u001b[39m"],
 		["cache", "\u001b[38;2;125;211;252mX\u001b[39m"],
 		["cost", "\u001b[38;2;255;159;67mX\u001b[39m"],
 		["error", "\u001b[38;2;255;93;115mX\u001b[39m"],

@@ -18,7 +18,7 @@ interface PaletteTheme {
 const RGB: Record<Exclude<PaletteRole, "muted">, readonly [number, number, number]> = {
 	brand: [177, 140, 255],
 	ready: [110, 168, 254],
-	working: [177, 140, 255],
+	working: [255, 159, 67],
 	warning: [255, 159, 67],
 	error: [255, 93, 115],
 	input: [110, 168, 254],
