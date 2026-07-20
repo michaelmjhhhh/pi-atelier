@@ -314,7 +314,7 @@ export function createFooterComponent(options: FooterComponentOptions): Componen
 	};
 
 	const syncAnimation = (visible: boolean): void => {
-		if (!visible) {
+		if (disposed || !visible) {
 			stopAnimation();
 			return;
 		}
@@ -329,16 +329,24 @@ export function createFooterComponent(options: FooterComponentOptions): Componen
 	return {
 		render(width) {
 			const state = options.getState();
+			const colorEnabled = options.colorEnabled ?? true;
+			const workingDots = WORKING_DOT_FRAMES[frameIndex] ?? WORKING_DOT_FRAMES[0];
 			const line = renderFooterLine(
 				state,
 				options.getConfig(),
 				options.theme,
 				width,
-				options.colorEnabled ?? true,
-				WORKING_DOT_FRAMES[frameIndex],
+				colorEnabled,
+				workingDots,
 			);
-			const workingLabel = state.workingLabel ?? "WORKING";
-			syncAnimation(state.activity === "working" && line.includes(workingLabel));
+			const fullActivity = activity(
+				state,
+				true,
+				createPalette(options.theme, colorEnabled),
+				options.theme,
+				workingDots,
+			);
+			syncAnimation(state.activity === "working" && line.includes(fullActivity));
 			return [line];
 		},
 		invalidate() {},

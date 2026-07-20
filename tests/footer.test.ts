@@ -341,6 +341,33 @@ describe("footer", () => {
 		}
 	});
 
+	it("does not animate when an omitted activity label appears in another segment", () => {
+		vi.useFakeTimers();
+		const component = createFooterComponent({
+			getState: () => ({
+				...state,
+				activity: "working",
+				workingLabel: "PONDERING",
+				modelId: "PONDERING",
+			}),
+			getConfig: () => ({
+				...DEFAULT_CONFIG,
+				segments: DEFAULT_CONFIG.segments.filter((id) => id !== "activity"),
+			}),
+			requestRender: vi.fn(),
+			onBranchChange: () => vi.fn(),
+			theme: plainTheme,
+		});
+
+		try {
+			expect(component.render(100)[0]).toContain("PONDERING");
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			component.dispose();
+			vi.useRealTimers();
+		}
+	});
+
 	it("renders the full working phrase and dots in orange italics without italicizing the bullet", () => {
 		const theme = {
 			fg: (_color: string, text: string) => text,
@@ -392,6 +419,26 @@ describe("footer", () => {
 		component.dispose();
 		component.dispose();
 		expect(unsubscribe).toHaveBeenCalledOnce();
+	});
+
+	it("does not restart animation when rendered after disposal", () => {
+		vi.useFakeTimers();
+		const component = createFooterComponent({
+			getState: () => ({ ...state, activity: "working", workingLabel: "PONDERING" }),
+			getConfig: () => DEFAULT_CONFIG,
+			requestRender: vi.fn(),
+			onBranchChange: () => vi.fn(),
+			theme: plainTheme,
+		});
+
+		try {
+			component.dispose();
+			expect(component.render(160)[0]).toContain("PONDERING...");
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			component.dispose();
+			vi.useRealTimers();
+		}
 	});
 
 	it("clears the animation timer and prevents redraws after disposal", () => {
