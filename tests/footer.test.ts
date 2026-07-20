@@ -272,21 +272,73 @@ describe("footer", () => {
 		expect(visibleWidth(line)).toBeLessThanOrEqual(56);
 	});
 
-	it("renders the selected working phrase without changing it across redraws", () => {
-		let current = state;
+	it("animates shrinking dots every 400 ms while retaining the selected phrase", () => {
+		vi.useFakeTimers();
+		const requestRender = vi.fn();
+		const working = { ...state, activity: "working" as const, workingLabel: "PHOTOSYNTHESIZING" };
 		const component = createFooterComponent({
-			getState: () => current,
+			getState: () => working,
 			getConfig: () => DEFAULT_CONFIG,
-			requestRender: vi.fn(),
+			requestRender,
 			onBranchChange: () => vi.fn(),
 			theme: plainTheme,
 		});
 
-		expect(component.render(160)[0]).toContain("READY");
-		current = { ...state, activity: "working", workingLabel: "PHOTOSYNTHESIZING" };
-		expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING");
-		expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING");
-		expect(component.render(160)[0]).not.toContain("WORKING");
+		try {
+			expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING...");
+			expect(vi.getTimerCount()).toBe(1);
+			vi.advanceTimersByTime(400);
+			expect(requestRender).toHaveBeenCalledTimes(1);
+			expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING..");
+			vi.advanceTimersByTime(400);
+			expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING.");
+			vi.advanceTimersByTime(400);
+			expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING...");
+			expect(component.render(160)[0]).not.toContain("WORKING");
+		} finally {
+			component.dispose();
+			vi.useRealTimers();
+		}
+	});
+
+	it("animates only when the full working status is visible and resets after stopping", () => {
+		vi.useFakeTimers();
+		let current: AtelierState = {
+			...state,
+			activity: "working",
+			workingLabel: "PONDERING",
+		};
+		let config = DEFAULT_CONFIG;
+		const requestRender = vi.fn();
+		const component = createFooterComponent({
+			getState: () => current,
+			getConfig: () => config,
+			requestRender,
+			onBranchChange: () => vi.fn(),
+			theme: plainTheme,
+		});
+
+		try {
+			expect(component.render(95)[0]).not.toContain("PONDERING");
+			expect(vi.getTimerCount()).toBe(0);
+			config = { ...DEFAULT_CONFIG, segments: DEFAULT_CONFIG.segments.filter((id) => id !== "activity") };
+			expect(component.render(100)[0]).not.toContain("PONDERING");
+			expect(vi.getTimerCount()).toBe(0);
+			config = DEFAULT_CONFIG;
+			expect(component.render(100)[0]).toContain("PONDERING...");
+			expect(vi.getTimerCount()).toBe(1);
+			vi.advanceTimersByTime(400);
+			expect(component.render(100)[0]).toContain("PONDERING..");
+
+			current = { ...state, activity: "ready" };
+			expect(component.render(100)[0]).toContain("READY");
+			expect(vi.getTimerCount()).toBe(0);
+			current = { ...state, activity: "working", workingLabel: "PONDERING" };
+			expect(component.render(100)[0]).toContain("PONDERING...");
+		} finally {
+			component.dispose();
+			vi.useRealTimers();
+		}
 	});
 
 	it("renders the full working phrase and dots in orange italics without italicizing the bullet", () => {
@@ -340,5 +392,30 @@ describe("footer", () => {
 		component.dispose();
 		component.dispose();
 		expect(unsubscribe).toHaveBeenCalledOnce();
+	});
+
+	it("clears the animation timer and prevents redraws after disposal", () => {
+		vi.useFakeTimers();
+		const requestRender = vi.fn();
+		const component = createFooterComponent({
+			getState: () => ({ ...state, activity: "working", workingLabel: "PONDERING" }),
+			getConfig: () => DEFAULT_CONFIG,
+			requestRender,
+			onBranchChange: () => vi.fn(),
+			theme: plainTheme,
+		});
+
+		try {
+			component.render(160);
+			expect(vi.getTimerCount()).toBe(1);
+			component.dispose();
+			expect(vi.getTimerCount()).toBe(0);
+			vi.advanceTimersByTime(800);
+			expect(requestRender).not.toHaveBeenCalled();
+			component.dispose();
+		} finally {
+			component.dispose();
+			vi.useRealTimers();
+		}
 	});
 });

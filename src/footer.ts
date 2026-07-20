@@ -11,6 +11,9 @@ export interface ThemeLike {
 
 export type ResponsiveMode = "gallery" | "balanced" | "focus" | "telemetry" | "safe";
 
+const WORKING_DOT_FRAMES = ["...", "..", "."] as const;
+const WORKING_ANIMATION_INTERVAL_MS = 400;
+
 interface FooterZones {
 	workspace: string[];
 	status?: string;
@@ -298,23 +301,51 @@ export interface FooterComponentOptions {
 
 export function createFooterComponent(options: FooterComponentOptions): Component & { dispose(): void } {
 	let disposed = false;
+	let frameIndex = 0;
+	let animationTimer: ReturnType<typeof setInterval> | undefined;
 	const unsubscribe = options.onBranchChange(options.requestRender);
+
+	const stopAnimation = (): void => {
+		if (animationTimer) {
+			clearInterval(animationTimer);
+			animationTimer = undefined;
+		}
+		frameIndex = 0;
+	};
+
+	const syncAnimation = (visible: boolean): void => {
+		if (!visible) {
+			stopAnimation();
+			return;
+		}
+		if (animationTimer) return;
+		animationTimer = setInterval(() => {
+			if (disposed) return;
+			frameIndex = (frameIndex + 1) % WORKING_DOT_FRAMES.length;
+			options.requestRender();
+		}, WORKING_ANIMATION_INTERVAL_MS);
+	};
+
 	return {
 		render(width) {
-			return [
-				renderFooterLine(
-					options.getState(),
-					options.getConfig(),
-					options.theme,
-					width,
-					options.colorEnabled ?? true,
-				),
-			];
+			const state = options.getState();
+			const line = renderFooterLine(
+				state,
+				options.getConfig(),
+				options.theme,
+				width,
+				options.colorEnabled ?? true,
+				WORKING_DOT_FRAMES[frameIndex],
+			);
+			const workingLabel = state.workingLabel ?? "WORKING";
+			syncAnimation(state.activity === "working" && line.includes(workingLabel));
+			return [line];
 		},
 		invalidate() {},
 		dispose() {
 			if (disposed) return;
 			disposed = true;
+			stopAnimation();
 			unsubscribe();
 		},
 	};
