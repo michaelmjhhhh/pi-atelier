@@ -9,17 +9,17 @@ Pi Atelier replaces Pi's default footer with a responsive editorial-luxe bar whi
 ## Preview
 
 ```text
-◆ ATELIER  ● PONDERING  gpt-5.6-sol · low  main ✦    ↑324k ↓15k  R5.9M CH98.8%  $5.041 (sub)  ◔27.0%/372k (auto)  ⌥A MENU
+◆ ATELIER  ● PONDERING...  gpt-5.6-sol · low  main ✦    ↑324k ↓15k  R5.9M CH98.8%  $5.041 (sub)  ◔27.0%/372k (auto)  ⌥A MENU
 ```
 
 Wide terminals use a dual-zone instrument rail: workspace identity stays left while operational telemetry is right-aligned.
 
 ### Midnight Amethyst palette
 
-- **Purple `#B18CFF`:** Atelier, randomized working phrases, output tokens
+- **Purple `#B18CFF`:** Atelier and output tokens
 - **Blue `#6EA8FE`:** Ready, input tokens, healthy context
 - **Ice blue `#7DD3FC`:** cache telemetry
-- **Orange `#FF9F43`:** cost, Git dirty, context warning
+- **Orange `#FF9F43`:** active working status, cost, Git dirty, context warning
 - **Red `#FF5D73`:** errors and dangerous context only
 
 No green or yellow is used by the normal footer palette. With `NO_COLOR` enabled, Pi Atelier falls back to neutral Pi theme colors rather than green/yellow semantic colors.
@@ -82,7 +82,7 @@ pi -e .
 - `(auto)` automatic context compaction
 - `✦` tracked working-tree changes
 
-`READY` remains fixed when idle. During each work cycle, the working label is selected once from a playful built-in phrase set—such as `KNEADING`, `MOONWALKING`, or `PONDERING`—and remains stable until the cycle ends.
+`READY` remains fixed when idle. During each work cycle, the working label is selected once from a playful built-in phrase set—such as `KNEADING`, `MOONWALKING`, or `PONDERING`—and remains stable until the cycle ends. In Gallery and Balanced layouts, the active phrase is orange and italic with an ellipsis that shrinks from `...` to `..` to `.` every 400 ms. Narrower layouts retain the compact static activity bullet.
 
 At 56 columns or wider, required metrics and context remain visible. Below 56 columns, Pi Atelier prioritizes the compact metrics cluster and truncates safely rather than wrapping.
 
@@ -166,7 +166,7 @@ Unknown or invalid values are ignored with one warning. The required `metrics` a
 - **Telemetry (56–71):** complete compact operational metrics and context without decorative workspace data
 - **Safe (<56):** metrics-first ANSI-aware truncation with no wrapping
 
-Color remains semantic at every width: input and healthy context are blue, output is purple, cache is ice blue, cost and warnings are orange, and only dangerous context or errors use red.
+Color remains semantic at every width: input and healthy context are blue, output is purple, cache is ice blue, active work, cost, and warnings are orange, and only dangerous context or errors use red.
 
 ## Privacy and security
 

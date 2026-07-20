@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Animate the visible work-cycle phrase with orange italics and a shrinking three-to-one ellipsis.
+
 ## 0.1.1
 
 - Replace the fixed `WORKING` footer label with one stable, randomly selected activity phrase per work cycle.
