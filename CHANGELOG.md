@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.2
+
 - Animate the visible work-cycle phrase with orange italics and a shrinking three-to-one ellipsis.
 
 ## 0.1.1
