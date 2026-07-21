@@ -50,7 +50,7 @@ export const DEFAULT_CONFIG: AtelierConfig = {
 	shortcut: "alt+a",
 	segments: ["brand", "activity", "metrics", "context", "model", "git", "statuses", "menu"],
 	density: "comfortable",
-	ornament: "restrained",
+	ornament: "none",
 	contextWarning: 70,
 	contextDanger: 90,
 	currencyDecimals: 3,
