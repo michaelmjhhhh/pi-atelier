@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	buildSidebarSnapshot,
 	createSidebarComponent,
-	openAtelierSidebar,
+	createSidebarController,
 	renderSidebarLines,
-	selectSidebarOverlay,
+	sidebarOverlayOptions,
 } from "../src/sidebar.js";
 import { type AtelierState, DEFAULT_CONFIG } from "../src/types.js";
 
@@ -80,9 +80,17 @@ describe("sidebar snapshot and layout", () => {
 		}
 	});
 
-	it("uses a right panel on wide terminals and centered fallback when narrow", () => {
-		expect(selectSidebarOverlay(120)).toMatchObject({ anchor: "right-center", width: 44 });
-		expect(selectSidebarOverlay(70)).toMatchObject({ anchor: "center", width: "92%" });
+	it("uses an attached non-capturing overlay with responsive visibility", () => {
+		const options = sidebarOverlayOptions();
+		expect(options).toMatchObject({
+			anchor: "right-center",
+			width: 44,
+			margin: 0,
+			nonCapturing: true,
+		});
+		expect(options.visible?.(87, 40)).toBe(false);
+		expect(options.visible?.(88, 40)).toBe(true);
+		expect(options.visible?.(160, 40)).toBe(true);
 	});
 
 	it("renders missing metadata as unavailable and the session as ephemeral", () => {
@@ -141,22 +149,19 @@ describe("sidebar snapshot and layout", () => {
 });
 
 describe("sidebar component and overlay", () => {
-	it.each(["q", "\u001b", "\u0003"])("closes for %j", (key) => {
-		const onClose = vi.fn();
+	it("does not capture editor input or render modal close help", () => {
 		const component = createSidebarComponent({
 			getSnapshot: snapshot,
 			getConfig: () => DEFAULT_CONFIG,
 			theme,
-			onClose,
 		});
-		component.handleInput?.(key);
-		expect(onClose).toHaveBeenCalledOnce();
+		expect(component.handleInput).toBeUndefined();
+		expect(component.render(44).join("\n")).not.toContain("esc/q close");
 	});
 
 	it.each(["snapshot", "config", "render"] as const)(
-		"renders a closable, bounded error state after a %s failure",
+		"renders a bounded error state after a %s failure",
 		(source) => {
-			const onClose = vi.fn();
 			const component = createSidebarComponent({
 				getSnapshot: () => {
 					if (source === "snapshot") throw new Error("snapshot failed");
@@ -175,53 +180,89 @@ describe("sidebar component and overlay", () => {
 								},
 							}
 						: theme,
-				onClose,
 			});
 			const lines = component.render(24);
 			expect(lines.join("\n")).toContain("Sidebar unavailable");
-			expect(lines.join("\n")).toContain("esc/q close");
+			expect(lines.join("\n")).not.toContain("esc/q close");
 			expect(lines.every((line) => visibleWidth(line) <= 24)).toBe(true);
-			component.handleInput?.("q");
-			expect(onClose).toHaveBeenCalledOnce();
 		},
 	);
 
-	it("opens with a live responsive overlay and clears its render callback", async () => {
-		let factory:
-			| ((tui: never, theme: never, keys: never, done: (value: undefined) => void) => unknown)
-			| undefined;
-		let customOptions: { overlay?: boolean; overlayOptions?: () => unknown } | undefined;
-		let renderWhileOpen: (() => void) | undefined;
+	it("keeps one overlay alive and supports repeated lifecycle operations", () => {
 		const requestRender = vi.fn();
-		const onRequestRender = vi.fn((callback: () => void) => {
-			renderWhileOpen = callback;
+		const closeCallbacks: Array<ReturnType<typeof vi.fn>> = [];
+		const handles: Array<{ hide: ReturnType<typeof vi.fn> }> = [];
+		const components: unknown[] = [];
+		const custom = vi.fn((factory, customOptions) => {
+			return new Promise<undefined>((resolve) => {
+				let closed = false;
+				const done = vi.fn((value: undefined) => {
+					if (closed) return;
+					closed = true;
+					resolve(value);
+				});
+				const handle = { hide: vi.fn() };
+				closeCallbacks.push(done);
+				handles.push(handle);
+				components.push(factory({ requestRender } as never, theme as never, {} as never, done));
+				customOptions.onHandle?.(handle as never);
+			});
 		});
-		const onClosed = vi.fn();
-		const custom = vi.fn(async (nextFactory, options) => {
-			factory = nextFactory;
-			customOptions = options;
-			const component = nextFactory(
-				{ terminal: { width: 120 }, requestRender } as never,
-				theme as never,
-				{} as never,
-				vi.fn(),
-			);
-			renderWhileOpen?.();
-			return component;
-		});
-		await openAtelierSidebar({
+		const controller = createSidebarController({
 			ctx: { mode: "tui", ui: { custom } } as never,
 			getSnapshot: snapshot,
 			getConfig: () => DEFAULT_CONFIG,
-			onRequestRender,
-			onClosed,
 		});
-		expect(factory).toBeTypeOf("function");
-		expect(customOptions?.overlay).toBe(true);
-		expect(customOptions?.overlayOptions?.()).toMatchObject({ anchor: "right-center", width: 44 });
+
+		expect(controller.isVisible()).toBe(false);
+		controller.show();
+		expect(controller.isVisible()).toBe(true);
+		expect(custom).toHaveBeenCalledOnce();
+		expect(custom.mock.calls[0]?.[1]).toMatchObject({
+			overlay: true,
+			overlayOptions: expect.objectContaining({
+				anchor: "right-center",
+				width: 44,
+				nonCapturing: true,
+			}),
+			onHandle: expect.any(Function),
+		});
+		expect(components).toHaveLength(1);
+		controller.show();
+		expect(custom).toHaveBeenCalledOnce();
+
+		controller.requestRender();
 		expect(requestRender).toHaveBeenCalledOnce();
-		expect(onRequestRender).toHaveBeenCalledTimes(2);
-		expect(onRequestRender).toHaveBeenLastCalledWith(expect.any(Function));
-		expect(onClosed).toHaveBeenCalledOnce();
+		controller.hide();
+		expect(controller.isVisible()).toBe(false);
+		expect(closeCallbacks[0]).toHaveBeenCalledOnce();
+		expect(handles[0]?.hide).not.toHaveBeenCalled();
+		controller.hide();
+		expect(closeCallbacks[0]).toHaveBeenCalledOnce();
+
+		controller.toggle();
+		expect(controller.isVisible()).toBe(true);
+		expect(custom).toHaveBeenCalledTimes(2);
+		expect(components).toHaveLength(2);
+		controller.dispose();
+		expect(controller.isVisible()).toBe(false);
+		expect(closeCallbacks[1]).toHaveBeenCalledOnce();
+	});
+
+	it("reports unsupported modes without enabling the sidebar", () => {
+		const onError = vi.fn();
+		const custom = vi.fn();
+		const controller = createSidebarController({
+			ctx: { mode: "rpc", ui: { custom } } as never,
+			getSnapshot: snapshot,
+			getConfig: () => DEFAULT_CONFIG,
+			onError,
+		});
+		controller.show();
+		expect(controller.isVisible()).toBe(false);
+		expect(custom).not.toHaveBeenCalled();
+		expect(onError).toHaveBeenCalledWith(
+			expect.objectContaining({ message: expect.stringContaining("TUI") }),
+		);
 	});
 });

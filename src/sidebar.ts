@@ -3,8 +3,7 @@ import { basename } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	type Component,
-	Key,
-	matchesKey,
+	type OverlayHandle,
 	type OverlayOptions,
 	truncateToWidth,
 	visibleWidth,
@@ -52,10 +51,15 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
 	};
 }
 
-export function selectSidebarOverlay(termWidth: number): OverlayOptions {
-	return termWidth >= 88
-		? { anchor: "right-center", width: 44, maxHeight: "92%", margin: 1 }
-		: { anchor: "center", width: "92%", minWidth: 30, maxHeight: "92%", margin: 1 };
+export function sidebarOverlayOptions(): OverlayOptions {
+	return {
+		anchor: "right-center",
+		width: 44,
+		maxHeight: "100%",
+		margin: 0,
+		nonCapturing: true,
+		visible: (termWidth) => termWidth >= 88,
+	};
 }
 
 const sanitize = (text: string): string =>
@@ -236,10 +240,6 @@ function statusRows(snapshot: SidebarSnapshot, _innerWidth: number, palette: Ate
 	return rows;
 }
 
-function helpRow(help: string, _innerWidth: number, palette: AtelierPalette): string {
-	return palette.paint("dim", sanitize(help));
-}
-
 function frameRows(rows: string[], width: number, palette: AtelierPalette): string[] {
 	const safeWidth = Math.max(0, Math.trunc(width));
 	if (safeWidth <= 0) return [];
@@ -283,7 +283,6 @@ export function renderSidebarLines(
 		usageRows(snapshot, config, innerWidth, palette),
 		sectionRow("TOOLS & STATUS", innerWidth, palette),
 		statusRows(snapshot, innerWidth, palette),
-		helpRow("esc/q close", innerWidth, palette),
 	].flat();
 	return frameRows(rows, width, palette);
 }
@@ -293,7 +292,6 @@ export interface SidebarComponentOptions {
 	getConfig(): AtelierConfig;
 	theme: ThemeLike;
 	colorEnabled?: boolean;
-	onClose(): void;
 }
 
 function renderSidebarError(error: unknown, width: number): string[] {
@@ -303,7 +301,7 @@ function renderSidebarError(error: unknown, width: number): string[] {
 	} catch {
 		// Keep the fallback render path safe even for unusual thrown values.
 	}
-	return frameRows(["PI ATELIER", "Sidebar unavailable", detail, "esc/q close"], width, {
+	return frameRows(["PI ATELIER", "Sidebar unavailable", detail], width, {
 		paint: (_role, text) => text,
 	});
 }
@@ -323,60 +321,120 @@ export function createSidebarComponent(options: SidebarComponentOptions): Compon
 				return renderSidebarError(error, width);
 			}
 		},
-		handleInput(data) {
-			if (matchesKey(data, Key.escape) || matchesKey(data, "q") || matchesKey(data, Key.ctrl("c")))
-				options.onClose();
-		},
 		invalidate() {},
 	};
 }
 
-export interface OpenSidebarOptions {
+export interface SidebarController {
+	show(): void;
+	hide(): void;
+	toggle(): void;
+	isVisible(): boolean;
+	requestRender(): void;
+	dispose(): void;
+}
+
+export interface SidebarControllerOptions {
 	ctx: ExtensionContext;
 	getSnapshot(): SidebarSnapshot;
 	getConfig(): AtelierConfig;
-	onRequestRender(callback: () => void): void;
-	onCloseReady?(callback: () => void): void;
-	onClosed(): void;
 	colorEnabled?: boolean;
+	onError?(error: unknown): void;
 }
 
-export async function openAtelierSidebar(options: OpenSidebarOptions): Promise<void> {
-	if (options.ctx.mode !== "tui") {
-		options.ctx.ui.notify("Pi Atelier sidebar requires TUI mode", "warning");
-		return;
-	}
-	let getTerminalWidth = (): number => 0;
-	try {
-		await options.ctx.ui.custom<void>(
-			(tui, theme, _keybindings, done) => {
-				let closed = false;
-				const close = () => {
-					if (closed) return;
-					closed = true;
-					done(undefined);
-				};
-				options.onCloseReady?.(close);
-				getTerminalWidth = () => {
-					const terminal = tui.terminal as typeof tui.terminal & { width?: number };
-					return terminal.width ?? terminal.columns;
-				};
-				options.onRequestRender(() => tui.requestRender());
-				return createSidebarComponent({
-					getSnapshot: options.getSnapshot,
-					getConfig: options.getConfig,
-					theme: theme as unknown as ThemeLike,
-					...(options.colorEnabled === undefined ? {} : { colorEnabled: options.colorEnabled }),
-					onClose: close,
+export function createSidebarController(options: SidebarControllerOptions): SidebarController {
+	let enabled = false;
+	let generation = 0;
+	let closeOverlay: (() => void) | undefined;
+	let requestOverlayRender: (() => void) | undefined;
+	let overlayHandle: OverlayHandle | undefined;
+
+	const hide = () => {
+		if (!enabled && !closeOverlay && !overlayHandle) return;
+		enabled = false;
+		generation += 1;
+		const close = closeOverlay;
+		const handle = overlayHandle;
+		closeOverlay = undefined;
+		requestOverlayRender = undefined;
+		overlayHandle = undefined;
+		if (close) close();
+		else handle?.hide();
+	};
+
+	const show = () => {
+		if (enabled) return;
+		if (options.ctx.mode !== "tui") {
+			options.onError?.(new Error("Pi Atelier sidebar requires TUI mode"));
+			return;
+		}
+
+		enabled = true;
+		const currentGeneration = ++generation;
+		try {
+			const pending = options.ctx.ui.custom<void>(
+				(tui, theme, _keybindings, done) => {
+					let closed = false;
+					const close = () => {
+						if (closed) return;
+						closed = true;
+						done(undefined);
+					};
+					if (enabled && generation === currentGeneration) {
+						closeOverlay = close;
+						requestOverlayRender = () => tui.requestRender();
+					} else {
+						close();
+					}
+					return createSidebarComponent({
+						getSnapshot: options.getSnapshot,
+						getConfig: options.getConfig,
+						theme: theme as unknown as ThemeLike,
+						...(options.colorEnabled === undefined ? {} : { colorEnabled: options.colorEnabled }),
+					});
+				},
+				{
+					overlay: true,
+					overlayOptions: sidebarOverlayOptions(),
+					onHandle: (handle) => {
+						if (enabled && generation === currentGeneration) overlayHandle = handle;
+						else handle.hide();
+					},
+				},
+			);
+			void pending
+				.catch((error: unknown) => options.onError?.(error))
+				.finally(() => {
+					if (generation !== currentGeneration) return;
+					enabled = false;
+					closeOverlay = undefined;
+					requestOverlayRender = undefined;
+					overlayHandle = undefined;
 				});
-			},
-			{
-				overlay: true,
-				overlayOptions: () => selectSidebarOverlay(getTerminalWidth()),
-			},
-		);
-	} finally {
-		options.onRequestRender(() => undefined);
-		options.onClosed();
-	}
+		} catch (error) {
+			if (generation === currentGeneration) {
+				enabled = false;
+				closeOverlay = undefined;
+				requestOverlayRender = undefined;
+				overlayHandle = undefined;
+			}
+			options.onError?.(error);
+		}
+	};
+
+	return {
+		show,
+		hide,
+		toggle() {
+			if (enabled) hide();
+			else show();
+		},
+		isVisible() {
+			return enabled;
+		},
+		requestRender() {
+			requestOverlayRender?.();
+		},
+		dispose: hide,
+	};
 }
