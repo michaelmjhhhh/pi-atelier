@@ -10,7 +10,12 @@ import type { KeyId } from "@earendil-works/pi-tui";
 import { loadConfig } from "../src/config.js";
 import { createFooterComponent, type ThemeLike } from "../src/footer.js";
 import { openAtelierMenu } from "../src/menu.js";
-import { buildSidebarSnapshot, openAtelierSidebar, type SidebarSnapshot } from "../src/sidebar.js";
+import {
+	buildSidebarSnapshot,
+	createSidebarController,
+	type SidebarController,
+	type SidebarSnapshot,
+} from "../src/sidebar.js";
 import { AtelierRuntime } from "../src/state.js";
 import type { AtelierState } from "../src/types.js";
 
@@ -18,16 +23,14 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 	let runtime: AtelierRuntime | undefined;
 	let currentContext: ExtensionContext | undefined;
 	let requestRender: () => void = () => undefined;
-	let sidebarRequestRender: () => void = () => undefined;
-	let closeSidebar: () => void = () => undefined;
-	let sidebarOpen = false;
+	let sidebar: SidebarController | undefined;
 	let extensionStatuses: readonly string[] = [];
 	let enabled = true;
 	let shortcutRegistered = false;
 
 	const requestAllRenders = (): void => {
 		requestRender();
-		sidebarRequestRender();
+		sidebar?.requestRender();
 	};
 
 	function updateExtensionStatuses(next: readonly string[]): void {
@@ -38,7 +41,7 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 			return;
 		}
 		extensionStatuses = [...next];
-		sidebarRequestRender();
+		sidebar?.requestRender();
 	}
 
 	function getSidebarSnapshot(ctx: ExtensionContext): SidebarSnapshot {
@@ -58,11 +61,11 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 	}
 
 	async function openMenu(ctx: ExtensionContext): Promise<void> {
-		if (!runtime) {
+		if (!runtime || !sidebar) {
 			ctx.ui.notify("Pi Atelier is not active in this session", "warning");
 			return;
 		}
-		await openAtelierMenu(pi, ctx, runtime, join(getAgentDir(), "pi-atelier.json"));
+		await openAtelierMenu(pi, ctx, runtime, join(getAgentDir(), "pi-atelier.json"), sidebar);
 	}
 
 	function installFooter(ctx: ExtensionContext): void {
@@ -101,45 +104,27 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("atelier", {
 		description: "Open or control the Pi Atelier status menu",
 		handler: async (args, ctx) => {
-			const action = args.trim().toLowerCase();
+			const parts = args.trim().toLowerCase().split(/\s+/).filter(Boolean);
+			const [action, sidebarAction, ...extra] = parts;
 			if (action === "sidebar") {
+				if (
+					extra.length > 0 ||
+					(sidebarAction !== undefined && sidebarAction !== "on" && sidebarAction !== "off")
+				) {
+					ctx.ui.notify("Usage: /atelier sidebar [on|off]", "warning");
+					return;
+				}
 				if (ctx.mode !== "tui") {
 					ctx.ui.notify("Pi Atelier sidebar requires TUI mode", "warning");
 					return;
 				}
-				if (!runtime) {
+				if (!runtime || !sidebar) {
 					ctx.ui.notify("Pi Atelier is not active in this session", "warning");
 					return;
 				}
-				if (sidebarOpen) {
-					ctx.ui.notify("Pi Atelier sidebar is already open", "info");
-					return;
-				}
-				sidebarOpen = true;
-				try {
-					await openAtelierSidebar({
-						ctx,
-						getSnapshot: () => getSidebarSnapshot(ctx),
-						getConfig: () => {
-							if (!runtime) throw new Error("Pi Atelier runtime unavailable");
-							return runtime.getConfig();
-						},
-						onRequestRender: (request) => {
-							sidebarRequestRender = request;
-						},
-						onCloseReady: (close) => {
-							closeSidebar = close;
-						},
-						onClosed: () => {
-							sidebarRequestRender = () => undefined;
-							closeSidebar = () => undefined;
-						},
-						colorEnabled: !("NO_COLOR" in process.env),
-					});
-				} finally {
-					sidebarOpen = false;
-					sidebarRequestRender = () => undefined;
-				}
+				if (sidebarAction === "on") sidebar.show();
+				else if (sidebarAction === "off") sidebar.hide();
+				else sidebar.toggle();
 				return;
 			}
 			if (action === "disable") {
@@ -180,6 +165,8 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 			} catch {
 				ctx.ui.notify("Could not read Pi compaction settings; compaction mode is unavailable", "warning");
 			}
+			sidebar?.dispose();
+			sidebar = undefined;
 			runtime?.dispose();
 			runtime = new AtelierRuntime({
 				pi,
@@ -189,6 +176,20 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 				requestRender: requestAllRenders,
 			});
 			await runtime.refreshGitState();
+			sidebar = createSidebarController({
+				ctx,
+				getSnapshot: () => getSidebarSnapshot(ctx),
+				getConfig: () => {
+					if (!runtime) throw new Error("Pi Atelier runtime unavailable");
+					return runtime.getConfig();
+				},
+				colorEnabled: !("NO_COLOR" in process.env),
+				onError: (error) =>
+					ctx.ui.notify(
+						`Pi Atelier sidebar failed: ${error instanceof Error ? error.message : String(error)}`,
+						"error",
+					),
+			});
 			if (!shortcutRegistered) {
 				try {
 					pi.registerShortcut(loaded.config.shortcut as KeyId, {
@@ -206,6 +207,8 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 			}
 			if (enabled) installFooter(ctx);
 		} catch (error) {
+			sidebar?.dispose();
+			sidebar = undefined;
 			runtime?.dispose();
 			runtime = undefined;
 			updateExtensionStatuses([]);
@@ -228,15 +231,13 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 	pi.on("session_compact", () => runtime?.refreshUsage());
 	pi.on("session_info_changed", () => runtime?.refreshUsage());
 	pi.on("session_shutdown", () => {
+		sidebar?.dispose();
+		sidebar = undefined;
 		runtime?.dispose();
 		runtime = undefined;
 		currentContext?.ui.setFooter(undefined);
 		currentContext = undefined;
 		requestRender = () => undefined;
-		closeSidebar();
-		closeSidebar = () => undefined;
-		sidebarOpen = false;
-		sidebarRequestRender = () => undefined;
 		extensionStatuses = [];
 	});
 }

@@ -19,6 +19,11 @@ import { DEFAULT_CONFIG, type AtelierConfig, type PresetName, type SegmentId } f
 
 export type SaveConfig = typeof saveUserConfig;
 
+export interface SidebarControls {
+	isVisible(): boolean;
+	toggle(): void;
+}
+
 interface MenuTheme {
 	fg(color: string, text: string): string;
 	bold(text: string): string;
@@ -265,6 +270,7 @@ export async function openAtelierMenu(
 	ctx: ExtensionContext,
 	runtime: AtelierRuntime,
 	userConfigPath: string,
+	sidebar: SidebarControls,
 ): Promise<void> {
 	if (ctx.mode !== "tui") {
 		ctx.ui.notify("Pi Atelier menu requires TUI mode", "warning");
@@ -272,7 +278,13 @@ export async function openAtelierMenu(
 	}
 	const actions = createMenuActions(pi, ctx, runtime, userConfigPath);
 	for (;;) {
+		const sidebarVisible = sidebar.isVisible();
 		const section = await showSelection(ctx, "◆ Pi Atelier", [
+			{
+				value: "sidebar",
+				label: `Sidebar: ${sidebarVisible ? "On" : "Off"}`,
+				description: sidebarVisible ? "Hide the live session sidecar" : "Show the live session sidecar",
+			},
 			{ value: "model", label: "Model", description: "Model and thinking level" },
 			{ value: "tools", label: "Tools", description: "Search and toggle active tools" },
 			{ value: "display", label: "Display", description: "Preset and footer segments" },
@@ -280,6 +292,11 @@ export async function openAtelierMenu(
 			{ value: "close", label: "Close" },
 		]);
 		if (!section || section === "close") return;
+
+		if (section === "sidebar") {
+			sidebar.toggle();
+			continue;
+		}
 
 		if (section === "model") {
 			const action = await ctx.ui.select("Model controls", ["Choose model", "Thinking level", "Back"]);

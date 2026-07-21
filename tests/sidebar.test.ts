@@ -188,7 +188,7 @@ describe("sidebar component and overlay", () => {
 		},
 	);
 
-	it("keeps one overlay alive and supports repeated lifecycle operations", () => {
+	it("keeps one overlay alive and supports repeated lifecycle operations", async () => {
 		const requestRender = vi.fn();
 		const closeCallbacks: Array<ReturnType<typeof vi.fn>> = [];
 		const handles: Array<{ hide: ReturnType<typeof vi.fn> }> = [];
@@ -244,6 +244,13 @@ describe("sidebar component and overlay", () => {
 		expect(controller.isVisible()).toBe(true);
 		expect(custom).toHaveBeenCalledTimes(2);
 		expect(components).toHaveLength(2);
+
+		// Let the first overlay's promise finalize while the replacement is active.
+		await Promise.resolve();
+		expect(controller.isVisible()).toBe(true);
+		controller.requestRender();
+		expect(requestRender).toHaveBeenCalledTimes(2);
+
 		controller.dispose();
 		expect(controller.isVisible()).toBe(false);
 		expect(closeCallbacks[1]).toHaveBeenCalledOnce();

@@ -6,6 +6,13 @@ function harness(mode: "tui" | "print" = "tui") {
 	const commands = new Map<string, any>();
 	const shortcuts: string[] = [];
 	const setFooter = vi.fn();
+	const overlays: Array<{
+		component: any;
+		done: ReturnType<typeof vi.fn>;
+		handle: { hide: ReturnType<typeof vi.fn> };
+		options: any;
+		requestRender: ReturnType<typeof vi.fn>;
+	}> = [];
 	const pi = {
 		on: vi.fn((name: string, handler: (...args: any[]) => unknown) => handlers.set(name, handler)),
 		registerCommand: vi.fn((name: string, options: any) => commands.set(name, options)),
@@ -15,6 +22,30 @@ function harness(mode: "tui" | "print" = "tui") {
 		getActiveTools: vi.fn().mockReturnValue(["read"]),
 		getAllTools: vi.fn().mockReturnValue([{ name: "read" }]),
 	};
+	const custom = vi.fn((factory: (...args: any[]) => any, options: any) => {
+		const requestRender = vi.fn();
+		let resolve!: (value: undefined) => void;
+		const pending = new Promise<undefined>((done) => {
+			resolve = done;
+		});
+		const done = vi.fn(() => resolve(undefined));
+		const handle = { hide: vi.fn() };
+		const component = factory(
+			{ terminal: { width: 120 }, requestRender },
+			{
+				name: "dark",
+				fg: (_color: string, text: string) => text,
+				bold: (text: string) => text,
+				italic: (text: string) => text,
+			},
+			{},
+			done,
+		);
+		overlays.push({ component, done, handle, options, requestRender });
+		options?.onHandle?.(handle);
+		if (!options?.overlayOptions?.nonCapturing) done();
+		return pending;
+	});
 	const ctx = {
 		mode,
 		cwd: "/tmp/project",
@@ -28,147 +59,124 @@ function harness(mode: "tui" | "print" = "tui") {
 			getSessionName: vi.fn().mockReturnValue("Test session"),
 			getSessionFile: vi.fn().mockReturnValue("/tmp/session.jsonl"),
 		},
-		ui: {
-			setFooter,
-			notify: vi.fn(),
-			theme: {},
-			custom: vi.fn().mockImplementation(async (factory) => {
-				factory(
-					{ terminal: { width: 120 }, requestRender: vi.fn() },
-					{
-						fg: (_color: string, text: string) => text,
-						bold: (text: string) => text,
-						italic: (text: string) => text,
-					},
-					{},
-					() => undefined,
-				);
-			}),
-		},
+		ui: { setFooter, notify: vi.fn(), theme: {}, custom },
 	};
 	atelierExtension(pi as never);
-	return { handlers, commands, shortcuts, setFooter, ctx, pi };
+	return { handlers, commands, shortcuts, setFooter, ctx, pi, overlays, custom };
+}
+
+async function start(h: ReturnType<typeof harness>) {
+	await h.handlers.get("session_start")?.({ reason: "startup" }, h.ctx);
+}
+
+async function command(h: ReturnType<typeof harness>, args: string) {
+	await h.commands.get("atelier").handler(args, h.ctx);
 }
 
 describe("extension registration", () => {
 	it("registers the command and installs one footer in TUI mode", async () => {
 		const h = harness();
 		expect(h.commands.has("atelier")).toBe(true);
-		await h.handlers.get("session_start")?.({ reason: "startup" }, h.ctx);
+		await start(h);
 		expect(h.setFooter).toHaveBeenCalledTimes(1);
 		expect(h.shortcuts).toContain("alt+a");
 	});
 
 	it("does not install terminal UI outside TUI mode", async () => {
 		const h = harness("print");
-		await h.handlers.get("session_start")?.({ reason: "startup" }, h.ctx);
+		await start(h);
 		expect(h.setFooter).not.toHaveBeenCalled();
 	});
 
-	it("opens the sidebar through /atelier sidebar", async () => {
+	it("starts disabled and toggles the persistent sidebar off -> on -> off", async () => {
 		const h = harness();
-		await h.handlers.get("session_start")?.({ reason: "startup" }, h.ctx);
-		await h.commands.get("atelier").handler("sidebar", h.ctx);
-		expect(h.ctx.ui.custom).toHaveBeenCalledWith(
-			expect.any(Function),
-			expect.objectContaining({ overlay: true }),
-		);
+		await start(h);
+		expect(h.custom).not.toHaveBeenCalled();
+		await command(h, "sidebar");
+		expect(h.overlays).toHaveLength(1);
+		expect(h.overlays[0]?.options).toMatchObject({
+			overlay: true,
+			overlayOptions: expect.objectContaining({ nonCapturing: true }),
+			onHandle: expect.any(Function),
+		});
+		await command(h, "sidebar");
+		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
+		expect(h.custom).toHaveBeenCalledTimes(1);
 	});
 
-	it("disables custom sidebar colors when NO_COLOR is present", async () => {
+	it("supports idempotent sidebar on and off commands", async () => {
 		const h = harness();
-		await h.handlers.get("session_start")?.({ reason: "startup" }, h.ctx);
-		let component: { render(width: number): string[] } | undefined;
-		h.ctx.ui.custom.mockImplementationOnce(async (factory: (...args: any[]) => any) => {
-			component = factory(
-				{ terminal: { width: 120 }, requestRender: vi.fn() },
-				{
-					name: "dark",
-					fg: (_color: string, text: string) => text,
-					bold: (text: string) => text,
-				},
-				{},
-				vi.fn(),
-			);
-		});
+		await start(h);
+		await command(h, "sidebar on");
+		await command(h, "sidebar on");
+		expect(h.custom).toHaveBeenCalledOnce();
+		await command(h, "sidebar off");
+		await command(h, "sidebar off");
+		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
+	});
 
+	it.each(["sidebar maybe", "sidebar on extra"])("warns for invalid syntax: %s", async (args) => {
+		const h = harness();
+		await start(h);
+		await command(h, args);
+		expect(h.ctx.ui.notify).toHaveBeenCalledWith("Usage: /atelier sidebar [on|off]", "warning");
+		expect(h.custom).not.toHaveBeenCalled();
+	});
+
+	it("keeps sidebar and footer enablement independent", async () => {
+		const h = harness();
+		await start(h);
+		await command(h, "sidebar on");
+		await command(h, "disable");
+		expect(h.overlays[0]?.done).not.toHaveBeenCalled();
+		await command(h, "sidebar off");
+		await command(h, "enable");
+		expect(h.custom).toHaveBeenCalledTimes(1);
+	});
+
+	it("closes an enabled sidebar during shutdown", async () => {
+		const h = harness();
+		await start(h);
+		await command(h, "sidebar on");
+		await h.handlers.get("session_shutdown")?.({ reason: "quit" }, h.ctx);
+		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
+		expect(h.setFooter).toHaveBeenLastCalledWith(undefined);
+	});
+
+	it("passes command state to the menu controller", async () => {
+		const h = harness();
+		await start(h);
+		await command(h, "sidebar on");
+		await command(h, "");
+		const menu = h.overlays[1]?.component.render(80).join("\n");
+		expect(menu).toContain("Sidebar: On");
+	});
+
+	it("passes NO_COLOR through to sidebar rendering", async () => {
+		const h = harness();
 		vi.stubEnv("NO_COLOR", "1");
 		try {
-			await h.commands.get("atelier").handler("sidebar", h.ctx);
+			await start(h);
+			await command(h, "sidebar on");
+			expect(h.overlays[0]?.component.render(44).join("\n")).not.toContain("\u001b[38;2;");
 		} finally {
 			vi.unstubAllEnvs();
 		}
-
-		expect(component).toBeDefined();
-		expect(component?.render(44).join("\n")).not.toContain("\u001b[38;2;");
 	});
 
 	it("warns instead of opening the sidebar outside TUI mode", async () => {
 		const h = harness("print");
-		await h.commands.get("atelier").handler("sidebar", h.ctx);
-		expect(h.ctx.ui.custom).not.toHaveBeenCalled();
+		await command(h, "sidebar");
+		expect(h.custom).not.toHaveBeenCalled();
 		expect(h.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("TUI mode"), "warning");
-	});
-
-	it("preserves menu routing for bare /atelier", async () => {
-		const h = harness();
-		await h.handlers.get("session_start")?.({ reason: "startup" }, h.ctx);
-		await h.commands.get("atelier").handler("", h.ctx);
-		expect(h.ctx.ui.custom).toHaveBeenCalled();
-	});
-
-	it("invalidates one open sidebar and rejects duplicate panels", async () => {
-		const h = harness();
-		await h.handlers.get("session_start")?.({ reason: "startup" }, h.ctx);
-		let close: (() => void) | undefined;
-		const sidebarRender = vi.fn();
-		h.ctx.ui.custom.mockImplementationOnce(
-			(factory: (...args: any[]) => unknown) =>
-				new Promise<void>((resolve) => {
-					close = resolve;
-					factory(
-						{ terminal: { width: 120 }, requestRender: sidebarRender },
-						{ fg: (_color: string, text: string) => text, bold: (text: string) => text },
-						{},
-						resolve,
-					);
-				}),
-		);
-		const opening = h.commands.get("atelier").handler("sidebar", h.ctx);
-		await vi.waitFor(() => expect(h.ctx.ui.custom).toHaveBeenCalledTimes(1));
-		await h.commands.get("atelier").handler("sidebar", h.ctx);
-		expect(h.ctx.ui.custom).toHaveBeenCalledTimes(1);
-		expect(h.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("already open"), "info");
-
-		await h.handlers.get("turn_end")?.({}, h.ctx);
-		expect(sidebarRender).toHaveBeenCalled();
-		close?.();
-		await opening;
 	});
 
 	it("invalidates the sidebar once per actual footer status change", async () => {
 		const h = harness();
-		await h.handlers.get("session_start")?.({ reason: "startup" }, h.ctx);
-		let close: (() => void) | undefined;
-		const sidebarRender = vi.fn();
-		h.ctx.ui.custom.mockImplementationOnce(
-			(factory: (...args: any[]) => unknown) =>
-				new Promise<void>((resolve) => {
-					close = resolve;
-					factory(
-						{ terminal: { width: 120 }, requestRender: sidebarRender },
-						{ fg: (_color: string, text: string) => text, bold: (text: string) => text },
-						{},
-						resolve,
-					);
-				}),
-		);
-		const opening = h.commands.get("atelier").handler("sidebar", h.ctx);
-		await vi.waitFor(() => expect(h.ctx.ui.custom).toHaveBeenCalledTimes(1));
-
+		await start(h);
+		await command(h, "sidebar on");
 		let statuses = new Map([["one", "extension one"]]);
-		const footerFactory = h.setFooter.mock.calls[0]?.[0];
-		const footer = footerFactory(
+		const footer = h.setFooter.mock.calls[0]?.[0](
 			{ requestRender: vi.fn() },
 			{
 				fg: (_color: string, text: string) => text,
@@ -183,54 +191,9 @@ describe("extension registration", () => {
 		);
 		footer.render(120);
 		footer.render(120);
-		expect(sidebarRender).toHaveBeenCalledTimes(1);
+		expect(h.overlays[0]?.requestRender).toHaveBeenCalledTimes(1);
 		statuses = new Map([["one", "extension two"]]);
 		footer.render(120);
-		expect(sidebarRender).toHaveBeenCalledTimes(2);
-
-		close?.();
-		await opening;
-	});
-
-	it("closes the open sidebar and clears its render callback during shutdown", async () => {
-		const h = harness();
-		await h.handlers.get("session_start")?.({ reason: "startup" }, h.ctx);
-		const sidebarRender = vi.fn();
-		h.ctx.ui.custom.mockImplementationOnce(
-			(factory: (...args: any[]) => unknown) =>
-				new Promise<void>((resolve) => {
-					factory(
-						{ terminal: { width: 120 }, requestRender: sidebarRender },
-						{ fg: (_color: string, text: string) => text, bold: (text: string) => text },
-						{},
-						resolve,
-					);
-				}),
-		);
-		const opening = h.commands.get("atelier").handler("sidebar", h.ctx);
-		await vi.waitFor(() => expect(h.ctx.ui.custom).toHaveBeenCalledTimes(1));
-		await h.handlers.get("session_shutdown")?.({ reason: "quit" }, h.ctx);
-		await opening;
-		await h.handlers.get("turn_end")?.({}, h.ctx);
-		expect(sidebarRender).not.toHaveBeenCalled();
-		expect(h.setFooter).toHaveBeenLastCalledWith(undefined);
-	});
-
-	it("opens the sidebar while the footer is disabled", async () => {
-		const h = harness();
-		await h.handlers.get("session_start")?.({ reason: "startup" }, h.ctx);
-		await h.commands.get("atelier").handler("disable", h.ctx);
-		await h.commands.get("atelier").handler("sidebar", h.ctx);
-		expect(h.ctx.ui.custom).toHaveBeenCalledWith(
-			expect.any(Function),
-			expect.objectContaining({ overlay: true }),
-		);
-	});
-
-	it("restores the built-in footer during shutdown", async () => {
-		const h = harness();
-		await h.handlers.get("session_start")?.({ reason: "startup" }, h.ctx);
-		await h.handlers.get("session_shutdown")?.({ reason: "quit" }, h.ctx);
-		expect(h.setFooter).toHaveBeenLastCalledWith(undefined);
+		expect(h.overlays[0]?.requestRender).toHaveBeenCalledTimes(2);
 	});
 });

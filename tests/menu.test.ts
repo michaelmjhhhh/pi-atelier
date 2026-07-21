@@ -1,5 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMenuActions, renderMenuBorder, renderMenuFrame } from "../src/menu.js";
+
+const rootMenuItems = vi.hoisted(() => [] as Array<Array<Record<string, unknown>>>);
+vi.mock("@earendil-works/pi-tui", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@earendil-works/pi-tui")>();
+	return {
+		...actual,
+		SelectList: class extends actual.SelectList {
+			constructor(items: any[], ...rest: any[]) {
+				rootMenuItems.push(items);
+				super(items, ...(rest as [any, any]));
+			}
+		},
+	};
+});
+
+import {
+	createMenuActions,
+	openAtelierMenu,
+	renderMenuBorder,
+	renderMenuFrame,
+	type SidebarControls,
+} from "../src/menu.js";
 import { DEFAULT_CONFIG } from "../src/types.js";
 
 function harness() {
@@ -31,6 +52,55 @@ function harness() {
 }
 
 describe("menu presentation", () => {
+	it.each([
+		[
+			false,
+			{
+				value: "sidebar",
+				label: "Sidebar: Off",
+				description: "Show the live session sidecar",
+			},
+		],
+		[
+			true,
+			{
+				value: "sidebar",
+				label: "Sidebar: On",
+				description: "Hide the live session sidecar",
+			},
+		],
+	] as const)("shows and toggles the dynamic sidebar state (%s)", async (visible, expected) => {
+		rootMenuItems.length = 0;
+		const sidebar: SidebarControls = {
+			isVisible: vi.fn(() => visible),
+			toggle: vi.fn(),
+		};
+		let invocation = 0;
+		const ctx = {
+			mode: "tui",
+			ui: {
+				custom: vi.fn(
+					(factory: (...args: any[]) => unknown) =>
+						new Promise((resolve) => {
+							const value = invocation++ === 0 ? "sidebar" : "close";
+							factory(
+								{ requestRender: vi.fn() },
+								{ fg: (_color: string, text: string) => text, bold: (text: string) => text },
+								{},
+								resolve,
+							);
+							resolve(value);
+						}),
+				),
+			},
+		};
+
+		await openAtelierMenu({} as never, ctx as never, harness().runtime as never, "/tmp/user.json", sidebar);
+
+		expect(rootMenuItems[0]).toContainEqual(expected);
+		expect(sidebar.toggle).toHaveBeenCalledOnce();
+	});
+
 	it("uses a heavy theme-aware border that fills the available width", () => {
 		const theme = {
 			fg: vi.fn((_color: string, text: string) => text),
