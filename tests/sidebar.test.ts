@@ -1,5 +1,6 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { EMPTY_RUN_ACTIVITY, type RunActivitySnapshot } from "../src/run-activity.js";
 import {
 	buildSidebarSnapshot,
 	createSidebarComponent,
@@ -17,6 +18,10 @@ const theme = {
 	bold: (text: string) => text,
 	italic: (text: string) => text,
 };
+
+afterEach(() => {
+	vi.useRealTimers();
+});
 
 const state: AtelierState = {
 	activity: "working",
@@ -54,11 +59,50 @@ function snapshot() {
 		activeToolCount: 8,
 		availableToolCount: 12,
 		extensionStatuses: ["tests passing"],
+		runActivity: EMPTY_RUN_ACTIVITY,
 	});
+}
+
+function withActivity(runActivity: RunActivitySnapshot) {
+	return { ...snapshot(), runActivity };
+}
+
+function activeActivity(): RunActivitySnapshot {
+	return {
+		phase: "running",
+		turnNumber: 3,
+		startedAt: 1_000,
+		activeTools: [
+			{
+				id: "read-1",
+				name: "read",
+				summary: "src/state.ts",
+				status: "running",
+				startedAt: 2_000,
+			},
+		],
+		recentTools: [
+			{
+				id: "bash-1",
+				name: "bash",
+				summary: "npm test",
+				status: "done",
+				startedAt: 12_000,
+				durationMs: 4_000,
+			},
+		],
+		completedCount: 2,
+		failedCount: 1,
+	};
 }
 
 function contentRows(lines: string[]) {
 	return lines.map((line) => stripAnsi(line).slice(2).trimEnd());
+}
+
+async function flushOverlay() {
+	await Promise.resolve();
+	await Promise.resolve();
 }
 
 describe("sidebar snapshot and layout", () => {
@@ -240,6 +284,279 @@ describe("sidebar snapshot and layout", () => {
 			expect(rows).toContain(heading);
 		}
 		expect(rows).toEqual(expect.not.arrayContaining([expect.stringMatching(/^[A-Z &]+ ─/)]));
+	});
+
+	it("renders deterministic live run activity", () => {
+		const rows = contentRows(
+			renderSidebarLines(withActivity(activeActivity()), DEFAULT_CONFIG, theme, 44, 36, false, 20_000),
+		);
+		expect(rows).toContain("ACTIVITY");
+		expect(rows).toContain("Turn 3 · running 19s");
+		expect(rows).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/^read\s+src\/state\.ts\s+18s$/),
+				expect.stringMatching(/^bash\s+npm test\s+done 4s$/),
+			]),
+		);
+		expect(rows).toContain("tools 2 done · 1 failed");
+	});
+
+	it("renders settled activity duration and omits idle activity", () => {
+		const idleRows = contentRows(
+			renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false, 20_000),
+		);
+		expect(idleRows).not.toContain("ACTIVITY");
+
+		const settledRows = contentRows(
+			renderSidebarLines(
+				withActivity({
+					phase: "settled",
+					turnNumber: 4,
+					startedAt: 1_000,
+					durationMs: 6_500,
+					activeTools: [],
+					recentTools: [
+						{
+							id: "edit-1",
+							name: "edit",
+							summary: "src/sidebar.ts",
+							status: "failed",
+							startedAt: 2_000,
+							durationMs: 2_000,
+						},
+					],
+					completedCount: 0,
+					failedCount: 1,
+				}),
+				DEFAULT_CONFIG,
+				theme,
+				44,
+				36,
+				false,
+				20_000,
+			),
+		);
+		expect(settledRows).toContain("Turn 4 · settled 6s");
+		expect(settledRows).toEqual(
+			expect.arrayContaining([expect.stringMatching(/^edit\s+src\/sidebar\.ts\s+failed 2s$/)]),
+		);
+	});
+
+	it("keeps active tools before recent tools and preserves parallel start order", () => {
+		const rows = contentRows(
+			renderSidebarLines(
+				withActivity({
+					phase: "running",
+					turnNumber: 1,
+					startedAt: 10_000,
+					activeTools: [
+						{ id: "second", name: "grep", summary: "later", status: "running", startedAt: 13_000 },
+						{ id: "first", name: "read", summary: "same-a", status: "running", startedAt: 12_000 },
+						{ id: "third", name: "bash", summary: "same-b", status: "running", startedAt: 12_000 },
+					],
+					recentTools: [
+						{
+							id: "old",
+							name: "write",
+							summary: "recent",
+							status: "done",
+							startedAt: 3_000,
+							durationMs: 1_000,
+						},
+					],
+					completedCount: 1,
+					failedCount: 0,
+				}),
+				DEFAULT_CONFIG,
+				theme,
+				44,
+				36,
+				false,
+				20_000,
+			),
+		);
+		const first = rows.findIndex((row) => /^read\s+same-a/.test(row));
+		const third = rows.findIndex((row) => /^bash\s+same-b/.test(row));
+		const second = rows.findIndex((row) => /^grep\s+later/.test(row));
+		const recent = rows.findIndex((row) => /^write\s+recent/.test(row));
+		expect([first, third, second, recent].every((index) => index > -1)).toBe(true);
+		expect(first).toBeLessThan(third);
+		expect(third).toBeLessThan(second);
+		expect(second).toBeLessThan(recent);
+	});
+
+	it("caps recent tools, deduplicates active IDs, and bounds long summaries", () => {
+		const rows = contentRows(
+			renderSidebarLines(
+				withActivity({
+					phase: "running",
+					startedAt: 0,
+					activeTools: [{ id: "dupe", name: "read", summary: "active", status: "running", startedAt: 1_000 }],
+					recentTools: [
+						{
+							id: "new",
+							name: "bash",
+							summary: "n".repeat(80),
+							status: "done",
+							startedAt: 9_000,
+							durationMs: 1_000,
+						},
+						{
+							id: "dupe",
+							name: "read",
+							summary: "duplicate",
+							status: "done",
+							startedAt: 8_000,
+							durationMs: 1_000,
+						},
+						{
+							id: "middle",
+							name: "edit",
+							summary: "middle",
+							status: "done",
+							startedAt: 7_000,
+							durationMs: 1_000,
+						},
+						{
+							id: "older",
+							name: "write",
+							summary: "older",
+							status: "done",
+							startedAt: 6_000,
+							durationMs: 1_000,
+						},
+						{
+							id: "oldest",
+							name: "grep",
+							summary: "oldest",
+							status: "done",
+							startedAt: 5_000,
+							durationMs: 1_000,
+						},
+					],
+					completedCount: 5,
+					failedCount: 0,
+				}),
+				DEFAULT_CONFIG,
+				theme,
+				34,
+				36,
+				false,
+				20_000,
+			),
+		);
+		expect(rows).toEqual(expect.arrayContaining([expect.stringMatching(/^bash\s+n+/)]));
+		expect(rows).not.toEqual(expect.arrayContaining([expect.stringContaining("duplicate")]));
+		expect(rows).not.toEqual(expect.arrayContaining([expect.stringContaining("oldest")]));
+		expect(rows.every((row) => visibleWidth(row) <= 32)).toBe(true);
+	});
+
+	it("uses success, error, and working palette roles for activity status", () => {
+		const fg = vi.fn((_color: string, text: string) => text);
+		renderSidebarLines(
+			withActivity({
+				phase: "running",
+				startedAt: 10_000,
+				activeTools: [
+					{ id: "active", name: "read", summary: "src/a.ts", status: "running", startedAt: 10_000 },
+				],
+				recentTools: [
+					{ id: "ok", name: "bash", summary: "ok", status: "done", startedAt: 9_000, durationMs: 1_000 },
+					{ id: "bad", name: "edit", summary: "bad", status: "failed", startedAt: 8_000, durationMs: 1_000 },
+				],
+				completedCount: 1,
+				failedCount: 1,
+			}),
+			DEFAULT_CONFIG,
+			{ fg, bold: theme.bold, italic: theme.italic },
+			44,
+			36,
+			true,
+			20_000,
+		);
+		expect(fg).toHaveBeenCalledWith("mdHeading", "10s");
+		expect(fg).toHaveBeenCalledWith("thinkingLow", "done 1s");
+		expect(fg).toHaveBeenCalledWith("error", "failed 1s");
+	});
+
+	it("drops short-height groups by approved rank while preserving display order", () => {
+		const ranked = withActivity({
+			phase: "running",
+			turnNumber: 2,
+			startedAt: 1_000,
+			activeTools: [
+				{ id: "active-a", name: "read", summary: "active-a", status: "running", startedAt: 2_000 },
+				{ id: "active-b", name: "bash", summary: "active-b", status: "running", startedAt: 3_000 },
+			],
+			recentTools: [
+				{
+					id: "newest",
+					name: "write",
+					summary: "newest",
+					status: "done",
+					startedAt: 8_000,
+					durationMs: 1_000,
+				},
+				{
+					id: "middle",
+					name: "grep",
+					summary: "middle",
+					status: "done",
+					startedAt: 7_000,
+					durationMs: 1_000,
+				},
+				{
+					id: "oldest",
+					name: "edit",
+					summary: "oldest",
+					status: "failed",
+					startedAt: 6_000,
+					durationMs: 1_000,
+				},
+			],
+			completedCount: 3,
+			failedCount: 1,
+		});
+		const fullRows = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 60, false, 20_000));
+		const fullHeight = fullRows.findLastIndex((row) => row !== "") + 1;
+		expect(fullRows.findIndex((row) => /^read\s+active-a/.test(row))).toBeLessThan(
+			fullRows.indexOf("CONTEXT"),
+		);
+
+		let rows = contentRows(
+			renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, fullHeight - 1, false, 20_000),
+		);
+		expect(rows).not.toContain("tests passing");
+		expect(rows).toEqual(expect.arrayContaining([expect.stringContaining("oldest")]));
+
+		rows = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, fullHeight - 2, false, 20_000));
+		expect(rows).not.toEqual(expect.arrayContaining([expect.stringContaining("oldest")]));
+		expect(rows).toEqual(expect.arrayContaining([expect.stringContaining("middle")]));
+
+		rows = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, fullHeight - 3, false, 20_000));
+		expect(rows).not.toEqual(expect.arrayContaining([expect.stringContaining("middle")]));
+		expect(rows).toEqual(expect.arrayContaining([expect.stringContaining("newest")]));
+		expect(rows).toContain("tools 3 done · 1 failed");
+
+		rows = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, fullHeight - 4, false, 20_000));
+		expect(rows).not.toContain("tools 3 done · 1 failed");
+		expect(rows).toEqual(expect.arrayContaining([expect.stringContaining("newest")]));
+
+		rows = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, fullHeight - 6, false, 20_000));
+		expect(rows).not.toEqual(expect.arrayContaining([expect.stringContaining("newest")]));
+		expect(rows).toContain("TOOLS");
+
+		rows = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, fullHeight - 7, false, 20_000));
+		expect(rows).not.toContain("TOOLS");
+		expect(rows).toContain("USAGE");
+
+		rows = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, fullHeight - 15, false, 20_000));
+		expect(rows).not.toContain("USAGE");
+		expect(rows).toContain("SESSION");
+
+		rows = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, fullHeight - 18, false, 20_000));
+		expect(rows).not.toContain("SESSION");
+		expect(rows).toContain("CONTEXT");
 	});
 
 	it("renders tool count without standalone status placeholder when extension statuses are empty", () => {
@@ -480,6 +797,103 @@ describe("sidebar component and overlay", () => {
 		controller.dispose();
 		expect(controller.isVisible()).toBe(false);
 		expect(closeCallbacks[1]).toHaveBeenCalledOnce();
+	});
+
+	it("animates live activity on one timer only while visible", async () => {
+		vi.useFakeTimers();
+		let running = true;
+		const requestRender = vi.fn();
+		const custom = vi.fn((factory, customOptions) => {
+			return new Promise<undefined>((resolve) => {
+				const handle = { hide: vi.fn() };
+				factory({ requestRender, terminal: { rows: 36 } } as never, theme as never, {} as never, resolve);
+				customOptions.onHandle?.(handle as never);
+			});
+		});
+		const controller = createSidebarController({
+			ctx: { mode: "tui", ui: { custom } } as never,
+			getSnapshot: snapshot,
+			getConfig: () => DEFAULT_CONFIG,
+			shouldAnimate: () => running,
+			animationIntervalMs: 10,
+		});
+		vi.advanceTimersByTime(30);
+		expect(requestRender).not.toHaveBeenCalled();
+
+		controller.show();
+		await flushOverlay();
+		controller.show();
+		vi.advanceTimersByTime(30);
+		expect(requestRender).toHaveBeenCalledTimes(3);
+
+		controller.requestRender();
+		expect(requestRender).toHaveBeenCalledTimes(4);
+		vi.advanceTimersByTime(10);
+		expect(requestRender).toHaveBeenCalledTimes(5);
+
+		running = false;
+		controller.requestRender();
+		expect(requestRender).toHaveBeenCalledTimes(6);
+		vi.advanceTimersByTime(30);
+		expect(requestRender).toHaveBeenCalledTimes(6);
+	});
+
+	it("stops animation on hide, overlay closure, dispose, and stale generation", async () => {
+		vi.useFakeTimers();
+		const requestRender = vi.fn();
+		const doneCallbacks: Array<(value: undefined) => void> = [];
+		const custom = vi.fn((factory, customOptions) => {
+			return new Promise<undefined>((resolve) => {
+				const done = (value: undefined) => resolve(value);
+				doneCallbacks.push(done);
+				const handle = { hide: vi.fn() };
+				factory({ requestRender, terminal: { rows: 36 } } as never, theme as never, {} as never, done);
+				customOptions.onHandle?.(handle as never);
+			});
+		});
+		const controller = createSidebarController({
+			ctx: { mode: "tui", ui: { custom } } as never,
+			getSnapshot: snapshot,
+			getConfig: () => DEFAULT_CONFIG,
+			shouldAnimate: () => true,
+			animationIntervalMs: 10,
+		});
+
+		controller.show();
+		await flushOverlay();
+		vi.advanceTimersByTime(10);
+		expect(requestRender).toHaveBeenCalledTimes(1);
+		controller.hide();
+		vi.advanceTimersByTime(30);
+		expect(requestRender).toHaveBeenCalledTimes(1);
+
+		controller.show();
+		await flushOverlay();
+		vi.advanceTimersByTime(10);
+		expect(requestRender).toHaveBeenCalledTimes(2);
+		doneCallbacks[1]?.(undefined);
+		await flushOverlay();
+		vi.advanceTimersByTime(30);
+		expect(requestRender).toHaveBeenCalledTimes(2);
+
+		controller.show();
+		await flushOverlay();
+		vi.advanceTimersByTime(10);
+		expect(requestRender).toHaveBeenCalledTimes(3);
+		controller.dispose();
+		vi.advanceTimersByTime(30);
+		expect(requestRender).toHaveBeenCalledTimes(3);
+
+		controller.show();
+		await flushOverlay();
+		controller.hide();
+		controller.show();
+		await flushOverlay();
+		doneCallbacks[3]?.(undefined);
+		await flushOverlay();
+		vi.advanceTimersByTime(10);
+		expect(requestRender).toHaveBeenCalledTimes(4);
+		controller.dispose();
 	});
 
 	it("reports unsupported modes without enabling the sidebar", () => {

@@ -11,6 +11,12 @@ import {
 import type { ThemeLike } from "./footer.js";
 import { formatTokens } from "./metrics.js";
 import { type AtelierPalette, createPalette, type PaletteRole } from "./palette.js";
+import {
+	EMPTY_RUN_ACTIVITY,
+	formatDuration,
+	type RunActivitySnapshot,
+	type ToolActivity,
+} from "./run-activity.js";
 import type { AtelierConfig, AtelierState } from "./types.js";
 
 export interface SidebarSnapshotInput {
@@ -22,6 +28,7 @@ export interface SidebarSnapshotInput {
 	activeToolCount: number;
 	availableToolCount: number;
 	extensionStatuses: readonly string[];
+	runActivity?: RunActivitySnapshot;
 }
 
 export interface SidebarSnapshot extends AtelierState {
@@ -33,6 +40,7 @@ export interface SidebarSnapshot extends AtelierState {
 	branchEntryCount: number;
 	activeToolCount: number;
 	availableToolCount: number;
+	runActivity: RunActivitySnapshot;
 }
 
 export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapshot {
@@ -48,6 +56,7 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
 		activeToolCount: input.activeToolCount,
 		availableToolCount: input.availableToolCount,
 		extensionStatuses: input.extensionStatuses,
+		runActivity: input.runActivity ?? EMPTY_RUN_ACTIVITY,
 	};
 }
 
@@ -299,23 +308,144 @@ function statusDetailRows(snapshot: SidebarSnapshot, palette: AtelierPalette): s
 	});
 }
 
-type SidebarGroup = {
-	name: "project" | "agent" | "context" | "session" | "usage" | "toolsStatus" | "statusDetails";
+interface ActivityGroups {
+	core: string[];
+	recent: Array<{ id: string; row: string }>;
+	aggregate: string[];
+}
+
+interface SidebarGroup {
+	name: string;
 	rows: string[];
-};
+	required: boolean;
+	dropRank: number;
+}
 
 const flattenGroups = (groups: readonly SidebarGroup[]): string[] => groups.flatMap((group) => group.rows);
 
-function composeGroups(required: SidebarGroup[], optional: SidebarGroup[], height: number): SidebarGroup[] {
-	const groups = [...required, ...optional];
-	if (flattenGroups(groups).length <= height) return groups;
-	const remainingOptional = [...optional];
-	while (remainingOptional.length > 0) {
-		remainingOptional.pop();
-		const candidate = [...required, ...remainingOptional];
-		if (flattenGroups(candidate).length <= height) return candidate;
+function durationForTool(tool: ToolActivity, now: number): string {
+	return formatDuration(tool.durationMs ?? Math.max(0, now - tool.startedAt));
+}
+
+function toolStatusRole(status: ToolActivity["status"]): PaletteRole {
+	if (status === "failed") return "error";
+	if (status === "running") return "working";
+	return "ready";
+}
+
+function toolStatusLabel(tool: ToolActivity, now: number): string {
+	const duration = durationForTool(tool, now);
+	if (tool.status === "running") return duration;
+	return `${tool.status} ${duration}`;
+}
+
+function toolActivityRow(
+	tool: ToolActivity,
+	contentWidth: number,
+	palette: AtelierPalette,
+	now: number,
+): string {
+	const safeName = sanitize(tool.name) || "tool";
+	const safeSummary = sanitize(tool.summary);
+	const status = toolStatusLabel(tool, now);
+	const statusWidth = visibleWidth(status);
+	const nameWidth = Math.min(Math.max(visibleWidth(safeName), 4), 10, Math.max(0, contentWidth));
+	const summaryWidth = Math.max(0, contentWidth - nameWidth - statusWidth - 2);
+	const statusText = truncateToWidth(status, Math.max(0, contentWidth - nameWidth - summaryWidth - 2), "");
+	const row = `${padToWidth(palette.paint("muted", safeName), nameWidth)} ${padToWidth(
+		palette.paint(safeSummary ? "primary" : "dim", safeSummary || "—"),
+		summaryWidth,
+	)} ${palette.paint(toolStatusRole(tool.status), statusText)}`;
+	return truncateToWidth(row, contentWidth, "");
+}
+
+function runSummaryRow(activity: RunActivitySnapshot, palette: AtelierPalette, now: number): string {
+	const label = activity.turnNumber === undefined ? "Run" : `Turn ${finiteCount(activity.turnNumber)}`;
+	const duration =
+		activity.phase === "settled"
+			? formatDuration(activity.durationMs ?? Math.max(0, now - (activity.startedAt ?? now)))
+			: formatDuration(Math.max(0, now - (activity.startedAt ?? now)));
+	const role: PaletteRole =
+		activity.phase === "running" ? "working" : activity.failedCount > 0 ? "error" : "ready";
+	return palette.paint(role, `${label} · ${activity.phase} ${duration}`);
+}
+
+function activityRows(
+	activity: RunActivitySnapshot,
+	contentWidth: number,
+	palette: AtelierPalette,
+	now: number,
+): ActivityGroups | undefined {
+	if (activity.phase === "idle") return undefined;
+
+	const activeIds = new Set(activity.activeTools.map((tool) => tool.id));
+	const activeTools = activity.activeTools
+		.map((tool, index) => ({ index, tool }))
+		.sort((left, right) => left.tool.startedAt - right.tool.startedAt || left.index - right.index)
+		.map(({ tool }) => tool);
+	const recent = activity.recentTools
+		.filter((tool) => !activeIds.has(tool.id))
+		.slice(0, 3)
+		.map((tool) => ({ id: tool.id, row: toolActivityRow(tool, contentWidth, palette, now) }));
+	const aggregateText = aggregateActivityText(activity);
+	return {
+		core: [
+			headingRow("ACTIVITY", palette),
+			runSummaryRow(activity, palette, now),
+			...activeTools.map((tool) => toolActivityRow(tool, contentWidth, palette, now)),
+		],
+		recent,
+		aggregate: aggregateText
+			? [palette.paint(activity.failedCount > 0 ? "error" : "ready", aggregateText), ""]
+			: [],
+	};
+}
+
+function aggregateActivityText(activity: RunActivitySnapshot): string {
+	const completed = finiteCount(activity.completedCount);
+	const failed = finiteCount(activity.failedCount);
+	if (completed === 0 && failed === 0) return "";
+	const parts: string[] = [];
+	if (completed > 0) parts.push(`${completed} done`);
+	if (failed > 0) parts.push(`${failed} failed`);
+	return `tools ${parts.join(" · ")}`;
+}
+
+function activitySidebarGroups(
+	snapshot: SidebarSnapshot,
+	contentWidth: number,
+	palette: AtelierPalette,
+	now: number,
+): SidebarGroup[] {
+	const groups = activityRows(snapshot.runActivity, contentWidth, palette, now);
+	if (!groups) return [];
+	const recentCount = groups.recent.length;
+	return [
+		{ name: "activityCore", rows: groups.core, required: true, dropRank: Number.POSITIVE_INFINITY },
+		...groups.recent.map((recent, index) => ({
+			name: `activityRecent:${recent.id}`,
+			rows: [recent.row],
+			required: false,
+			dropRank: index === 0 ? 30 : 10 + (recentCount - index - 1),
+		})),
+		{ name: "activityAggregate", rows: groups.aggregate, required: false, dropRank: 20 },
+	].filter((group) => group.rows.length > 0);
+}
+
+function composeGroups(groups: SidebarGroup[], height: number): SidebarGroup[] {
+	let candidate = groups;
+	while (flattenGroups(candidate).length > height) {
+		let dropIndex = -1;
+		let dropRank = Number.POSITIVE_INFINITY;
+		for (const [index, group] of candidate.entries()) {
+			if (group.required || group.dropRank >= dropRank) continue;
+			dropRank = group.dropRank;
+			dropIndex = index;
+		}
+		if (dropIndex === -1) return candidate;
+		candidate = candidate.filter((_group, index) => index !== dropIndex);
 	}
-	return required;
+	return candidate;
 }
 
 export function renderSidebarLines(
@@ -325,29 +455,44 @@ export function renderSidebarLines(
 	width: number,
 	height: number,
 	colorEnabled = true,
+	now = Date.now(),
 ): string[] {
 	const palette = createPalette(theme, colorEnabled);
 	const safeWidth = Math.max(0, Math.trunc(width));
 	const safeHeight = Math.max(0, Math.trunc(height));
 	if (safeWidth <= 0 || safeHeight <= 0) return [];
 	const contentWidth = Math.max(0, safeWidth - 2);
-	const required: SidebarGroup[] = [
-		{ name: "project", rows: projectRows(snapshot, palette) },
-		{ name: "agent", rows: agentRows(snapshot, palette, theme) },
-		{ name: "context", rows: contextRows(snapshot, config, contentWidth, palette) },
+	const groups: SidebarGroup[] = [
+		{
+			name: "project",
+			rows: projectRows(snapshot, palette),
+			required: true,
+			dropRank: Number.POSITIVE_INFINITY,
+		},
+		{
+			name: "agent",
+			rows: agentRows(snapshot, palette, theme),
+			required: true,
+			dropRank: Number.POSITIVE_INFINITY,
+		},
+		...activitySidebarGroups(snapshot, contentWidth, palette, now),
+		{
+			name: "context",
+			rows: contextRows(snapshot, config, contentWidth, palette),
+			required: true,
+			dropRank: Number.POSITIVE_INFINITY,
+		},
+		{ name: "session", rows: sessionRows(snapshot, palette), required: false, dropRank: 60 },
+		{
+			name: "usage",
+			rows: usageRows(snapshot, config, contentWidth, palette),
+			required: false,
+			dropRank: 50,
+		},
+		{ name: "toolsStatus", rows: toolsStatusRows(snapshot, palette), required: false, dropRank: 40 },
+		{ name: "statusDetails", rows: statusDetailRows(snapshot, palette), required: false, dropRank: 0 },
 	];
-	const optional: SidebarGroup[] = [
-		{ name: "session", rows: sessionRows(snapshot, palette) },
-		{ name: "usage", rows: usageRows(snapshot, config, contentWidth, palette) },
-		{ name: "toolsStatus", rows: toolsStatusRows(snapshot, palette) },
-		{ name: "statusDetails", rows: statusDetailRows(snapshot, palette) },
-	];
-	return renderDock(
-		flattenGroups(composeGroups(required, optional, safeHeight)),
-		safeWidth,
-		safeHeight,
-		palette,
-	);
+	return renderDock(flattenGroups(composeGroups(groups, safeHeight)), safeWidth, safeHeight, palette);
 }
 
 export interface SidebarComponentOptions {
@@ -405,6 +550,8 @@ export interface SidebarControllerOptions {
 	getSnapshot(): SidebarSnapshot;
 	getConfig(): AtelierConfig;
 	colorEnabled?: boolean;
+	shouldAnimate?(): boolean;
+	animationIntervalMs?: number;
 	onError?(error: unknown): void;
 }
 
@@ -414,11 +561,32 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	let closeOverlay: (() => void) | undefined;
 	let requestOverlayRender: (() => void) | undefined;
 	let overlayHandle: OverlayHandle | undefined;
+	let animationTimer: ReturnType<typeof setInterval> | undefined;
+	const animationIntervalMs = Math.max(1, Math.trunc(options.animationIntervalMs ?? 1_000));
+
+	const stopAnimation = () => {
+		if (!animationTimer) return;
+		clearInterval(animationTimer);
+		animationTimer = undefined;
+	};
+
+	const syncAnimation = () => {
+		if (!enabled || options.shouldAnimate?.() !== true || !requestOverlayRender) {
+			stopAnimation();
+			return;
+		}
+		if (animationTimer) return;
+		animationTimer = setInterval(() => {
+			requestOverlayRender?.();
+		}, animationIntervalMs);
+		animationTimer.unref?.();
+	};
 
 	const hide = () => {
 		if (!enabled && !closeOverlay && !overlayHandle) return;
 		enabled = false;
 		generation += 1;
+		stopAnimation();
 		const close = closeOverlay;
 		const handle = overlayHandle;
 		closeOverlay = undefined;
@@ -449,6 +617,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 					if (enabled && generation === currentGeneration) {
 						closeOverlay = close;
 						requestOverlayRender = () => tui.requestRender();
+						syncAnimation();
 					} else {
 						close();
 					}
@@ -464,8 +633,12 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 					overlay: true,
 					overlayOptions: sidebarOverlayOptions(),
 					onHandle: (handle) => {
-						if (enabled && generation === currentGeneration) overlayHandle = handle;
-						else handle.hide();
+						if (enabled && generation === currentGeneration) {
+							overlayHandle = handle;
+							syncAnimation();
+						} else {
+							handle.hide();
+						}
 					},
 				},
 			);
@@ -477,6 +650,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 					closeOverlay = undefined;
 					requestOverlayRender = undefined;
 					overlayHandle = undefined;
+					syncAnimation();
 				});
 		} catch (error) {
 			if (generation === currentGeneration) {
@@ -484,6 +658,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 				closeOverlay = undefined;
 				requestOverlayRender = undefined;
 				overlayHandle = undefined;
+				syncAnimation();
 			}
 			options.onError?.(error);
 		}
@@ -501,6 +676,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		},
 		requestRender() {
 			requestOverlayRender?.();
+			syncAnimation();
 		},
 		dispose: hide,
 	};
