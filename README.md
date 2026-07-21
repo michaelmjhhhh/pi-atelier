@@ -104,7 +104,7 @@ Control the live docked information rail with:
 /atelier sidebar off
 ```
 
-The session-scoped rail attaches to the top-right, fills the terminal height, and stays visible without taking editor focus. Its quiet, information-first layout uses restrained semantic color, compact section labels, and aligned context and token/cache/cost metrics. It also shows project and Git state, model and thinking level, active tools, and extension statuses.
+The session-scoped rail attaches to the top-right, fills the terminal height, and stays visible without taking editor focus. Its quiet, information-first layout uses restrained semantic color, compact section labels, and aligned context and token/cache/cost metrics. It also shows project and Git state, model and thinking level, the active-tool count with exact activated names in two columns, and extension statuses.
 
 During an agent run, the sidebar adds information the compact footer intentionally omits: current one-based turn, elapsed run time, active parallel tool calls, the three most recent tool results, per-tool durations, and total done/failed tool counts. The footer remains a stable one-line status rail and never repeats tool names or tool history.
 

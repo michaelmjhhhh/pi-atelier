@@ -55,14 +55,16 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 	): SidebarSnapshot {
 		const sessionName = ctx.sessionManager.getSessionName();
 		const sessionFile = ctx.sessionManager.getSessionFile();
+		const activeTools = pi.getActiveTools();
 		return buildSidebarSnapshot({
 			state: targetRuntime.getState(),
 			cwd: ctx.cwd,
 			...(sessionName ? { sessionName } : {}),
 			...(sessionFile ? { sessionFile } : {}),
 			branchEntryCount: ctx.sessionManager.getBranch().length,
-			activeToolCount: pi.getActiveTools().length,
+			activeToolCount: activeTools.length,
 			availableToolCount: pi.getAllTools().length,
+			activeToolNames: activeTools,
 			extensionStatuses,
 			...(targetRunActivity ? { runActivity: targetRunActivity.getSnapshot() } : {}),
 		});

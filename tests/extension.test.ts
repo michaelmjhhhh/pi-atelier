@@ -280,6 +280,28 @@ describe("extension registration", () => {
 		expect(h.overlays[0]?.requestRender).toHaveBeenCalledTimes(2);
 	});
 
+	it("shows exact activated tools without listing inactive tools", async () => {
+		const h = harness();
+		h.pi.getActiveTools.mockReturnValue(["write", "read", "bash", "edit"]);
+		h.pi.getAllTools.mockReturnValue([
+			{ name: "write" },
+			{ name: "read" },
+			{ name: "bash" },
+			{ name: "edit" },
+			{ name: "grep" },
+		]);
+		await start(h);
+		await command(h, "sidebar on");
+
+		const text = h.overlays[0]?.component.render(44).join("\n") ?? "";
+		expect(text).toContain("4 / 5 active");
+		expect(text).toContain("bash");
+		expect(text).toContain("edit");
+		expect(text).toContain("read");
+		expect(text).toContain("write");
+		expect(text).not.toContain("grep");
+	});
+
 	it("forwards run and turn events into sidebar activity without putting tool history in the footer", async () => {
 		const h = harness();
 		await start(h);

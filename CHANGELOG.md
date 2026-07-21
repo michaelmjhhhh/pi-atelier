@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Show exact activated Pi tool names in a compact two-column sidebar list.
 - Wire live Pi run, turn, and tool events into the sidebar while keeping the footer compact and free of tool history.
 - Refine the full-height sidebar into a quiet, information-first utility rail with restrained semantic color and clearer alignment.
 - Convert `/atelier sidebar` into a session-scoped, non-capturing right-edge sidecar with command and menu on/off controls.

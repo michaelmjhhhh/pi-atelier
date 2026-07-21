@@ -27,6 +27,7 @@ export interface SidebarSnapshotInput {
 	branchEntryCount: number;
 	activeToolCount: number;
 	availableToolCount: number;
+	activeToolNames?: readonly string[];
 	extensionStatuses: readonly string[];
 	runActivity?: RunActivitySnapshot;
 }
@@ -40,6 +41,7 @@ export interface SidebarSnapshot extends AtelierState {
 	branchEntryCount: number;
 	activeToolCount: number;
 	availableToolCount: number;
+	activeToolNames: readonly string[];
 	runActivity: RunActivitySnapshot;
 }
 
@@ -55,6 +57,9 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
 		branchEntryCount: input.branchEntryCount,
 		activeToolCount: input.activeToolCount,
 		availableToolCount: input.availableToolCount,
+		activeToolNames: [...new Set((input.activeToolNames ?? []).map(sanitize).filter(Boolean))].sort((a, b) =>
+			a.localeCompare(b, "en"),
+		),
 		extensionStatuses: input.extensionStatuses,
 		runActivity: input.runActivity ?? EMPTY_RUN_ACTIVITY,
 	};
@@ -301,6 +306,27 @@ function toolsStatusRows(snapshot: SidebarSnapshot, palette: AtelierPalette): st
 	];
 }
 
+function activeToolNameRows(
+	snapshot: SidebarSnapshot,
+	contentWidth: number,
+	palette: AtelierPalette,
+): string[] {
+	const rows: string[] = [];
+	for (let index = 0; index < snapshot.activeToolNames.length; index += 2) {
+		rows.push(
+			twoColumnRow(
+				snapshot.activeToolNames[index] ?? "",
+				snapshot.activeToolNames[index + 1] ?? "",
+				contentWidth,
+				palette,
+				"primary",
+				"primary",
+			),
+		);
+	}
+	return rows;
+}
+
 function statusDetailRows(snapshot: SidebarSnapshot, palette: AtelierPalette): string[] {
 	return snapshot.extensionStatuses.flatMap((status) => {
 		const safe = sanitize(status);
@@ -493,6 +519,12 @@ export function renderSidebarLines(
 			dropRank: 50,
 		},
 		{ name: "toolsStatus", rows: toolsStatusRows(snapshot, palette), required: false, dropRank: 40 },
+		...activeToolNameRows(snapshot, contentWidth, palette).map((row, index, rows) => ({
+			name: `activeToolNames:${index}`,
+			rows: [row],
+			required: false,
+			dropRank: 35 + (rows.length - index) / 100,
+		})),
 		{ name: "statusDetails", rows: statusDetailRows(snapshot, palette), required: false, dropRank: 0 },
 	];
 	return renderDock(flattenGroups(composeGroups(groups, safeHeight)), safeWidth, safeHeight, palette);

@@ -667,6 +667,62 @@ describe("sidebar snapshot and layout", () => {
 		expect(rows).toContain("CONTEXT");
 	});
 
+	it("normalizes and renders exact activated tools in two columns", () => {
+		const toolsSnapshot = buildSidebarSnapshot({
+			state: { ...state, extensionStatuses: [] },
+			cwd: "/tmp/project",
+			branchEntryCount: 6,
+			activeToolCount: 3,
+			availableToolCount: 7,
+			activeToolNames: ["read", "\u001b[31mbash", " edit\n", "read", "   "],
+			extensionStatuses: [],
+		});
+		expect(toolsSnapshot.activeToolNames).toEqual(["bash", "edit", "read"]);
+
+		const rows = contentRows(renderSidebarLines(toolsSnapshot, DEFAULT_CONFIG, theme, 44, 36, false));
+		const toolsIndex = rows.indexOf("TOOLS");
+		expect(rows[toolsIndex + 1]).toBe("3 / 7 active");
+		expect(rows[toolsIndex + 2]).toBe("bash                 edit");
+		expect(rows[toolsIndex + 3]).toBe("read");
+		expect(rows.join("\n")).not.toContain("[31m");
+	});
+
+	it("drops activated tool-name rows before the tool count", () => {
+		const toolsSnapshot = buildSidebarSnapshot({
+			state: { ...state, extensionStatuses: [] },
+			cwd: "/tmp/project",
+			branchEntryCount: 6,
+			activeToolCount: 4,
+			availableToolCount: 7,
+			activeToolNames: ["write", "read", "edit", "bash"],
+			extensionStatuses: [],
+		});
+		const fullRows = contentRows(renderSidebarLines(toolsSnapshot, DEFAULT_CONFIG, theme, 44, 60, false));
+		const fullHeight = fullRows.findLastIndex((row) => row !== "") + 1;
+		const constrained = contentRows(
+			renderSidebarLines(toolsSnapshot, DEFAULT_CONFIG, theme, 44, fullHeight - 1, false),
+		);
+		expect(constrained).toContain("4 / 7 active");
+		expect(constrained).toContain("bash                 edit");
+		expect(constrained).not.toContain("read                 write");
+	});
+
+	it("renders no tool-name placeholder when none are active", () => {
+		const toolsSnapshot = buildSidebarSnapshot({
+			state: { ...state, extensionStatuses: [] },
+			cwd: "/tmp/project",
+			branchEntryCount: 0,
+			activeToolCount: 0,
+			availableToolCount: 7,
+			activeToolNames: [],
+			extensionStatuses: [],
+		});
+		const rows = contentRows(renderSidebarLines(toolsSnapshot, DEFAULT_CONFIG, theme, 44, 36, false));
+		const toolsIndex = rows.indexOf("TOOLS");
+		expect(rows[toolsIndex + 1]).toBe("0 / 7 active");
+		expect(rows[toolsIndex + 2]).toBe("");
+	});
+
 	it("renders tool count without standalone status placeholder when extension statuses are empty", () => {
 		const emptyStatuses = buildSidebarSnapshot({
 			state: { ...state, extensionStatuses: [] },
