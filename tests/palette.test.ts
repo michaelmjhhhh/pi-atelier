@@ -22,12 +22,6 @@ describe("Status Rail palette", () => {
 		for (const role of ["accent", "primary", "muted", "warning", "error"] as const) {
 			palette.paint(role, role);
 		}
-		expect(fg.mock.calls.map(([color]) => color)).toEqual([
-			"accent",
-			"text",
-			"muted",
-			"warning",
-			"error",
-		]);
+		expect(fg.mock.calls.map(([color]) => color)).toEqual(["accent", "text", "muted", "warning", "error"]);
 	});
 });
