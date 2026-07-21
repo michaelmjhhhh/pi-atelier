@@ -18,6 +18,10 @@ beforeEach(async () => {
 });
 
 describe("configuration", () => {
+	it("defaults to no brand ornament", () => {
+		expect(DEFAULT_CONFIG.ornament).toBe("none");
+	});
+
 	it("merges defaults, user, trusted project, then session overrides", async () => {
 		await writeJson(userPath, { preset: "classic", density: "compact" });
 		await writeJson(projectPath, { preset: "minimal", contextWarning: 65 });
