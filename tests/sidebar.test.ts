@@ -245,7 +245,8 @@ describe("sidebar component and overlay", () => {
 		expect(custom).toHaveBeenCalledTimes(2);
 		expect(components).toHaveLength(2);
 
-		// Let the first overlay's promise finalize while the replacement is active.
+		// Cross both the overlay promise and its chained finally() while the replacement is active.
+		await Promise.resolve();
 		await Promise.resolve();
 		expect(controller.isVisible()).toBe(true);
 		controller.requestRender();

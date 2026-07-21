@@ -143,6 +143,19 @@ describe("extension registration", () => {
 		expect(h.setFooter).toHaveBeenLastCalledWith(undefined);
 	});
 
+	it("closes the old sidebar and starts the replacement hidden on session reload", async () => {
+		const h = harness();
+		await start(h);
+		await command(h, "sidebar on");
+
+		await start(h);
+
+		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
+		expect(h.custom).toHaveBeenCalledOnce();
+		await command(h, "sidebar on");
+		expect(h.custom).toHaveBeenCalledTimes(2);
+	});
+
 	it("passes command state to the menu controller", async () => {
 		const h = harness();
 		await start(h);
