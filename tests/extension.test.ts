@@ -46,7 +46,7 @@ function harness(mode: "tui" | "print" = "tui") {
 		const done = vi.fn(() => resolve(undefined));
 		const handle = { hide: vi.fn() };
 		const component = factory(
-			{ terminal: { width: 120 }, requestRender },
+			{ terminal: { columns: 120, rows: 36, width: 120 }, requestRender },
 			{
 				name: "dark",
 				fg: (_color: string, text: string) => text,

@@ -9,6 +9,8 @@ import {
 } from "../src/sidebar.js";
 import { type AtelierState, DEFAULT_CONFIG } from "../src/types.js";
 
+const stripAnsi = (text: string) => text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+
 const theme = {
 	name: "dark",
 	fg: (_color: string, text: string) => text,
@@ -55,6 +57,10 @@ function snapshot() {
 	});
 }
 
+function contentRows(lines: string[]) {
+	return lines.map((line) => stripAnsi(line).slice(2).trimEnd());
+}
+
 describe("sidebar snapshot and layout", () => {
 	it("builds the approved core overview", () => {
 		expect(snapshot()).toMatchObject({
@@ -69,13 +75,24 @@ describe("sidebar snapshot and layout", () => {
 		});
 	});
 
+	it("renders a full-height dock without rounded corners", () => {
+		const lines = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false);
+		expect(lines).toHaveLength(36);
+		expect(lines.every((line) => visibleWidth(line) <= 44)).toBe(true);
+		expect(lines.every((line) => stripAnsi(line).startsWith("│ "))).toBe(true);
+		expect(lines.join("\n")).not.toMatch(/[╭╮╰╯]/);
+		expect(lines.join("\n")).toContain("▛▀▜  ▀█▀");
+		expect(lines.join("\n")).toContain("▙▄▟   █");
+		expect(lines.join("\n")).toContain("ATELIER");
+	});
+
 	it("renders organized sections without exceeding width", () => {
 		for (const width of [32, 40, 44]) {
-			const lines = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, width, false);
-			expect(lines.join("\n")).toContain("PI ATELIER");
+			const lines = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, width, 36, false);
+			expect(lines.join("\n")).toContain("ATELIER");
 			expect(lines.join("\n")).toContain("PROJECT");
 			expect(lines.join("\n")).toContain("CONTEXT");
-			expect(lines.join("\n")).toContain("TOOLS & STATUS");
+			expect(lines.join("\n")).toContain("STATUS");
 			expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
 		}
 	});
@@ -83,7 +100,7 @@ describe("sidebar snapshot and layout", () => {
 	it("uses an attached non-capturing overlay with responsive visibility", () => {
 		const options = sidebarOverlayOptions();
 		expect(options).toMatchObject({
-			anchor: "right-center",
+			anchor: "top-right",
 			width: 44,
 			margin: 0,
 			nonCapturing: true,
@@ -91,6 +108,81 @@ describe("sidebar snapshot and layout", () => {
 		expect(options.visible?.(87, 40)).toBe(false);
 		expect(options.visible?.(88, 40)).toBe(true);
 		expect(options.visible?.(160, 40)).toBe(true);
+	});
+
+	it("omits a standalone unavailable marker when session name is missing", () => {
+		const missingSession = buildSidebarSnapshot({
+			state,
+			cwd: "/tmp/project",
+			branchEntryCount: 6,
+			activeToolCount: 8,
+			availableToolCount: 12,
+			extensionStatuses: [],
+		});
+		const rows = contentRows(renderSidebarLines(missingSession, DEFAULT_CONFIG, theme, 44, 36, false));
+		const sessionIndex = rows.findIndex((row) => row.startsWith("SESSION "));
+		const usageIndex = rows.findIndex((row) => row.startsWith("USAGE "));
+		expect(rows.slice(sessionIndex + 1, usageIndex)).not.toContain("—");
+		expect(rows.slice(sessionIndex + 1, usageIndex)).toContain("6 entries • ephemeral");
+	});
+
+	it("does not render the session file path", () => {
+		const text = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false).join("\n");
+		expect(text).not.toContain("/tmp/session.jsonl");
+		expect(text).not.toContain("session.jsonl");
+	});
+
+	it("renders session entry count and persistence on one row", () => {
+		const persisted = buildSidebarSnapshot({
+			state,
+			cwd: "/tmp/project",
+			sessionName: "Task session",
+			sessionFile: "/tmp/session.jsonl",
+			branchEntryCount: 6,
+			activeToolCount: 8,
+			availableToolCount: 12,
+			extensionStatuses: [],
+		});
+		expect(contentRows(renderSidebarLines(persisted, DEFAULT_CONFIG, theme, 44, 36, false))).toContain(
+			"6 entries • persisted",
+		);
+	});
+
+	it("renders usage as aligned muted labels followed by value rows", () => {
+		const fg = vi.fn((_color: string, text: string) => text);
+		const unnamedTheme = { fg, bold: theme.bold, italic: theme.italic };
+		const lines = renderSidebarLines(snapshot(), DEFAULT_CONFIG, unnamedTheme, 44, 36, true);
+		const rows = contentRows(lines);
+		const inputLabel = rows.indexOf("INPUT                OUTPUT");
+		expect(inputLabel).toBeGreaterThan(-1);
+		expect(rows[inputLabel + 1]).toBe("50.0k                1.9k");
+		expect(rows[inputLabel + 2]).toBe("CACHE                HIT");
+		expect(rows[inputLabel + 3]).toBe("100.0k               96.0%");
+		expect(rows[inputLabel + 4]).toBe("COST                 ACCESS");
+		expect(rows[inputLabel + 5]).toBe("$0.479               subscription");
+		for (const label of ["INPUT", "OUTPUT", "CACHE", "HIT", "COST", "ACCESS"]) {
+			expect(fg).toHaveBeenCalledWith("muted", label);
+		}
+	});
+
+	it("renders section headings with trailing rules", () => {
+		const text = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false).join("\n");
+		for (const heading of ["PROJECT", "AGENT", "CONTEXT", "SESSION", "USAGE", "STATUS"]) {
+			expect(text).toMatch(new RegExp(`${heading} ─+`));
+		}
+	});
+
+	it("keeps only the required hierarchy in a compact 20 row rail", () => {
+		const text = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 20, false).join("\n");
+		expect(text).toContain("▛▀▜  ▀█▀");
+		expect(text).toContain("PROJECT");
+		expect(text).toContain("AGENT");
+		expect(text).toContain("CONTEXT");
+		expect(text).not.toContain("SESSION");
+		expect(text).not.toContain("USAGE");
+		expect(text).not.toContain("STATUS");
+		expect(text).not.toContain("tests passing");
+		expect(text).not.toContain("active");
 	});
 
 	it("renders missing metadata as unavailable and the session as ephemeral", () => {
@@ -112,7 +204,7 @@ describe("sidebar snapshot and layout", () => {
 			availableToolCount: 0,
 			extensionStatuses: [],
 		});
-		const lines = renderSidebarLines(missing, DEFAULT_CONFIG, theme, 32, false);
+		const lines = renderSidebarLines(missing, DEFAULT_CONFIG, theme, 32, 36, false);
 		expect(lines.join("\n")).toContain("—");
 		expect(lines.join("\n")).toContain("ephemeral");
 		expect(lines.every((line) => visibleWidth(line) <= 32)).toBe(true);
@@ -126,7 +218,7 @@ describe("sidebar snapshot and layout", () => {
 			sessionName: `release\n${"y".repeat(100)}`,
 			extensionStatuses: [`status\t${"z".repeat(100)}`],
 		};
-		const lines = renderSidebarLines(long, DEFAULT_CONFIG, theme, 34, false);
+		const lines = renderSidebarLines(long, DEFAULT_CONFIG, theme, 34, 36, false);
 		expect(lines.join("")).not.toContain("[31m");
 		expect(lines.every((line) => visibleWidth(line) <= 34)).toBe(true);
 	});
@@ -142,6 +234,7 @@ describe("sidebar snapshot and layout", () => {
 			DEFAULT_CONFIG,
 			{ ...theme, fg },
 			44,
+			36,
 			false,
 		);
 		expect(fg).toHaveBeenCalledWith(expectedRole, expect.stringContaining(`${percent.toFixed(1)}%`));
@@ -153,10 +246,24 @@ describe("sidebar component and overlay", () => {
 		const component = createSidebarComponent({
 			getSnapshot: snapshot,
 			getConfig: () => DEFAULT_CONFIG,
+			getHeight: () => 36,
 			theme,
 		});
 		expect(component.handleInput).toBeUndefined();
 		expect(component.render(44).join("\n")).not.toContain("esc/q close");
+	});
+
+	it("reads live terminal height on every render without recreation", () => {
+		let height = 24;
+		const component = createSidebarComponent({
+			getSnapshot: snapshot,
+			getConfig: () => DEFAULT_CONFIG,
+			getHeight: () => height,
+			theme,
+		});
+		expect(component.render(44)).toHaveLength(24);
+		height = 31;
+		expect(component.render(44)).toHaveLength(31);
 	});
 
 	it.each(["snapshot", "config", "render"] as const)(
@@ -171,6 +278,7 @@ describe("sidebar component and overlay", () => {
 					if (source === "config") throw new Error("config failed");
 					return DEFAULT_CONFIG;
 				},
+				getHeight: () => 7,
 				theme:
 					source === "render"
 						? {
@@ -182,8 +290,11 @@ describe("sidebar component and overlay", () => {
 						: theme,
 			});
 			const lines = component.render(24);
+			expect(lines).toHaveLength(7);
+			expect(lines.every((line) => stripAnsi(line).startsWith("│ "))).toBe(true);
 			expect(lines.join("\n")).toContain("Sidebar unavailable");
 			expect(lines.join("\n")).not.toContain("esc/q close");
+			expect(lines.join("\n")).not.toMatch(/[╭╮╰╯]/);
 			expect(lines.every((line) => visibleWidth(line) <= 24)).toBe(true);
 		},
 	);
@@ -204,7 +315,9 @@ describe("sidebar component and overlay", () => {
 				const handle = { hide: vi.fn() };
 				closeCallbacks.push(done);
 				handles.push(handle);
-				components.push(factory({ requestRender } as never, theme as never, {} as never, done));
+				components.push(
+					factory({ requestRender, terminal: { rows: 36 } } as never, theme as never, {} as never, done),
+				);
 				customOptions.onHandle?.(handle as never);
 			});
 		});
@@ -221,7 +334,7 @@ describe("sidebar component and overlay", () => {
 		expect(custom.mock.calls[0]?.[1]).toMatchObject({
 			overlay: true,
 			overlayOptions: expect.objectContaining({
-				anchor: "right-center",
+				anchor: "top-right",
 				width: 44,
 				nonCapturing: true,
 			}),
