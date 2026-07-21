@@ -126,10 +126,10 @@ function gitRow(snapshot: SidebarSnapshot, palette: AtelierPalette): string {
 
 function renderBrandMark(theme: ThemeLike, palette: AtelierPalette): string[] {
 	return [
-		palette.paint("accent", "▛▀▜  ▀█▀"),
-		palette.paint("accent", "▌ ▐   █ "),
-		palette.paint("accent", "▙▄▟   █ "),
-		theme.bold(palette.paint("primary", "ATELIER")),
+		`${palette.paint("accent", "▛▀▜")}  ${palette.paint("ready", "▀█▀")}`,
+		`${palette.paint("accent", "▙▄▟")}   ${palette.paint("ready", "█")}`,
+		`${palette.paint("accent", "▌")}     ${palette.paint("ready", "█")}`,
+		theme.bold(`  ${palette.paint("warning", "A")}${palette.paint("accent", "TELIER")}`),
 	];
 }
 
@@ -284,9 +284,9 @@ function usageRows(
 	];
 }
 
-function toolsRows(snapshot: SidebarSnapshot, contentWidth: number, palette: AtelierPalette): string[] {
+function toolsStatusRows(snapshot: SidebarSnapshot, contentWidth: number, palette: AtelierPalette): string[] {
 	return [
-		headingRow("TOOLS", contentWidth, palette),
+		headingRow("TOOLS & STATUS", contentWidth, palette),
 		palette.paint(
 			"primary",
 			`${finiteCount(snapshot.activeToolCount)} / ${finiteCount(snapshot.availableToolCount)} active`,
@@ -294,18 +294,15 @@ function toolsRows(snapshot: SidebarSnapshot, contentWidth: number, palette: Ate
 	];
 }
 
-function statusRows(snapshot: SidebarSnapshot, contentWidth: number, palette: AtelierPalette): string[] {
-	const rows = [headingRow("STATUS", contentWidth, palette)];
-	for (const status of snapshot.extensionStatuses) {
+function statusDetailRows(snapshot: SidebarSnapshot, palette: AtelierPalette): string[] {
+	return snapshot.extensionStatuses.flatMap((status) => {
 		const safe = sanitize(status);
-		if (safe) rows.push(palette.paint("ready", `✓ ${safe}`));
-	}
-	if (rows.length === 1) rows.push(palette.paint("dim", "—"));
-	return rows;
+		return safe ? [palette.paint("ready", `✓ ${safe}`)] : [];
+	});
 }
 
 type SidebarGroup = {
-	name: "brand" | "project" | "agent" | "context" | "session" | "usage" | "tools" | "statuses";
+	name: "brand" | "project" | "agent" | "context" | "session" | "usage" | "toolsStatus" | "statusDetails";
 	rows: string[];
 };
 
@@ -345,8 +342,8 @@ export function renderSidebarLines(
 	const optional: SidebarGroup[] = [
 		{ name: "session", rows: sessionRows(snapshot, contentWidth, palette) },
 		{ name: "usage", rows: usageRows(snapshot, config, contentWidth, palette) },
-		{ name: "tools", rows: toolsRows(snapshot, contentWidth, palette) },
-		{ name: "statuses", rows: statusRows(snapshot, contentWidth, palette) },
+		{ name: "toolsStatus", rows: toolsStatusRows(snapshot, contentWidth, palette) },
+		{ name: "statusDetails", rows: statusDetailRows(snapshot, palette) },
 	];
 	return renderDock(
 		flattenGroups(composeGroups(required, optional, safeHeight)),

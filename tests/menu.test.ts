@@ -58,7 +58,7 @@ describe("menu presentation", () => {
 			{
 				value: "sidebar",
 				label: "Sidebar: Off",
-				description: "Show the live session sidecar",
+				description: "Show the docked information rail",
 			},
 		],
 		[
@@ -66,7 +66,7 @@ describe("menu presentation", () => {
 			{
 				value: "sidebar",
 				label: "Sidebar: On",
-				description: "Hide the live session sidecar",
+				description: "Hide the docked information rail",
 			},
 		],
 	] as const)("shows and toggles the dynamic sidebar state (%s)", async (visible, expected) => {

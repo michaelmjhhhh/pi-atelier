@@ -283,7 +283,7 @@ export async function openAtelierMenu(
 			{
 				value: "sidebar",
 				label: `Sidebar: ${sidebarVisible ? "On" : "Off"}`,
-				description: sidebarVisible ? "Hide the live session sidecar" : "Show the live session sidecar",
+				description: sidebarVisible ? "Hide the docked information rail" : "Show the docked information rail",
 			},
 			{ value: "model", label: "Model", description: "Model and thinking level" },
 			{ value: "tools", label: "Tools", description: "Search and toggle active tools" },
