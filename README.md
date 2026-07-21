@@ -8,7 +8,16 @@ Wide terminals use two stable zones: agent state and workspace identity stay lef
 
 ## Demo
 
-![Pi Atelier live activity sidebar](https://raw.githubusercontent.com/michaelmjhhhh/pi-atelier/main/assets/preview.png)
+<table>
+  <tr>
+    <th width="72%">Status Rail and Atelier menu access</th>
+    <th width="28%">Live Activity Sidebar</th>
+  </tr>
+  <tr>
+    <td valign="top"><img src="https://raw.githubusercontent.com/michaelmjhhhh/pi-atelier/main/assets/status-rail.png" alt="Pi Atelier status rail and menu shortcut"></td>
+    <td valign="top"><img src="https://raw.githubusercontent.com/michaelmjhhhh/pi-atelier/main/assets/preview.png" alt="Pi Atelier live activity sidebar"></td>
+  </tr>
+</table>
 
 ### Fixed Dark Midnight Spectrum
 
