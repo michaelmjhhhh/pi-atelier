@@ -22,7 +22,7 @@ Pi Atelier has one visual palette. Selecting a light, dark, or custom Pi theme d
 - Searchable tool controls
 - Editorial, minimal, and classic display presets
 - Session details, renaming, and safe compaction controls
-- Session-scoped, non-capturing session-information sidecar
+- Session-scoped, non-capturing docked information rail
 - Fixed dark Midnight Spectrum across every selected theme, with a `NO_COLOR` fallback
 - User and trusted-project configuration
 - No telemetry or external network requests
@@ -85,7 +85,7 @@ The default shortcut is `alt+a`. The menu contains:
 - **Tools** — search and toggle active Pi tools
 - **Display** — switch presets and save user defaults
 - **Session** — inspect, rename, or compact the current session
-- **Sidebar** — dynamically show or hide the session sidecar
+- **Sidebar** — dynamically show or hide the docked information rail
 
 Additional commands:
 
@@ -96,7 +96,7 @@ Additional commands:
 
 ## Sidebar
 
-Control the live session sidecar with:
+Control the live docked information rail with:
 
 ```text
 /atelier sidebar
@@ -104,7 +104,7 @@ Control the live session sidecar with:
 /atelier sidebar off
 ```
 
-The session-scoped sidecar is attached to the right edge and stays visible without taking editor focus. It shows project and Git state, model and thinking level, context utilization, session identity, cumulative usage and cost, active tools, and extension statuses. It starts disabled each session and auto-hides when the terminal is narrower than 88 columns. You can also toggle it through the Atelier menu.
+The session-scoped rail attaches to the top-right, fills the terminal height, and stays visible without taking editor focus. It uses a pixel PI monogram above sectioned session information, including compact session metadata and aligned usage metrics for context, tokens, cache, and cost. It also shows project and Git state, model and thinking level, active tools, and extension statuses. The rail starts disabled each session, remains non-capturing and toggleable through commands or the Atelier menu, and auto-hides when the terminal is narrower than 88 columns.
 
 ## Configuration
 
