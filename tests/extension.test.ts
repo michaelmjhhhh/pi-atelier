@@ -80,12 +80,26 @@ function harness(mode: "tui" | "print" = "tui") {
 	return { handlers, commands, shortcuts, setFooter, ctx, pi, overlays, custom };
 }
 
-async function start(h: ReturnType<typeof harness>) {
-	await h.handlers.get("session_start")?.({ reason: "startup" }, h.ctx);
+function replacementContext(
+	base: ReturnType<typeof harness>["ctx"],
+	sessionName: string,
+): ReturnType<typeof harness>["ctx"] {
+	return {
+		...base,
+		sessionManager: {
+			...base.sessionManager,
+			getSessionName: vi.fn().mockReturnValue(sessionName),
+			getSessionFile: vi.fn().mockReturnValue(`/tmp/${sessionName.toLowerCase().replace(/\s+/g, "-")}.jsonl`),
+		},
+	};
 }
 
-async function command(h: ReturnType<typeof harness>, args: string) {
-	await h.commands.get("atelier").handler(args, h.ctx);
+async function start(h: ReturnType<typeof harness>, ctx = h.ctx) {
+	await h.handlers.get("session_start")?.({ reason: "startup" }, ctx);
+}
+
+async function command(h: ReturnType<typeof harness>, args: string, ctx = h.ctx) {
+	await h.commands.get("atelier").handler(args, ctx);
 }
 
 describe("extension registration", () => {
@@ -264,5 +278,232 @@ describe("extension registration", () => {
 		statuses = new Map([["one", "extension two"]]);
 		footer.render(120);
 		expect(h.overlays[0]?.requestRender).toHaveBeenCalledTimes(2);
+	});
+
+	it("forwards run and turn events into sidebar activity without putting tool history in the footer", async () => {
+		const h = harness();
+		await start(h);
+		await command(h, "sidebar on");
+
+		expect(h.handlers.has("turn_start")).toBe(true);
+		expect(h.handlers.has("tool_execution_start")).toBe(true);
+		expect(h.handlers.has("tool_execution_end")).toBe(true);
+
+		await h.handlers.get("agent_start")?.({ type: "agent_start" }, h.ctx);
+		await h.handlers.get("turn_start")?.({ type: "turn_start", turnIndex: 2, timestamp: 1_000 }, h.ctx);
+		await h.handlers.get("tool_execution_start")?.(
+			{
+				type: "tool_execution_start",
+				toolCallId: "tool-1",
+				toolName: "bash",
+				args: { command: "npm test -- tests/extension.test.ts" },
+			},
+			h.ctx,
+		);
+
+		const sidebarText = h.overlays[0]?.component.render(44).join("\n") ?? "";
+		expect(sidebarText).toContain("ACTIVITY");
+		expect(sidebarText).toContain("Turn 3");
+		expect(sidebarText).toContain("running");
+		expect(sidebarText).toContain("bash");
+		expect(sidebarText).toContain("npm test");
+		expect(sidebarText).toContain("Working");
+		expect(h.overlays[0]?.requestRender.mock.calls.length).toBeGreaterThan(0);
+
+		const footer = h.setFooter.mock.calls[0]?.[0](
+			{ requestRender: vi.fn() },
+			{
+				fg: (_color: string, text: string) => text,
+				bold: (text: string) => text,
+				italic: (text: string) => text,
+			},
+			{
+				getGitBranch: () => undefined,
+				getExtensionStatuses: () => new Map(),
+				onBranchChange: () => () => undefined,
+			},
+		);
+		const footerText = footer.render(160).join("\n");
+		expect(footerText).toContain("●");
+		expect(footerText).not.toContain("bash");
+		expect(footerText).not.toContain("npm test");
+	});
+
+	it("updates recent tool results and settles the sidebar without continuing animation", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(1_000);
+		try {
+			const h = harness();
+			await start(h);
+			await command(h, "sidebar on");
+
+			await h.handlers.get("agent_start")?.({ type: "agent_start" }, h.ctx);
+			await h.handlers.get("tool_execution_start")?.(
+				{
+					type: "tool_execution_start",
+					toolCallId: "read-1",
+					toolName: "read",
+					args: { path: "/tmp/project/src/run-activity.ts" },
+				},
+				h.ctx,
+			);
+			vi.setSystemTime(2_500);
+			await h.handlers.get("tool_execution_end")?.(
+				{
+					type: "tool_execution_end",
+					toolCallId: "read-1",
+					toolName: "read",
+					result: { content: [] },
+					isError: false,
+				},
+				h.ctx,
+			);
+
+			const withResult = h.overlays[0]?.component.render(44).join("\n") ?? "";
+			expect(withResult).toContain("read");
+			expect(withResult).toContain("src/run-activity.ts");
+			expect(withResult).toContain("done 1s");
+			expect(withResult).toContain("tools 1 done");
+
+			const rendersBeforeTick = h.overlays[0]?.requestRender.mock.calls.length ?? 0;
+			vi.advanceTimersByTime(1_000);
+			expect(h.overlays[0]?.requestRender.mock.calls.length).toBeGreaterThan(rendersBeforeTick);
+
+			vi.setSystemTime(4_000);
+			await h.handlers.get("agent_settled")?.({ type: "agent_settled" }, h.ctx);
+			const settledRenderCount = h.overlays[0]?.requestRender.mock.calls.length ?? 0;
+			const settledText = h.overlays[0]?.component.render(44).join("\n") ?? "";
+			expect(settledText).toContain("settled 3s");
+			expect(settledText).toContain("Ready");
+
+			vi.advanceTimersByTime(3_000);
+			expect(h.overlays[0]?.requestRender.mock.calls.length).toBe(settledRenderCount);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("clears run activity across session reload and shutdown", async () => {
+		const h = harness();
+		await start(h);
+		await command(h, "sidebar on");
+		await h.handlers.get("agent_start")?.({ type: "agent_start" }, h.ctx);
+		await h.handlers.get("turn_start")?.({ type: "turn_start", turnIndex: 5, timestamp: 1_000 }, h.ctx);
+		await h.handlers.get("tool_execution_start")?.(
+			{
+				type: "tool_execution_start",
+				toolCallId: "old-tool",
+				toolName: "read",
+				args: { path: "/tmp/project/old.ts" },
+			},
+			h.ctx,
+		);
+		expect(h.overlays[0]?.component.render(44).join("\n")).toContain("old.ts");
+
+		await start(h);
+		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
+		await command(h, "sidebar on");
+		const replacementText = h.overlays[1]?.component.render(44).join("\n") ?? "";
+		expect(replacementText).not.toContain("ACTIVITY");
+		expect(replacementText).not.toContain("old.ts");
+
+		const replacementRenderCount = h.overlays[1]?.requestRender.mock.calls.length ?? 0;
+		await h.handlers.get("tool_execution_end")?.(
+			{
+				type: "tool_execution_end",
+				toolCallId: "old-tool",
+				toolName: "read",
+				result: { content: [] },
+				isError: false,
+			},
+			h.ctx,
+		);
+		expect(h.overlays[1]?.requestRender.mock.calls.length).toBe(replacementRenderCount);
+		expect(h.overlays[1]?.component.render(44).join("\n")).not.toContain("old.ts");
+
+		await h.handlers.get("session_shutdown")?.({ reason: "quit" }, h.ctx);
+		expect(h.overlays[1]?.done).toHaveBeenCalledOnce();
+		const shutdownRenderCount = h.overlays[1]?.requestRender.mock.calls.length ?? 0;
+		await h.handlers.get("agent_start")?.({ type: "agent_start" }, h.ctx);
+		expect(h.overlays[1]?.requestRender.mock.calls.length).toBe(shutdownRenderCount);
+	});
+
+	it("ignores stale activity events after a replacement session becomes active", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(1_000);
+		try {
+			const h = harness();
+			const oldCtx = h.ctx;
+			const currentCtx = replacementContext(h.ctx, "Replacement session");
+			await start(h, oldCtx);
+			await command(h, "sidebar on", oldCtx);
+
+			await start(h, currentCtx);
+			expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
+			await command(h, "sidebar on", currentCtx);
+
+			await h.handlers.get("agent_start")?.({ type: "agent_start" }, currentCtx);
+			await h.handlers.get("turn_start")?.(
+				{ type: "turn_start", turnIndex: 6, timestamp: 1_000 },
+				currentCtx,
+			);
+			await h.handlers.get("tool_execution_start")?.(
+				{
+					type: "tool_execution_start",
+					toolCallId: "current-tool",
+					toolName: "bash",
+					args: { command: "npm run current" },
+				},
+				currentCtx,
+			);
+
+			const activeRenderCount = h.overlays[1]?.requestRender.mock.calls.length ?? 0;
+			const activeText = h.overlays[1]?.component.render(44).join("\n") ?? "";
+			expect(activeText).toContain("Replacement session");
+			expect(activeText).toContain("ACTIVITY");
+			expect(activeText).toContain("Turn 7");
+			expect(activeText).toContain("running");
+			expect(activeText).toContain("bash");
+			expect(activeText).toContain("npm run current");
+			expect(activeText).toContain("Working");
+
+			await h.handlers.get("agent_start")?.({ type: "agent_start" }, oldCtx);
+			await h.handlers.get("tool_execution_start")?.(
+				{
+					type: "tool_execution_start",
+					toolCallId: "stale-tool",
+					toolName: "read",
+					args: { path: "/tmp/project/stale.ts" },
+				},
+				oldCtx,
+			);
+			await h.handlers.get("agent_settled")?.({ type: "agent_settled" }, oldCtx);
+
+			expect(h.overlays[1]?.requestRender.mock.calls.length).toBe(activeRenderCount);
+			expect(h.overlays[1]?.component.render(44).join("\n")).toBe(activeText);
+			expect(h.overlays[1]?.component.render(44).join("\n")).not.toContain("stale.ts");
+
+			await h.handlers.get("tool_execution_end")?.(
+				{
+					type: "tool_execution_end",
+					toolCallId: "current-tool",
+					toolName: "bash",
+					result: { stdout: "" },
+					isError: false,
+				},
+				currentCtx,
+			);
+			await h.handlers.get("agent_settled")?.({ type: "agent_settled" }, currentCtx);
+
+			expect(h.overlays[1]?.requestRender.mock.calls.length).toBeGreaterThan(activeRenderCount);
+			const settledText = h.overlays[1]?.component.render(44).join("\n") ?? "";
+			expect(settledText).toContain("Turn 7");
+			expect(settledText).toContain("settled");
+			expect(settledText).toContain("done");
+			expect(settledText).toContain("Ready");
+			expect(settledText).not.toContain("stale.ts");
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

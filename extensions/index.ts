@@ -10,6 +10,7 @@ import type { KeyId } from "@earendil-works/pi-tui";
 import { loadConfig } from "../src/config.js";
 import { createFooterComponent, type ThemeLike } from "../src/footer.js";
 import { openAtelierMenu } from "../src/menu.js";
+import { createRunActivityTracker, type RunActivityTracker } from "../src/run-activity.js";
 import {
 	buildSidebarSnapshot,
 	createSidebarController,
@@ -24,6 +25,7 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 	let currentContext: ExtensionContext | undefined;
 	let requestRender: () => void = () => undefined;
 	let sidebar: SidebarController | undefined;
+	let runActivity: RunActivityTracker | undefined;
 	let extensionStatuses: readonly string[] = [];
 	let enabled = true;
 	let shortcutRegistered = false;
@@ -45,7 +47,11 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 		sidebar?.requestRender();
 	}
 
-	function getSidebarSnapshot(ctx: ExtensionContext, targetRuntime: AtelierRuntime): SidebarSnapshot {
+	function getSidebarSnapshot(
+		ctx: ExtensionContext,
+		targetRuntime: AtelierRuntime,
+		targetRunActivity: RunActivityTracker | undefined,
+	): SidebarSnapshot {
 		const sessionName = ctx.sessionManager.getSessionName();
 		const sessionFile = ctx.sessionManager.getSessionFile();
 		return buildSidebarSnapshot({
@@ -57,7 +63,20 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 			activeToolCount: pi.getActiveTools().length,
 			availableToolCount: pi.getAllTools().length,
 			extensionStatuses,
+			...(targetRunActivity ? { runActivity: targetRunActivity.getSnapshot() } : {}),
 		});
+	}
+
+	function getCurrentContextState(ctx: ExtensionContext | undefined):
+		| {
+				ctx: ExtensionContext;
+				runtime: AtelierRuntime | undefined;
+				sidebar: SidebarController | undefined;
+				runActivity: RunActivityTracker | undefined;
+		  }
+		| undefined {
+		if (ctx === undefined || ctx !== currentContext) return undefined;
+		return { ctx, runtime, sidebar, runActivity };
 	}
 
 	async function openMenu(ctx: ExtensionContext): Promise<void> {
@@ -157,6 +176,12 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 		let localRuntime: AtelierRuntime | undefined;
 		let localSidebar: SidebarController | undefined;
 		const isFresh = (): boolean => initializationGeneration === lifecycleGeneration;
+		const localRunActivity = createRunActivityTracker({
+			cwd: initializationContext.cwd,
+			onChange: () => {
+				if (isFresh() && runActivity === localRunActivity) requestAllRenders();
+			},
+		});
 		try {
 			const userPath = join(getAgentDir(), "pi-atelier.json");
 			const projectPath = join(initializationContext.cwd, CONFIG_DIR_NAME, "pi-atelier.json");
@@ -190,14 +215,16 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 			localRuntime = candidateRuntime;
 			await candidateRuntime.refreshGitState();
 			if (!isFresh()) {
+				localRunActivity.reset();
 				candidateRuntime.dispose();
 				return;
 			}
 			localSidebar = createSidebarController({
 				ctx: initializationContext,
-				getSnapshot: () => getSidebarSnapshot(initializationContext, candidateRuntime),
+				getSnapshot: () => getSidebarSnapshot(initializationContext, candidateRuntime, localRunActivity),
 				getConfig: () => candidateRuntime.getConfig(),
 				colorEnabled: !("NO_COLOR" in process.env),
+				shouldAnimate: () => runActivity?.isRunning() ?? false,
 				onError: (error) =>
 					initializationContext.ui.notify(
 						`Pi Atelier sidebar failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -206,18 +233,22 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 			});
 			if (!isFresh()) {
 				localSidebar.dispose();
+				localRunActivity.reset();
 				candidateRuntime.dispose();
 				return;
 			}
 
 			const previousSidebar = sidebar;
 			const previousRuntime = runtime;
+			const previousRunActivity = runActivity;
 			runtime = candidateRuntime;
 			sidebar = localSidebar;
+			runActivity = localRunActivity;
 			currentContext = initializationContext;
 			extensionStatuses = [];
 			previousSidebar?.dispose();
 			previousRuntime?.dispose();
+			previousRunActivity?.reset();
 
 			if (isFresh() && !shortcutRegistered) {
 				try {
@@ -242,12 +273,16 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 			}
 		} catch (error) {
 			localSidebar?.dispose();
+			localRunActivity.reset();
 			localRuntime?.dispose();
 			if (!isFresh()) return;
 			sidebar?.dispose();
 			sidebar = undefined;
 			runtime?.dispose();
 			runtime = undefined;
+			const previousRunActivity = runActivity;
+			runActivity = undefined;
+			previousRunActivity?.reset();
 			currentContext = undefined;
 			updateExtensionStatuses([]);
 			initializationContext.ui.setFooter(undefined);
@@ -258,23 +293,56 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 		}
 	});
 
-	pi.on("agent_start", () => runtime?.setActivity("working"));
-	pi.on("agent_settled", () => runtime?.setActivity("ready"));
-	pi.on("turn_end", async () => {
-		runtime?.refreshUsage();
-		await runtime?.refreshGitState();
+	pi.on("agent_start", (_event, ctx) => {
+		const current = getCurrentContextState(ctx);
+		if (!current?.runActivity || !current.runtime) return;
+		current.runActivity.startRun();
+		current.runtime.setActivity("working");
 	});
-	pi.on("model_select", () => runtime?.refreshUsage());
-	pi.on("thinking_level_select", () => runtime?.refreshUsage());
-	pi.on("session_compact", () => runtime?.refreshUsage());
-	pi.on("session_info_changed", () => runtime?.refreshUsage());
-	pi.on("session_shutdown", () => {
+	pi.on("turn_start", (event, ctx) => {
+		const current = getCurrentContextState(ctx);
+		if (!current?.runActivity) return;
+		current.runActivity.startTurn(event.turnIndex);
+	});
+	pi.on("tool_execution_start", (event, ctx) => {
+		const current = getCurrentContextState(ctx);
+		if (!current?.runActivity) return;
+		current.runActivity.startTool(event);
+	});
+	pi.on("tool_execution_end", (event, ctx) => {
+		const current = getCurrentContextState(ctx);
+		if (!current?.runActivity) return;
+		current.runActivity.finishTool(event);
+	});
+	pi.on("agent_settled", (_event, ctx) => {
+		const current = getCurrentContextState(ctx);
+		if (!current?.runActivity || !current.runtime) return;
+		current.runActivity.settle();
+		current.runtime.setActivity("ready");
+		current.sidebar?.requestRender();
+	});
+	pi.on("turn_end", async (_event, ctx) => {
+		const current = getCurrentContextState(ctx);
+		if (!current?.runtime) return;
+		current.runtime.refreshUsage();
+		await current.runtime.refreshGitState();
+	});
+	pi.on("model_select", (_event, ctx) => getCurrentContextState(ctx)?.runtime?.refreshUsage());
+	pi.on("thinking_level_select", (_event, ctx) => getCurrentContextState(ctx)?.runtime?.refreshUsage());
+	pi.on("session_compact", (_event, ctx) => getCurrentContextState(ctx)?.runtime?.refreshUsage());
+	pi.on("session_info_changed", (_event, ctx) => getCurrentContextState(ctx)?.runtime?.refreshUsage());
+	pi.on("session_shutdown", (_event, ctx) => {
+		const current = getCurrentContextState(ctx);
+		if (!current && currentContext !== undefined) return;
 		lifecycleGeneration += 1;
-		sidebar?.dispose();
+		(current?.sidebar ?? sidebar)?.dispose();
 		sidebar = undefined;
-		runtime?.dispose();
+		(current?.runtime ?? runtime)?.dispose();
 		runtime = undefined;
-		currentContext?.ui.setFooter(undefined);
+		const previousRunActivity = current?.runActivity ?? runActivity;
+		runActivity = undefined;
+		previousRunActivity?.reset();
+		current?.ctx.ui.setFooter(undefined);
 		currentContext = undefined;
 		requestRender = () => undefined;
 		extensionStatuses = [];

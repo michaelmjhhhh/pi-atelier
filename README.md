@@ -22,7 +22,7 @@ Pi Atelier has one visual palette. Selecting a light, dark, or custom Pi theme d
 - Searchable tool controls
 - Editorial, minimal, and classic display presets
 - Session details, renaming, and safe compaction controls
-- Session-scoped, non-capturing docked information rail
+- Session-scoped, non-capturing docked information rail with live run, turn, and tool activity
 - Fixed dark Midnight Spectrum across every selected theme, with a `NO_COLOR` fallback
 - User and trusted-project configuration
 - No telemetry or external network requests
@@ -104,7 +104,11 @@ Control the live docked information rail with:
 /atelier sidebar off
 ```
 
-The session-scoped rail attaches to the top-right, fills the terminal height, and stays visible without taking editor focus. Its quiet, information-first layout uses restrained semantic color, compact section labels, and aligned context and token/cache/cost metrics. It also shows project and Git state, model and thinking level, active tools, and extension statuses. The rail starts disabled each session, remains non-capturing and toggleable through commands or the Atelier menu, and auto-hides when the terminal is narrower than 88 columns.
+The session-scoped rail attaches to the top-right, fills the terminal height, and stays visible without taking editor focus. Its quiet, information-first layout uses restrained semantic color, compact section labels, and aligned context and token/cache/cost metrics. It also shows project and Git state, model and thinking level, active tools, and extension statuses.
+
+During an agent run, the sidebar adds information the compact footer intentionally omits: current one-based turn, elapsed run time, active parallel tool calls, the three most recent tool results, per-tool durations, and total done/failed tool counts. The footer remains a stable one-line status rail and never repeats tool names or tool history.
+
+The rail starts disabled each session, remains non-capturing and toggleable through commands or the Atelier menu, and auto-hides when the terminal is narrower than 88 columns.
 
 ## Configuration
 
