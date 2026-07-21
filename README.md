@@ -22,6 +22,7 @@ Pi Atelier has one visual palette. Selecting a light, dark, or custom Pi theme d
 - Searchable tool controls
 - Editorial, minimal, and classic display presets
 - Session details, renaming, and safe compaction controls
+- Live session-information sidebar with a narrow-terminal fallback
 - Fixed dark Midnight Spectrum across every selected theme, with a `NO_COLOR` fallback
 - User and trusted-project configuration
 - No telemetry or external network requests
@@ -91,6 +92,16 @@ Additional commands:
 /atelier disable
 /atelier enable
 ```
+
+## Sidebar
+
+Open the live session overview with:
+
+```text
+/atelier sidebar
+```
+
+Wide terminals display a right-side panel; narrow terminals use a centered responsive view. The read-only sidebar shows project and Git state, model and thinking level, context utilization, session identity, cumulative usage and cost, active tools, and extension statuses. Press `Esc`, `q`, or `Ctrl+C` to close it.
 
 ## Configuration
 

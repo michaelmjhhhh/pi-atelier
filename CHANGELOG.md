@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a live `/atelier sidebar` overview for project, agent, context, session, usage, tools, and extension status information.
+
 ## 0.1.4
 
 - Replace the ASCII preview with the current Pi Atelier screenshot on GitHub and npm.
