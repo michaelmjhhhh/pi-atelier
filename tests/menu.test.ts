@@ -88,6 +88,8 @@ describe("menu actions", () => {
 	it("restores the ornament-free Status Rail defaults when selecting editorial", () => {
 		const h = harness();
 		h.actions.setPreset("minimal");
+		h.actions.setDensity("compact");
+		h.actions.setOrnament("restrained");
 		h.actions.setPreset("editorial");
 		expect(h.runtime.getConfig()).toMatchObject({
 			preset: "editorial",
@@ -99,6 +101,9 @@ describe("menu actions", () => {
 
 	it("maps classic to its compatible segments and presentation", () => {
 		const h = harness();
+		h.actions.setPreset("minimal");
+		h.actions.setDensity("compact");
+		h.actions.setOrnament("restrained");
 		h.actions.setPreset("classic");
 		expect(h.runtime.getConfig()).toMatchObject({
 			preset: "classic",
