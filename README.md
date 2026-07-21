@@ -104,7 +104,7 @@ Control the live docked information rail with:
 /atelier sidebar off
 ```
 
-The session-scoped rail attaches to the top-right, fills the terminal height, and stays visible without taking editor focus. It uses a pixel PI monogram above sectioned context information plus aligned token/cache/cost usage metrics. It also shows project and Git state, model and thinking level, active tools, and extension statuses. The rail starts disabled each session, remains non-capturing and toggleable through commands or the Atelier menu, and auto-hides when the terminal is narrower than 88 columns.
+The session-scoped rail attaches to the top-right, fills the terminal height, and stays visible without taking editor focus. Its quiet, information-first layout uses restrained semantic color, compact section labels, and aligned context and token/cache/cost metrics. It also shows project and Git state, model and thinking level, active tools, and extension statuses. The rail starts disabled each session, remains non-capturing and toggleable through commands or the Atelier menu, and auto-hides when the terminal is narrower than 88 columns.
 
 ## Configuration
 

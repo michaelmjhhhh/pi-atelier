@@ -75,21 +75,19 @@ describe("sidebar snapshot and layout", () => {
 		});
 	});
 
-	it("renders a full-height dock without rounded corners", () => {
+	it("renders a full-height dock without rounded corners or a brand block", () => {
 		const lines = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false);
+		const text = lines.join("\n");
 		expect(lines).toHaveLength(36);
 		expect(lines.every((line) => visibleWidth(line) <= 44)).toBe(true);
 		expect(lines.every((line) => stripAnsi(line).startsWith("│ "))).toBe(true);
-		expect(lines.join("\n")).not.toMatch(/[╭╮╰╯]/);
-		expect(contentRows(lines).slice(0, 4)).toEqual(["▛▀▜  ▀█▀", "▙▄▟   █", "▌     █", "  ATELIER"]);
-	});
-
-	it("uses purple, blue, and amber color roles in the brand mark", () => {
-		const text = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, true).join("\n");
-		expect(text).toContain("\u001b[38;2;177;140;255m▛▀▜\u001b[39m");
-		expect(text).toContain("\u001b[38;2;110;168;254m▀█▀\u001b[39m");
-		expect(text).toContain("\u001b[38;2;255;159;67mA\u001b[39m");
-		expect(text).toContain("\u001b[38;2;177;140;255mTELIER\u001b[39m");
+		expect(text).not.toMatch(/[╭╮╰╯]/);
+		expect(text).not.toContain("ATELIER");
+		expect(text).not.toMatch(/PI ATELIER|ATELIER|▛▀▜|◆|●|✓/);
+		expect(contentRows(lines)[0]).toBe("PROJECT");
+		expect(contentRows(lines).some((row) => /^PROJECT ─/.test(row))).toBe(false);
+		expect(contentRows(lines)).toContain("feature/sidebar · modified");
+		expect(contentRows(lines)).toContain("Working · gitifying");
 	});
 
 	it("matches the representative 44x36 no-color docked rail", () => {
@@ -105,35 +103,35 @@ describe("sidebar snapshot and layout", () => {
 			contentRows(renderSidebarLines(noSession, DEFAULT_CONFIG, theme, 44, 36, false)),
 		).toMatchInlineSnapshot(`
 			[
-			  "▛▀▜  ▀█▀",
-			  "▙▄▟   █",
-			  "▌     █",
-			  "  ATELIER",
-			  "",
-			  "PROJECT ──────────────────────────────────",
+			  "PROJECT",
 			  "pi-atelier",
 			  "/Users/example/projects/pi-atelier",
-			  "◆ feature/sidebar • modified",
-			  "AGENT ────────────────────────────────────",
+			  "feature/sidebar · modified",
+			  "",
+			  "AGENT",
 			  "gpt-5.6-sol",
-			  "openai-codex • medium",
-			  "● GITIFYING",
-			  "CONTEXT ──────────────────────────────────",
-			  "32k / 400k  8.1%",
-			  "██░░░░░░░░░░░░░░░░░░",
+			  "openai-codex · medium",
+			  "Working · gitifying",
+			  "",
+			  "CONTEXT",
+			  "32k / 400k                            8.1%",
+			  "███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░",
 			  "auto compact",
 			  "",
-			  "SESSION ──────────────────────────────────",
-			  "6 entries • ephemeral",
-			  "USAGE ────────────────────────────────────",
+			  "SESSION",
+			  "6 entries · ephemeral",
+			  "",
+			  "USAGE",
 			  "INPUT                OUTPUT",
 			  "50.0k                1.9k",
 			  "CACHE                HIT",
 			  "100.0k               96.0%",
 			  "COST                 ACCESS",
 			  "$0.479               subscription",
-			  "TOOLS & STATUS ───────────────────────────",
+			  "",
+			  "TOOLS",
 			  "8 / 12 active",
+			  "",
 			  "",
 			  "",
 			  "",
@@ -148,10 +146,10 @@ describe("sidebar snapshot and layout", () => {
 	it("renders organized sections without exceeding width", () => {
 		for (const width of [32, 40, 44]) {
 			const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, width, 36, false));
-			expect(rows.join("\n")).toContain("ATELIER");
+			expect(rows.join("\n")).not.toContain("ATELIER");
 			expect(rows.join("\n")).toContain("PROJECT");
 			expect(rows.join("\n")).toContain("CONTEXT");
-			expect(rows.some((row) => row.startsWith("TOOLS & STATUS "))).toBe(true);
+			expect(rows).toContain("TOOLS");
 			expect(rows.every((row) => !row.startsWith("STATUS "))).toBe(true);
 			expect(
 				renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, width, 36, false).every(
@@ -159,6 +157,13 @@ describe("sidebar snapshot and layout", () => {
 				),
 			).toBe(true);
 		}
+	});
+
+	it("right-aligns context percentage and fills the available bar width", () => {
+		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false));
+		const contextIndex = rows.indexOf("CONTEXT");
+		expect(rows[contextIndex + 1]).toMatch(/^32k \/ 400k\s+8\.1%$/);
+		expect(visibleWidth(rows[contextIndex + 2] ?? "")).toBe(42);
 	});
 
 	it("uses an attached non-capturing overlay with responsive visibility", () => {
@@ -187,7 +192,7 @@ describe("sidebar snapshot and layout", () => {
 		const sessionIndex = rows.findIndex((row) => row.startsWith("SESSION "));
 		const usageIndex = rows.findIndex((row) => row.startsWith("USAGE "));
 		expect(rows.slice(sessionIndex + 1, usageIndex)).not.toContain("—");
-		expect(rows.slice(sessionIndex + 1, usageIndex)).toContain("6 entries • ephemeral");
+		expect(rows.slice(sessionIndex + 1, usageIndex)).toContain("6 entries · ephemeral");
 	});
 
 	it("does not render the session file path", () => {
@@ -208,7 +213,7 @@ describe("sidebar snapshot and layout", () => {
 			extensionStatuses: [],
 		});
 		expect(contentRows(renderSidebarLines(persisted, DEFAULT_CONFIG, theme, 44, 36, false))).toContain(
-			"6 entries • persisted",
+			"6 entries · persisted",
 		);
 	});
 
@@ -229,14 +234,12 @@ describe("sidebar snapshot and layout", () => {
 		}
 	});
 
-	it("renders section headings with trailing rules", () => {
-		const text = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false).join("\n");
-		for (const heading of ["PROJECT", "AGENT", "CONTEXT", "SESSION", "USAGE", "TOOLS & STATUS"]) {
-			expect(text).toMatch(new RegExp(`${heading} ─+`));
+	it("renders quiet section labels without ornamental rules", () => {
+		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false));
+		for (const heading of ["PROJECT", "AGENT", "CONTEXT", "SESSION", "USAGE", "TOOLS"]) {
+			expect(rows).toContain(heading);
 		}
-		expect(contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false))).toEqual(
-			expect.not.arrayContaining([expect.stringMatching(/^STATUS /)]),
-		);
+		expect(rows).toEqual(expect.not.arrayContaining([expect.stringMatching(/^[A-Z &]+ ─/)]));
 	});
 
 	it("renders tool count without standalone status placeholder when extension statuses are empty", () => {
@@ -249,7 +252,7 @@ describe("sidebar snapshot and layout", () => {
 			extensionStatuses: [],
 		});
 		const rows = contentRows(renderSidebarLines(emptyStatuses, DEFAULT_CONFIG, theme, 44, 36, false));
-		const toolsIndex = rows.findIndex((row) => row.startsWith("TOOLS & STATUS "));
+		const toolsIndex = rows.indexOf("TOOLS");
 		expect(toolsIndex).toBeGreaterThan(-1);
 		expect(rows[toolsIndex + 1]).toBe("8 / 12 active");
 		expect(rows.slice(toolsIndex + 2)).not.toContain("—");
@@ -266,29 +269,29 @@ describe("sidebar snapshot and layout", () => {
 			extensionStatuses: ["tests \u001b[31mpassing", "api\nready", "   "],
 		});
 		const rows = contentRows(renderSidebarLines(statusSnapshot, DEFAULT_CONFIG, theme, 44, 36, false));
-		const toolsIndex = rows.findIndex((row) => row.startsWith("TOOLS & STATUS "));
+		const toolsIndex = rows.indexOf("TOOLS");
 		expect(rows[toolsIndex + 1]).toBe("8 / 12 active");
-		expect(rows).toContain("✓ tests passing");
-		expect(rows).toContain("✓ api ready");
+		expect(rows).toContain("tests passing");
+		expect(rows).toContain("api ready");
 		expect(rows.join("\n")).not.toContain("[31m");
 		expect(rows).toEqual(expect.not.arrayContaining([expect.stringMatching(/^STATUS /)]));
 	});
 
 	it("drops extension status detail rows before the tool count in shorter rails", () => {
-		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 30, false));
+		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 29, false));
 		expect(rows).toContain("8 / 12 active");
-		expect(rows).not.toContain("✓ tests passing");
+		expect(rows).not.toContain("tests passing");
 	});
 
-	it("keeps only the required hierarchy in a compact 20 row rail", () => {
-		const text = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 20, false).join("\n");
-		expect(text).toContain("▛▀▜  ▀█▀");
+	it("keeps only the required hierarchy in a compact 15 row rail", () => {
+		const text = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 15, false).join("\n");
+		expect(text).not.toContain("▛▀▜");
 		expect(text).toContain("PROJECT");
 		expect(text).toContain("AGENT");
 		expect(text).toContain("CONTEXT");
 		expect(text).not.toContain("SESSION");
 		expect(text).not.toContain("USAGE");
-		expect(text).not.toContain("TOOLS & STATUS");
+		expect(text).not.toContain("TOOLS");
 		expect(text).not.toContain("tests passing");
 		expect(text).not.toContain("active");
 	});
@@ -400,7 +403,8 @@ describe("sidebar component and overlay", () => {
 			const lines = component.render(24);
 			expect(lines).toHaveLength(7);
 			expect(lines.every((line) => stripAnsi(line).startsWith("│ "))).toBe(true);
-			expect(lines.join("\n")).toContain("Sidebar unavailable");
+			expect(contentRows(lines)[0]).toBe("Sidebar unavailable");
+			expect(lines.join("\n")).not.toMatch(/PI ATELIER|ATELIER/);
 			expect(lines.join("\n")).not.toContain("esc/q close");
 			expect(lines.join("\n")).not.toMatch(/[╭╮╰╯]/);
 			expect(lines.every((line) => visibleWidth(line) <= 24)).toBe(true);

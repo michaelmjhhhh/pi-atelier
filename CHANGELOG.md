@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Redesign the persistent sidebar as a full-height docked information rail with a pixel PI monogram and clearer session and usage sections.
+- Refine the full-height sidebar into a quiet, information-first utility rail with restrained semantic color and clearer alignment.
 - Convert `/atelier sidebar` into a session-scoped, non-capturing right-edge sidecar with command and menu on/off controls.
 
 ## 0.1.4
