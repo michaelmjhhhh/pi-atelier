@@ -363,7 +363,7 @@ describe("extension registration", () => {
 			expect(withResult).toContain("read");
 			expect(withResult).toContain("src/run-activity.ts");
 			expect(withResult).toContain("done 1s");
-			expect(withResult).toContain("tools 1 done");
+			expect(withResult).toContain("tools 1 done · 0 failed");
 
 			const rendersBeforeTick = h.overlays[0]?.requestRender.mock.calls.length ?? 0;
 			vi.advanceTimersByTime(1_000);
@@ -373,7 +373,8 @@ describe("extension registration", () => {
 			await h.handlers.get("agent_settled")?.({ type: "agent_settled" }, h.ctx);
 			const settledRenderCount = h.overlays[0]?.requestRender.mock.calls.length ?? 0;
 			const settledText = h.overlays[0]?.component.render(44).join("\n") ?? "";
-			expect(settledText).toContain("settled 3s");
+			expect(settledText).toContain("Last run · 3s");
+			expect(settledText).not.toContain("settled 3s");
 			expect(settledText).toContain("Ready");
 
 			vi.advanceTimersByTime(3_000);
@@ -497,8 +498,9 @@ describe("extension registration", () => {
 
 			expect(h.overlays[1]?.requestRender.mock.calls.length).toBeGreaterThan(activeRenderCount);
 			const settledText = h.overlays[1]?.component.render(44).join("\n") ?? "";
-			expect(settledText).toContain("Turn 7");
-			expect(settledText).toContain("settled");
+			expect(settledText).toContain("Last run · <1s");
+			expect(settledText).not.toContain("Turn 7");
+			expect(settledText).not.toContain("settled");
 			expect(settledText).toContain("done");
 			expect(settledText).toContain("Ready");
 			expect(settledText).not.toContain("stale.ts");

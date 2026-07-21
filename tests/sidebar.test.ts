@@ -301,7 +301,33 @@ describe("sidebar snapshot and layout", () => {
 		expect(rows).toContain("tools 2 done · 1 failed");
 	});
 
-	it("renders settled activity duration and omits idle activity", () => {
+	it.each([
+		{ completedCount: 2, failedCount: 0, expected: "tools 2 done · 0 failed" },
+		{ completedCount: 0, failedCount: 1, expected: "tools 0 done · 1 failed" },
+	])("renders both aggregate sides for %#", ({ completedCount, failedCount, expected }) => {
+		const rows = contentRows(
+			renderSidebarLines(
+				withActivity({
+					phase: "settled",
+					startedAt: 10_000,
+					durationMs: 5_000,
+					activeTools: [],
+					recentTools: [],
+					completedCount,
+					failedCount,
+				}),
+				DEFAULT_CONFIG,
+				theme,
+				44,
+				36,
+				false,
+				20_000,
+			),
+		);
+		expect(rows).toContain(expected);
+	});
+
+	it("renders settled activity duration and omits only empty idle activity", () => {
 		const idleRows = contentRows(
 			renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false, 20_000),
 		);
@@ -336,10 +362,88 @@ describe("sidebar snapshot and layout", () => {
 				20_000,
 			),
 		);
-		expect(settledRows).toContain("Turn 4 · settled 6s");
+		expect(settledRows).toContain("Last run · 6s");
+		expect(settledRows).not.toContain("Turn 4 · settled 6s");
 		expect(settledRows).toEqual(
 			expect.arrayContaining([expect.stringMatching(/^edit\s+src\/sidebar\.ts\s+failed 2s$/)]),
 		);
+
+		const idleWithRecent = contentRows(
+			renderSidebarLines(
+				withActivity({
+					phase: "idle",
+					activeTools: [],
+					recentTools: [
+						{
+							id: "idle-recent",
+							name: "bash",
+							summary: "npm test",
+							status: "done",
+							startedAt: 2_000,
+							durationMs: 1_000,
+						},
+					],
+					completedCount: 1,
+					failedCount: 0,
+				}),
+				DEFAULT_CONFIG,
+				theme,
+				44,
+				36,
+				false,
+				20_000,
+			),
+		);
+		expect(idleWithRecent).toContain("ACTIVITY");
+		expect(idleWithRecent).toEqual(
+			expect.arrayContaining([expect.stringMatching(/^bash\s+npm test\s+done 1s$/)]),
+		);
+		expect(idleWithRecent).toContain("tools 1 done · 0 failed");
+
+		const idleWithActive = contentRows(
+			renderSidebarLines(
+				withActivity({
+					phase: "idle",
+					startedAt: 10_000,
+					activeTools: [
+						{ id: "idle-active", name: "read", summary: "src/a.ts", status: "running", startedAt: 15_000 },
+					],
+					recentTools: [],
+					completedCount: 0,
+					failedCount: 0,
+				}),
+				DEFAULT_CONFIG,
+				theme,
+				44,
+				36,
+				false,
+				20_000,
+			),
+		);
+		expect(idleWithActive).toContain("ACTIVITY");
+		expect(idleWithActive).toEqual(
+			expect.arrayContaining([expect.stringMatching(/^read\s+src\/a\.ts\s+5s$/)]),
+		);
+
+		const idleWithCounts = contentRows(
+			renderSidebarLines(
+				withActivity({
+					phase: "idle",
+					activeTools: [],
+					recentTools: [],
+					completedCount: 0,
+					failedCount: 2,
+				}),
+				DEFAULT_CONFIG,
+				theme,
+				44,
+				36,
+				false,
+				20_000,
+			),
+		);
+		expect(idleWithCounts).toContain("ACTIVITY");
+		expect(idleWithCounts).toContain("tools 0 done · 2 failed");
 	});
 
 	it("keeps active tools before recent tools and preserves parallel start order", () => {
@@ -440,12 +544,16 @@ describe("sidebar snapshot and layout", () => {
 				DEFAULT_CONFIG,
 				theme,
 				34,
-				36,
+				60,
 				false,
 				20_000,
 			),
 		);
-		expect(rows).toEqual(expect.arrayContaining([expect.stringMatching(/^bash\s+n+/)]));
+		const recentRows = rows.filter((row) => /^(bash|edit|write)\s+/.test(row));
+		expect(recentRows).toHaveLength(3);
+		expect(recentRows[0]).toMatch(/^bash\s+n+/);
+		expect(recentRows[1]).toMatch(/^edit\s+middle\s+done 1s$/);
+		expect(recentRows[2]).toMatch(/^write\s+older\s+done 1s$/);
 		expect(rows).not.toEqual(expect.arrayContaining([expect.stringContaining("duplicate")]));
 		expect(rows).not.toEqual(expect.arrayContaining([expect.stringContaining("oldest")]));
 		expect(rows.every((row) => visibleWidth(row) <= 32)).toBe(true);

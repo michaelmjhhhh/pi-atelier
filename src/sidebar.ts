@@ -360,13 +360,15 @@ function toolActivityRow(
 }
 
 function runSummaryRow(activity: RunActivitySnapshot, palette: AtelierPalette, now: number): string {
-	const label = activity.turnNumber === undefined ? "Run" : `Turn ${finiteCount(activity.turnNumber)}`;
 	const duration =
 		activity.phase === "settled"
 			? formatDuration(activity.durationMs ?? Math.max(0, now - (activity.startedAt ?? now)))
 			: formatDuration(Math.max(0, now - (activity.startedAt ?? now)));
 	const role: PaletteRole =
 		activity.phase === "running" ? "working" : activity.failedCount > 0 ? "error" : "ready";
+	if (activity.phase === "settled") return palette.paint(role, `Last run · ${duration}`);
+
+	const label = activity.turnNumber === undefined ? "Run" : `Turn ${finiteCount(activity.turnNumber)}`;
 	return palette.paint(role, `${label} · ${activity.phase} ${duration}`);
 }
 
@@ -376,7 +378,11 @@ function activityRows(
 	palette: AtelierPalette,
 	now: number,
 ): ActivityGroups | undefined {
-	if (activity.phase === "idle") return undefined;
+	const completed = finiteCount(activity.completedCount);
+	const failed = finiteCount(activity.failedCount);
+	const hasActivity =
+		activity.activeTools.length > 0 || activity.recentTools.length > 0 || completed > 0 || failed > 0;
+	if (activity.phase === "idle" && !hasActivity) return undefined;
 
 	const activeIds = new Set(activity.activeTools.map((tool) => tool.id));
 	const activeTools = activity.activeTools
@@ -405,10 +411,7 @@ function aggregateActivityText(activity: RunActivitySnapshot): string {
 	const completed = finiteCount(activity.completedCount);
 	const failed = finiteCount(activity.failedCount);
 	if (completed === 0 && failed === 0) return "";
-	const parts: string[] = [];
-	if (completed > 0) parts.push(`${completed} done`);
-	if (failed > 0) parts.push(`${failed} failed`);
-	return `tools ${parts.join(" · ")}`;
+	return `tools ${completed} done · ${failed} failed`;
 }
 
 function activitySidebarGroups(
