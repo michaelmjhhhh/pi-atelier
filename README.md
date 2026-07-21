@@ -2,27 +2,15 @@
 
 An elegant, information-rich status and menu bar for [Pi](https://pi.dev).
 
-Pi Atelier replaces Pi's default footer with a responsive editorial-luxe bar while preserving the operational metrics that matter during long coding sessions.
+Pi Atelier replaces Pi's default footer with a calm, responsive Status Rail while preserving the operational metrics that matter during long coding sessions.
 
-![Pi Atelier preview](assets/preview.png)
+Wide terminals use two stable zones: agent state and workspace identity stay left, while readable telemetry is right-aligned. The footer uses the active Pi theme accent for agent state, neutral text for telemetry, and warning/error colors only when attention is required.
 
 ## Preview
 
 ```text
-◆ ATELIER  ● PONDERING...  gpt-5.6-sol · low  main ✦    ↑324k ↓15k  R5.9M CH98.8%  $5.041 (sub)  ◔27.0%/372k (auto)  ⌥A MENU
+● PONDERING... · gpt-5.6-sol · low · main*        in 324k  out 15k  cache 99%  $5.041 (sub)  ctx 27.0% (auto)  ⌥A
 ```
-
-Wide terminals use a dual-zone instrument rail: workspace identity stays left while operational telemetry is right-aligned.
-
-### Midnight Amethyst palette
-
-- **Purple `#B18CFF`:** Atelier and output tokens
-- **Blue `#6EA8FE`:** Ready, input tokens, healthy context
-- **Ice blue `#7DD3FC`:** cache telemetry
-- **Orange `#FF9F43`:** active working status, cost, Git dirty, context warning
-- **Red `#FF5D73`:** errors and dangerous context only
-
-No green or yellow is used by the normal footer palette. With `NO_COLOR` enabled, Pi Atelier falls back to neutral Pi theme colors rather than green/yellow semantic colors.
 
 ## Features
 
@@ -68,23 +56,17 @@ pi -e .
 
 ## Footer anatomy
 
-```text
-◆ ATELIER  ● READY │ USAGE + COST │ CONTEXT │ MODEL · THINKING │ GIT │ MENU
-```
-
-- `↑` cumulative input tokens
-- `↓` cumulative output tokens
-- `R` cumulative cache-read tokens
-- `W` cumulative cache-write tokens when nonzero
-- `CH` cache-hit percentage for the latest assistant response
+- `in` cumulative input tokens
+- `out` cumulative output tokens
+- `cache` latest cache-hit percentage in the editorial preset
+- `read`, `write`, and `hit` detailed cache telemetry in the classic preset
 - `$` cumulative estimated cost
 - `(sub)` OAuth subscription-backed access
+- `ctx` context utilization
 - `(auto)` automatic context compaction
-- `✦` tracked working-tree changes
+- `*` tracked working-tree changes
 
-`READY` remains fixed when idle. During each work cycle, the working label is selected once from a playful built-in phrase set—such as `KNEADING`, `MOONWALKING`, or `PONDERING`—and remains stable until the cycle ends. In Gallery and Balanced layouts, the active bullet is orange and remains upright, while the stable working phrase and its animated dots are orange and italic; the ellipsis shrinks from `...` to `..` to `.` every 400 ms. Narrower layouts retain the compact static activity bullet.
-
-At 56 columns or wider, required metrics and context remain visible. Below 56 columns, Pi Atelier prioritizes the compact metrics cluster and truncates safely rather than wrapping.
+`READY` remains fixed when idle. During each work cycle, the working label is selected once from a playful built-in phrase set—such as `KNEADING`, `MOONWALKING`, or `PONDERING`—and remains stable until the cycle ends. When the full activity label fits, its ellipsis shrinks from `...` to `..` to `.` every 400 ms. Narrower terminals use the compact, static `WORKING` label.
 
 ## Menu
 
@@ -154,19 +136,13 @@ Unknown or invalid values are ignored with one warning. The required `metrics` a
 
 ## Presets
 
-- **editorial** — full Atelier identity and balanced workspace information
+- **editorial** — default Status Rail with activity, workspace identity, cache-hit summary, and telemetry
 - **minimal** — compact activity, metrics, context, model, and menu
-- **classic** — restrained metrics, context, model, git, and extension status layout
+- **classic** — detailed cache telemetry, context, model, Git, and extension statuses
 
 ## Responsive behavior
 
-- **Gallery (132+):** complete left-aligned workspace zone and right-aligned telemetry zone
-- **Balanced (96–131):** compact brand, model, Git, telemetry, context, and shortcut groups
-- **Focus (72–95):** activity, bounded model identity, core telemetry, context, and shortcut when space permits
-- **Telemetry (56–71):** complete compact operational metrics and context without decorative workspace data
-- **Safe (<56):** metrics-first ANSI-aware truncation with no wrapping
-
-Color remains semantic at every width: input and healthy context are blue, output is purple, cache is ice blue, active work, cost, and warnings are orange, and only dangerous context or errors use red.
+The Status Rail removes optional information by priority as the terminal narrows instead of switching to fixed layouts. Brand and extension statuses are removed first, followed by Git and thinking level, cost, model, input and output totals, cache, and finally the menu shortcut. Activity and context are retained longest, and the result is truncated safely rather than wrapping when space is exceptionally tight.
 
 ## Privacy and security
 
