@@ -23,6 +23,7 @@ import type { AtelierState } from "../src/types.js";
 export default function atelierExtension(pi: ExtensionAPI): void {
 	let runtime: AtelierRuntime | undefined;
 	let currentContext: ExtensionContext | undefined;
+	let currentSessionManager: ExtensionContext["sessionManager"] | undefined;
 	let requestRender: () => void = () => undefined;
 	let sidebar: SidebarController | undefined;
 	let runActivity: RunActivityTracker | undefined;
@@ -75,8 +76,14 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 				runActivity: RunActivityTracker | undefined;
 		  }
 		| undefined {
-		if (ctx === undefined || ctx !== currentContext) return undefined;
-		return { ctx, runtime, sidebar, runActivity };
+		if (ctx === undefined || currentContext === undefined || currentSessionManager === undefined)
+			return undefined;
+		try {
+			if (ctx.sessionManager !== currentSessionManager) return undefined;
+		} catch {
+			return undefined;
+		}
+		return { ctx: currentContext, runtime, sidebar, runActivity };
 	}
 
 	async function openMenu(ctx: ExtensionContext): Promise<void> {
@@ -245,6 +252,7 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 			sidebar = localSidebar;
 			runActivity = localRunActivity;
 			currentContext = initializationContext;
+			currentSessionManager = initializationContext.sessionManager;
 			extensionStatuses = [];
 			previousSidebar?.dispose();
 			previousRuntime?.dispose();
@@ -284,6 +292,7 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 			runActivity = undefined;
 			previousRunActivity?.reset();
 			currentContext = undefined;
+			currentSessionManager = undefined;
 			updateExtensionStatuses([]);
 			initializationContext.ui.setFooter(undefined);
 			initializationContext.ui.notify(
@@ -344,6 +353,7 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 		previousRunActivity?.reset();
 		current?.ctx.ui.setFooter(undefined);
 		currentContext = undefined;
+		currentSessionManager = undefined;
 		requestRender = () => undefined;
 		extensionStatuses = [];
 	});

@@ -429,6 +429,21 @@ describe("extension registration", () => {
 		expect(h.overlays[1]?.requestRender.mock.calls.length).toBe(shutdownRenderCount);
 	});
 
+	it("accepts fresh Pi event contexts for the active session", async () => {
+		const h = harness();
+		await start(h);
+		await command(h, "sidebar on");
+		const eventCtx = { ...h.ctx };
+
+		await h.handlers.get("agent_start")?.({ type: "agent_start" }, eventCtx);
+		await h.handlers.get("turn_start")?.({ type: "turn_start", turnIndex: 0, timestamp: 1_000 }, eventCtx);
+
+		const text = h.overlays[0]?.component.render(44).join("\n") ?? "";
+		expect(text).toContain("Working");
+		expect(text).toContain("ACTIVITY");
+		expect(text).toContain("Turn 1");
+	});
+
 	it("ignores stale activity events after a replacement session becomes active", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(1_000);
