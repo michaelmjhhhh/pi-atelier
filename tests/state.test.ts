@@ -45,19 +45,42 @@ describe("AtelierRuntime", () => {
 		expect(JSON.stringify(runtime.getState())).not.toContain("content");
 	});
 
-	it("probes git without shell interpolation", async () => {
-		const { runtime, exec } = createRuntime({ stdout: " M src/a.ts\n", stderr: "", code: 0, killed: false });
-		await runtime.refreshGitDirty();
-		expect(exec).toHaveBeenCalledWith("git", ["status", "--porcelain", "--untracked-files=no"], {
+	it("derives branch and dirty state from one porcelain query", async () => {
+		const { runtime, exec } = createRuntime({
+			stdout: "## feature/sidebar\n M src/a.ts\n",
+			stderr: "",
+			code: 0,
+			killed: false,
+		});
+
+		await runtime.refreshGitState();
+
+		expect(exec).toHaveBeenCalledWith("git", ["status", "--short", "--branch", "--untracked-files=no"], {
 			timeout: 2_000,
 		});
-		expect(runtime.getState().dirty).toBe(true);
+		expect(runtime.getState()).toMatchObject({ branch: "feature/sidebar", dirty: true });
 	});
 
-	it("fails closed to a clean indicator when git cannot run", async () => {
+	it("handles detached HEAD and a clean tree", async () => {
+		const { runtime } = createRuntime({
+			stdout: "## HEAD (no branch)\n",
+			stderr: "",
+			code: 0,
+			killed: false,
+		});
+
+		await runtime.refreshGitState();
+
+		expect(runtime.getState()).toMatchObject({ branch: "detached", dirty: false });
+	});
+
+	it("clears Git metadata when the directory is not a repository", async () => {
 		const { runtime, exec } = createRuntime();
 		exec.mockRejectedValue(new Error("not a repository"));
-		await expect(runtime.refreshGitDirty()).resolves.toBeUndefined();
+
+		await expect(runtime.refreshGitState()).resolves.toBeUndefined();
+
+		expect(runtime.getState().branch).toBeUndefined();
 		expect(runtime.getState().dirty).toBe(false);
 	});
 
