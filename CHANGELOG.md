@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Add a live `/atelier sidebar` overview for project, agent, context, session, usage, tools, and extension status information.
+- Convert `/atelier sidebar` into a session-scoped, non-capturing right-edge sidecar with command and menu on/off controls.
 
 ## 0.1.4
 
