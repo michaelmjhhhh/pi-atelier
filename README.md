@@ -14,7 +14,7 @@ Wide terminals use two stable zones: agent state and workspace identity stay lef
 
 ### Adaptive Midnight Spectrum
 
-Pi's built-in dark and light themes use contrast-tuned variants of the palette. Color is applied only to metric values and state anchors; labels and workspace metadata remain restrained. Custom themes use compatible theme tokens instead of guessed RGB colors, while warning and error states semantically override category colors.
+Pi's built-in dark and light themes use contrast-tuned variants of the palette. Color is applied only to metric values and state anchors; labels and workspace metadata remain restrained. Custom themes use compatible theme tokens instead of guessed RGB colors, while warning and error states semantically override category colors. With `NO_COLOR`, the footer emits no custom RGB and uses theme-native neutral and semantic roles.
 
 ## Features
 

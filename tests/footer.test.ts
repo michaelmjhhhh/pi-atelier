@@ -31,6 +31,7 @@ const lightRgb = {
 	purple: "\u001b[38;2;112;66;193m",
 	cyan: "\u001b[38;2;8;124;158m",
 	amber: "\u001b[38;2;180;83;9m",
+	red: "\u001b[38;2;198;40;69m",
 };
 
 function plainAt(width: number, config = DEFAULT_CONFIG, renderState = state): string {
@@ -200,6 +201,34 @@ describe("footer", () => {
 		expect(line).toContain(`${darkRgb.purple}⌥A\u001b[39m`);
 	});
 
+	it("colors every classic cache value cyan while keeping labels muted", () => {
+		const line = renderFooterLine(
+			{ ...state, metrics: { ...state.metrics, cacheWrite: 42_000 } },
+			actualClassicPresetConfig,
+			namedTheme("dark"),
+			400,
+		);
+		expect(line).toContain(`<muted>read</muted> ${darkRgb.cyan}5.9M\u001b[39m`);
+		expect(line).toContain(`<muted>write</muted> ${darkRgb.cyan}42k\u001b[39m`);
+		expect(line).toContain(`<muted>hit</muted> ${darkRgb.cyan}98.8%\u001b[39m`);
+	});
+
+	it("keeps unavailable classic cache values dim without cache RGB", () => {
+		const { cacheHitPercent: _cacheHitPercent, ...metricsWithoutHit } = state.metrics;
+		const line = renderFooterLine(
+			{
+				...state,
+				metrics: { ...metricsWithoutHit, usageAvailable: false },
+			},
+			actualClassicPresetConfig,
+			namedTheme("dark"),
+			400,
+		);
+		expect(line).toContain("<muted>read</muted> <dim>—</dim>");
+		expect(line).toContain("<muted>hit</muted> <dim>—</dim>");
+		expect(line).not.toMatch(/\u001b\[38;2;125;211;252m—/);
+	});
+
 	it("colors light-theme values with the exact adaptive palette", () => {
 		const line = renderFooterLine(state, DEFAULT_CONFIG, namedTheme("light"), 400);
 		expect(line).toContain(`${lightRgb.blue}324k\u001b[39m`);
@@ -222,6 +251,18 @@ describe("footer", () => {
 		expect(working).toContain(`${darkRgb.amber}● PONDERING...\u001b[39m`);
 	});
 
+	it("uses exact warning and error activity colors", () => {
+		const warning = renderFooterLine(
+			{ ...state, activity: "warning" },
+			DEFAULT_CONFIG,
+			namedTheme("dark"),
+			180,
+		);
+		const error = renderFooterLine({ ...state, activity: "error" }, DEFAULT_CONFIG, namedTheme("dark"), 180);
+		expect(warning).toContain(`${darkRgb.amber}● WARNING\u001b[39m`);
+		expect(error).toContain(`${darkRgb.red}● ERROR\u001b[39m`);
+	});
+
 	it("overrides context blue at warning and danger thresholds", () => {
 		const warning = renderFooterLine(
 			{ ...state, metrics: { ...state.metrics, contextPercent: 70 } },
@@ -237,6 +278,13 @@ describe("footer", () => {
 		);
 		expect(warning).toContain(`${darkRgb.amber}70.0%\u001b[39m`);
 		expect(danger).toContain(`${darkRgb.red}90.0%\u001b[39m`);
+		const lightDanger = renderFooterLine(
+			{ ...state, metrics: { ...state.metrics, contextPercent: 90 } },
+			DEFAULT_CONFIG,
+			namedTheme("light"),
+			180,
+		);
+		expect(lightDanger).toContain(`${lightRgb.red}90.0%\u001b[39m`);
 	});
 
 	it("keeps unavailable values dim instead of category-colored", () => {
