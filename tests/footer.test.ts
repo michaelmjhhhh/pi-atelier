@@ -1,7 +1,7 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { createFooterComponent, renderFooterLine, selectResponsiveMode } from "../src/footer.js";
-import { DEFAULT_CONFIG, type AtelierState } from "../src/types.js";
+import { type AtelierState, DEFAULT_CONFIG } from "../src/types.js";
 
 const plainTheme = {
 	fg: (_color: string, text: string) => text,
@@ -49,67 +49,61 @@ describe("footer", () => {
 		]);
 	});
 
-	it("uses the Midnight Amethyst palette without green or yellow theme roles", () => {
+	it("renders a quiet two-zone Status Rail at wide widths", () => {
+		const line = stripAnsi(renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 160));
+		expect(line).toContain("● READY · gpt-5.6-sol · medium · main*");
+		for (const text of ["in 324k", "out 15k", "cache 99%", "$5.041 (sub)", "ctx 27.0%", "⌥A"]) {
+			expect(line).toContain(text);
+		}
+		expect(line).not.toMatch(/ATELIER|R5\.9M|CH98\.8|◔|✦|MENU/);
+		expect(visibleWidth(line)).toBe(160);
+	});
+
+	it("right-aligns readable telemetry", () => {
+		const line = stripAnsi(renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 180));
+		expect(line.endsWith("⌥A")).toBe(true);
+		expect(line.indexOf("● READY")).toBe(0);
+		expect(line.indexOf("in 324k")).toBeGreaterThan(line.indexOf("main*"));
+	});
+
+	it("styles labels as muted and values as primary", () => {
 		const fg = vi.fn((_color: string, text: string) => text);
-		const line = renderFooterLine(
+		renderFooterLine(state, DEFAULT_CONFIG, { fg, bold: (text) => text, italic: (text) => text }, 180);
+		expect(fg).toHaveBeenCalledWith("muted", "in");
+		expect(fg).toHaveBeenCalledWith("text", "324k");
+		expect(fg).toHaveBeenCalledWith("muted", "cache");
+		expect(fg).toHaveBeenCalledWith("text", "99%");
+	});
+
+	it("uses warning and error only for actionable states", () => {
+		for (const [percent, color] of [
+			[70, "warning"],
+			[90, "error"],
+		] as const) {
+			const fg = vi.fn((_color: string, text: string) => text);
+			renderFooterLine(
+				{ ...state, metrics: { ...state.metrics, contextPercent: percent } },
+				DEFAULT_CONFIG,
+				{ fg, bold: (text) => text, italic: (text) => text },
+				160,
+			);
+			expect(fg).toHaveBeenCalledWith(color, `${percent.toFixed(1)}%`);
+		}
+	});
+
+	it("uses the same semantic theme hierarchy when color is disabled", () => {
+		const fg = vi.fn((_color: string, text: string) => text);
+		const disabled = renderFooterLine(
 			state,
 			DEFAULT_CONFIG,
 			{ fg, bold: (text) => text, italic: (text) => text },
 			180,
+			false,
 		);
-		expect(line).toContain("\u001b[38;2;110;168;254m↑324k\u001b[39m");
-		expect(line).toContain("\u001b[38;2;177;140;255m↓15k\u001b[39m");
-		expect(line).toContain("\u001b[38;2;125;211;252mR5.9M\u001b[39m");
-		expect(line).toContain("\u001b[38;2;255;159;67m$5.041\u001b[39m");
-		expect(line).toContain("\u001b[38;2;110;168;254m◔27.0%/372k\u001b[39m");
-		expect(fg).not.toHaveBeenCalledWith("success", expect.anything());
-		expect(fg).not.toHaveBeenCalledWith("warning", expect.anything());
-	});
-
-	it("uses neutral theme colors when true color is disabled", () => {
-		const fg = vi.fn((_color: string, text: string) => text);
-		renderFooterLine(state, DEFAULT_CONFIG, { fg, bold: (text) => text, italic: (text) => text }, 180, false);
-		const colors = fg.mock.calls.map(([color]) => color);
-		expect(colors).not.toContain("success");
-		expect(colors).not.toContain("warning");
-		expect(colors).toEqual(expect.arrayContaining(["accent", "text", "muted"]));
-		expect(colors.every((color) => ["accent", "text", "muted", "borderMuted", "error"].includes(color))).toBe(
-			true,
+		expect(disabled).toBe(renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 180, true));
+		expect(fg.mock.calls.map(([color]) => color)).toEqual(
+			expect.arrayContaining(["accent", "text", "muted", "warning"]),
 		);
-	});
-	it.each([
-		[132, true, true, true, true],
-		[131, false, true, true, true],
-		[95, false, true, false, true],
-		[71, false, false, false, false],
-		[55, false, false, false, false],
-	] as const)("organizes width %d intentionally", (width, brand, model, git, menu) => {
-		const line = renderFooterLine(state, DEFAULT_CONFIG, plainTheme, width);
-		expect(line.includes("ATELIER")).toBe(brand);
-		expect(line.includes("gpt-5.6-sol")).toBe(model);
-		expect(line.includes("main")).toBe(git);
-		expect(line.includes("⌥A")).toBe(menu);
-		expect(line).not.toMatch(/^\s*[│·]/);
-		expect(line).not.toMatch(/[│·]\s*$/);
-		expect(line).not.toContain("│ │");
-	});
-
-	it("right-aligns telemetry in gallery mode", () => {
-		const line = renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 180);
-		expect(visibleWidth(line)).toBe(180);
-		expect(stripAnsi(line).endsWith("⌥A MENU")).toBe(true);
-	});
-
-	it("renders the full editorial layout at wide widths", () => {
-		const line = renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 160);
-		expect(line).toContain("◆ ATELIER");
-		const plainLine = stripAnsi(line);
-		for (const group of ["↑324k ↓15k", "R5.9M CH98.8%", "$5.041 (sub)", "◔27.0%/372k (auto)"]) {
-			expect(plainLine).toContain(group);
-		}
-		expect(plainLine).toContain("gpt-5.6-sol · medium");
-		expect(plainLine).toContain("main ✦");
-		expect(visibleWidth(line)).toBeLessThanOrEqual(160);
 	});
 
 	it("keeps ANSI-heavy themed output within every responsive width", () => {
@@ -131,33 +125,51 @@ describe("footer", () => {
 		);
 	});
 
-	it("preserves metrics and context at the supported narrow boundary", () => {
+	it("keeps required activity and context at the supported narrow boundary", () => {
 		const line = renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 56);
-		expect(line).toContain("↑324k");
-		expect(line).toContain("CH99%");
-		expect(line).toContain("27.0%/372k");
+		expect(line).toContain("● READY");
+		expect(line).toContain("ctx 27.0%");
 		expect(line).not.toContain("ATELIER");
 	});
 
-	it("honors ornament, density, and configured telemetry order", () => {
-		const noOrnament = renderFooterLine(state, { ...DEFAULT_CONFIG, ornament: "none" }, plainTheme, 160);
-		expect(noOrnament).not.toContain("ATELIER");
-		const compact = renderFooterLine(state, { ...DEFAULT_CONFIG, density: "compact" }, plainTheme, 160);
-		expect(compact).toContain("CH99%");
+	it("honors ornament, preset, density, and configured item order", () => {
+		const defaultLine = renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 180);
+		expect(defaultLine).not.toContain("ATELIER");
+		const ornament = renderFooterLine(
+			state,
+			{ ...DEFAULT_CONFIG, preset: "classic", ornament: "restrained" },
+			plainTheme,
+			180,
+		);
+		expect(ornament).toContain("ATELIER");
+		expect(ornament).toContain("read 5.9M");
+		expect(ornament).toContain("hit 98.8%");
+
+		const compact = renderFooterLine(
+			{ ...state, activity: "working", workingLabel: "PONDERING" },
+			{ ...DEFAULT_CONFIG, density: "compact" },
+			plainTheme,
+			160,
+		);
+		expect(compact).toContain("● WORKING");
+		expect(compact).not.toContain("PONDERING");
+
 		const reordered = renderFooterLine(
 			state,
-			{ ...DEFAULT_CONFIG, ornament: "none", segments: ["context", "metrics"] },
+			{ ...DEFAULT_CONFIG, segments: ["context", "metrics"] },
 			plainTheme,
 			160,
 		);
-		expect(reordered.indexOf("◔27.0%")).toBeLessThan(reordered.indexOf("↑324k"));
+		expect(reordered.indexOf("ctx 27.0%")).toBeLessThan(reordered.indexOf("in 324k"));
 		const contextOnly = renderFooterLine(
 			state,
-			{ ...DEFAULT_CONFIG, ornament: "none", segments: ["context"] },
+			{ ...DEFAULT_CONFIG, segments: ["context"] },
 			plainTheme,
 			160,
 		);
-		expect(contextOnly).not.toContain("↑324k");
+		expect(contextOnly).toContain("ctx 27.0%");
+		expect(contextOnly).not.toContain("in 324k");
+		expect(contextOnly).not.toContain("● READY");
 	});
 
 	it("renders unavailable and non-finite telemetry safely", () => {
@@ -173,7 +185,7 @@ describe("footer", () => {
 			},
 		};
 		const unavailableLine = renderFooterLine(unavailableState, DEFAULT_CONFIG, plainTheme, 160);
-		for (const marker of ["↑—", "↓—", "R—", "CH—", "$—", "◔—/372k", "(—)"]) {
+		for (const marker of ["in —", "out —", "cache —", "$—", "ctx —"]) {
 			expect(unavailableLine).toContain(marker);
 		}
 		const invalidLine = renderFooterLine(
@@ -193,83 +205,44 @@ describe("footer", () => {
 		expect(invalidLine).not.toMatch(/NaN|Infinity/);
 	});
 
-	it("uses orange and red context colors at exact thresholds", () => {
-		for (const [percent, rgb] of [
-			[70, "255;159;67"],
-			[90, "255;93;115"],
-		] as const) {
-			const line = renderFooterLine(
-				{ ...state, metrics: { ...state.metrics, contextPercent: percent } },
-				DEFAULT_CONFIG,
-				plainTheme,
-				160,
-			);
-			expect(line).toContain(`\u001b[38;2;${rgb}m◔${percent.toFixed(1)}%/372k\u001b[39m`);
+	it("sanitizes optional text and drops oversized statuses before state or telemetry", () => {
+		const sanitized = renderFooterLine(
+			{
+				...state,
+				modelId: "gpt\n5",
+				thinkingLevel: "high\tnow",
+				branch: "feature\nrail",
+				extensionStatuses: ["workflow:\nrunning\t now"],
+			},
+			DEFAULT_CONFIG,
+			plainTheme,
+			180,
+		);
+		for (const text of ["gpt 5", "high now", "feature rail*", "workflow: running now"]) {
+			expect(sanitized).toContain(text);
 		}
-	});
+		expect(sanitized).not.toMatch(/[\n\t]/);
 
-	it("omits oversized optional statuses without downgrading Gallery", () => {
-		const line = renderFooterLine(
+		const oversized = renderFooterLine(
 			{ ...state, extensionStatuses: ["x".repeat(200)] },
 			DEFAULT_CONFIG,
 			plainTheme,
 			160,
 		);
-		expect(line).toContain("ATELIER");
-		expect(stripAnsi(line).endsWith("⌥A MENU")).toBe(true);
-		expect(line).not.toContain("xxxxxxxxxx");
+		expect(oversized).toContain("● READY");
+		expect(oversized).toContain("ctx 27.0%");
+		expect(oversized).not.toContain("xxxxxxxxxx");
 	});
 
-	it("sanitizes extension status and honors optional visibility", () => {
+	it("generates each item at most once for duplicate configured categories", () => {
 		const line = renderFooterLine(
-			{ ...state, extensionStatuses: ["workflow:\nrunning\t now"] },
-			{ ...DEFAULT_CONFIG, segments: ["metrics", "context", "statuses"] },
+			state,
+			{ ...DEFAULT_CONFIG, segments: ["activity", "metrics", "metrics", "context", "context"] },
 			plainTheme,
-			160,
+			180,
 		);
-		expect(line).toContain("workflow: running now");
-		expect(line).not.toContain("\n");
-	});
-
-	it.each([
-		["menu", "metrics", "context"],
-		["context", "menu", "metrics"],
-	] as const)("preserves required telemetry at 56 columns for order %j", (...order) => {
-		const line = renderFooterLine(state, { ...DEFAULT_CONFIG, segments: [...order] }, plainTheme, 56);
-		for (const marker of ["↑", "↓", "R", "CH", "$", "/", "(auto)"]) expect(line).toContain(marker);
-	});
-
-	it("renders malformed context capacity as unavailable", () => {
-		const line = renderFooterLine(
-			{ ...state, metrics: { ...state.metrics, contextWindow: Number.POSITIVE_INFINITY } },
-			DEFAULT_CONFIG,
-			plainTheme,
-			160,
-		);
-		expect(line).toContain("◔27.0%/—");
-		expect(line).not.toContain("Infinity");
-	});
-
-	it("preserves every required category for worst-case values at 56 columns", () => {
-		const extreme = {
-			...state,
-			metrics: {
-				...state.metrics,
-				input: 999_000_000,
-				output: 999_000_000,
-				cacheRead: 999_000_000,
-				cacheWrite: 999_000_000,
-				cacheHitPercent: 100,
-				cost: 999_000_000,
-				contextPercent: 100,
-				contextWindow: 999_000_000,
-			},
-		};
-		const line = renderFooterLine(extreme, DEFAULT_CONFIG, plainTheme, 56);
-		for (const marker of ["↑", "↓", "R", "W", "CH", "$", "(sub)", "/", "(auto)"]) {
-			expect(line).toContain(marker);
-		}
-		expect(visibleWidth(line)).toBeLessThanOrEqual(56);
+		expect(line.match(/in 324k/g)).toHaveLength(1);
+		expect(line.match(/ctx 27\.0%/g)).toHaveLength(1);
 	});
 
 	it("animates shrinking dots every 400 ms while retaining the selected phrase", () => {
@@ -319,7 +292,7 @@ describe("footer", () => {
 		});
 
 		try {
-			expect(component.render(95)[0]).not.toContain("PONDERING");
+			expect(component.render(20)[0]).not.toContain("PONDERING");
 			expect(vi.getTimerCount()).toBe(0);
 			config = { ...DEFAULT_CONFIG, segments: DEFAULT_CONFIG.segments.filter((id) => id !== "activity") };
 			expect(component.render(100)[0]).not.toContain("PONDERING");
@@ -368,17 +341,16 @@ describe("footer", () => {
 		}
 	});
 
-	it("renders the full working phrase and dots in orange italics without italicizing the bullet", () => {
-		const theme = {
-			fg: (_color: string, text: string) => text,
-			bold: (text: string) => text,
-			italic: (text: string) => `<i>${text}</i>`,
-		};
+	it("renders the full working phrase and dots in bold theme accent", () => {
+		const fg = vi.fn((_color: string, text: string) => text);
+		const bold = vi.fn((text: string) => `<b>${text}</b>`);
+		const italic = vi.fn((text: string) => `<i>${text}</i>`);
 		const working = { ...state, activity: "working" as const, workingLabel: "PONDERING" };
-		const line = renderFooterLine(working, DEFAULT_CONFIG, theme, 160, true, "..");
+		const line = renderFooterLine(working, DEFAULT_CONFIG, { fg, bold, italic }, 160, true, "..");
 
-		expect(line).toContain("\u001b[38;2;255;159;67m● <i>PONDERING..</i>\u001b[39m");
-		expect(line).not.toContain("<i>●");
+		expect(line).toContain("<b>● PONDERING..</b>");
+		expect(fg).toHaveBeenCalledWith("accent", "<b>● PONDERING..</b>");
+		expect(italic).not.toHaveBeenCalled();
 	});
 
 	it.each([
