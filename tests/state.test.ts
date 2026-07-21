@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AtelierRuntime } from "../src/state.js";
+import { AtelierRuntime, parseGitStatus } from "../src/state.js";
 import { DEFAULT_CONFIG } from "../src/types.js";
 
 const assistant = {
@@ -32,6 +32,12 @@ function createRuntime(
 	});
 	return { runtime, exec, requestRender };
 }
+
+describe("parseGitStatus", () => {
+	it("normalizes an unborn branch header", () => {
+		expect(parseGitStatus("## No commits yet on main\n")).toEqual({ branch: "main", dirty: false });
+	});
+});
 
 describe("AtelierRuntime", () => {
 	it("derives metrics without retaining message content", () => {

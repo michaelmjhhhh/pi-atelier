@@ -296,16 +296,33 @@ export interface SidebarComponentOptions {
 	onClose(): void;
 }
 
+function renderSidebarError(error: unknown, width: number): string[] {
+	let detail = "Unknown error";
+	try {
+		detail = sanitize(error instanceof Error ? error.message : String(error)) || detail;
+	} catch {
+		// Keep the fallback render path safe even for unusual thrown values.
+	}
+	return frameRows(["PI ATELIER", "Sidebar unavailable", detail, "esc/q close"], width, {
+		paint: (_role, text) => text,
+	});
+}
+
 export function createSidebarComponent(options: SidebarComponentOptions): Component {
 	return {
-		render: (width) =>
-			renderSidebarLines(
-				options.getSnapshot(),
-				options.getConfig(),
-				options.theme,
-				width,
-				options.colorEnabled ?? true,
-			),
+		render(width) {
+			try {
+				return renderSidebarLines(
+					options.getSnapshot(),
+					options.getConfig(),
+					options.theme,
+					width,
+					options.colorEnabled ?? true,
+				);
+			} catch (error) {
+				return renderSidebarError(error, width);
+			}
+		},
 		handleInput(data) {
 			if (matchesKey(data, Key.escape) || matchesKey(data, "q") || matchesKey(data, Key.ctrl("c")))
 				options.onClose();
@@ -319,6 +336,7 @@ export interface OpenSidebarOptions {
 	getSnapshot(): SidebarSnapshot;
 	getConfig(): AtelierConfig;
 	onRequestRender(callback: () => void): void;
+	onCloseReady?(callback: () => void): void;
 	onClosed(): void;
 	colorEnabled?: boolean;
 }
@@ -332,6 +350,13 @@ export async function openAtelierSidebar(options: OpenSidebarOptions): Promise<v
 	try {
 		await options.ctx.ui.custom<void>(
 			(tui, theme, _keybindings, done) => {
+				let closed = false;
+				const close = () => {
+					if (closed) return;
+					closed = true;
+					done(undefined);
+				};
+				options.onCloseReady?.(close);
 				getTerminalWidth = () => {
 					const terminal = tui.terminal as typeof tui.terminal & { width?: number };
 					return terminal.width ?? terminal.columns;
@@ -342,7 +367,7 @@ export async function openAtelierSidebar(options: OpenSidebarOptions): Promise<v
 					getConfig: options.getConfig,
 					theme: theme as unknown as ThemeLike,
 					...(options.colorEnabled === undefined ? {} : { colorEnabled: options.colorEnabled }),
-					onClose: () => done(undefined),
+					onClose: close,
 				});
 			},
 			{

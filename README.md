@@ -164,7 +164,7 @@ Pi Atelier:
 - Performs no telemetry, analytics, or network calls
 - Does not store prompts, responses, credentials, or session content
 - Reads structured usage metadata already available inside Pi
-- Executes local `git status --porcelain --untracked-files=no` after relevant events to show tracked dirty state
+- Executes local `git status --short --branch --untracked-files=no` after relevant events to show tracked dirty state
 - Reads project configuration only when Pi reports the project as trusted
 
 ## Footer conflicts

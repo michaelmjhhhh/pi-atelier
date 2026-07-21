@@ -19,6 +19,7 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 	let currentContext: ExtensionContext | undefined;
 	let requestRender: () => void = () => undefined;
 	let sidebarRequestRender: () => void = () => undefined;
+	let closeSidebar: () => void = () => undefined;
 	let sidebarOpen = false;
 	let extensionStatuses: readonly string[] = [];
 	let enabled = true;
@@ -126,9 +127,14 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 						onRequestRender: (request) => {
 							sidebarRequestRender = request;
 						},
+						onCloseReady: (close) => {
+							closeSidebar = close;
+						},
 						onClosed: () => {
 							sidebarRequestRender = () => undefined;
+							closeSidebar = () => undefined;
 						},
+						colorEnabled: !("NO_COLOR" in process.env),
 					});
 				} finally {
 					sidebarOpen = false;
@@ -227,6 +233,8 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 		currentContext?.ui.setFooter(undefined);
 		currentContext = undefined;
 		requestRender = () => undefined;
+		closeSidebar();
+		closeSidebar = () => undefined;
 		sidebarOpen = false;
 		sidebarRequestRender = () => undefined;
 		extensionStatuses = [];

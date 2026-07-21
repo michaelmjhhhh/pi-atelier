@@ -75,6 +75,34 @@ describe("extension registration", () => {
 		);
 	});
 
+	it("disables custom sidebar colors when NO_COLOR is present", async () => {
+		const h = harness();
+		await h.handlers.get("session_start")?.({ reason: "startup" }, h.ctx);
+		let component: { render(width: number): string[] } | undefined;
+		h.ctx.ui.custom.mockImplementationOnce(async (factory: (...args: any[]) => any) => {
+			component = factory(
+				{ terminal: { width: 120 }, requestRender: vi.fn() },
+				{
+					name: "dark",
+					fg: (_color: string, text: string) => text,
+					bold: (text: string) => text,
+				},
+				{},
+				vi.fn(),
+			);
+		});
+
+		vi.stubEnv("NO_COLOR", "1");
+		try {
+			await h.commands.get("atelier").handler("sidebar", h.ctx);
+		} finally {
+			vi.unstubAllEnvs();
+		}
+
+		expect(component).toBeDefined();
+		expect(component?.render(44).join("\n")).not.toContain("\u001b[38;2;");
+	});
+
 	it("warns instead of opening the sidebar outside TUI mode", async () => {
 		const h = harness("print");
 		await h.commands.get("atelier").handler("sidebar", h.ctx);
@@ -164,15 +192,13 @@ describe("extension registration", () => {
 		await opening;
 	});
 
-	it("clears the open sidebar render callback during shutdown", async () => {
+	it("closes the open sidebar and clears its render callback during shutdown", async () => {
 		const h = harness();
 		await h.handlers.get("session_start")?.({ reason: "startup" }, h.ctx);
-		let close: (() => void) | undefined;
 		const sidebarRender = vi.fn();
 		h.ctx.ui.custom.mockImplementationOnce(
 			(factory: (...args: any[]) => unknown) =>
 				new Promise<void>((resolve) => {
-					close = resolve;
 					factory(
 						{ terminal: { width: 120 }, requestRender: sidebarRender },
 						{ fg: (_color: string, text: string) => text, bold: (text: string) => text },
@@ -184,11 +210,10 @@ describe("extension registration", () => {
 		const opening = h.commands.get("atelier").handler("sidebar", h.ctx);
 		await vi.waitFor(() => expect(h.ctx.ui.custom).toHaveBeenCalledTimes(1));
 		await h.handlers.get("session_shutdown")?.({ reason: "quit" }, h.ctx);
+		await opening;
 		await h.handlers.get("turn_end")?.({}, h.ctx);
 		expect(sidebarRender).not.toHaveBeenCalled();
 		expect(h.setFooter).toHaveBeenLastCalledWith(undefined);
-		close?.();
-		await opening;
 	});
 
 	it("opens the sidebar while the footer is disabled", async () => {

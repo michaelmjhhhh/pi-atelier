@@ -153,6 +153,39 @@ describe("sidebar component and overlay", () => {
 		expect(onClose).toHaveBeenCalledOnce();
 	});
 
+	it.each(["snapshot", "config", "render"] as const)(
+		"renders a closable, bounded error state after a %s failure",
+		(source) => {
+			const onClose = vi.fn();
+			const component = createSidebarComponent({
+				getSnapshot: () => {
+					if (source === "snapshot") throw new Error("snapshot failed");
+					return snapshot();
+				},
+				getConfig: () => {
+					if (source === "config") throw new Error("config failed");
+					return DEFAULT_CONFIG;
+				},
+				theme:
+					source === "render"
+						? {
+								...theme,
+								bold: () => {
+									throw new Error("render failed");
+								},
+							}
+						: theme,
+				onClose,
+			});
+			const lines = component.render(24);
+			expect(lines.join("\n")).toContain("Sidebar unavailable");
+			expect(lines.join("\n")).toContain("esc/q close");
+			expect(lines.every((line) => visibleWidth(line) <= 24)).toBe(true);
+			component.handleInput?.("q");
+			expect(onClose).toHaveBeenCalledOnce();
+		},
+	);
+
 	it("opens with a live responsive overlay and clears its render callback", async () => {
 		let factory:
 			| ((tui: never, theme: never, keys: never, done: (value: undefined) => void) => unknown)

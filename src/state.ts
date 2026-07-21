@@ -7,7 +7,8 @@ export function parseGitStatus(output: string): { branch?: string; dirty: boolea
 	const lines = output.split(/\r?\n/).filter(Boolean);
 	const header = lines[0]?.startsWith("## ") ? lines[0].slice(3).trim() : "";
 	const rawBranch = header.split("...")[0]?.trim() ?? "";
-	const branch = rawBranch === "HEAD (no branch)" ? "detached" : rawBranch;
+	const unbornBranch = rawBranch.match(/^No commits yet on (.+)$/)?.[1]?.trim();
+	const branch = rawBranch === "HEAD (no branch)" ? "detached" : (unbornBranch ?? rawBranch);
 	return {
 		...(branch ? { branch } : {}),
 		dirty: lines.some((line) => !line.startsWith("## ")),
