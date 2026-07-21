@@ -11,27 +11,22 @@ const plainTheme = {
 };
 const stripAnsi = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "");
 
-const namedTheme = (name: "dark" | "light") => ({
+const namedTheme = (name: string) => ({
 	name,
-	fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
+	fg: (color: string, text: string) => `<${name}:${color}>${text}</${name}:${color}>`,
 	bold: (text: string) => text,
 	italic: (text: string) => text,
 });
 
 const darkRgb = {
+	text: "\u001b[38;2;212;212;212m",
+	muted: "\u001b[38;2;128;128;128m",
+	dim: "\u001b[38;2;102;102;102m",
 	blue: "\u001b[38;2;110;168;254m",
 	purple: "\u001b[38;2;177;140;255m",
 	cyan: "\u001b[38;2;125;211;252m",
 	amber: "\u001b[38;2;255;159;67m",
 	red: "\u001b[38;2;255;93;115m",
-};
-
-const lightRgb = {
-	blue: "\u001b[38;2;36;95;191m",
-	purple: "\u001b[38;2;112;66;193m",
-	cyan: "\u001b[38;2;8;124;158m",
-	amber: "\u001b[38;2;180;83;9m",
-	red: "\u001b[38;2;198;40;69m",
 };
 
 function plainAt(width: number, config = DEFAULT_CONFIG, renderState = state): string {
@@ -182,22 +177,26 @@ describe("footer", () => {
 		expect(classic).not.toContain("⌥A");
 	});
 
-	it("styles labels as muted and uses custom-theme category tokens for values", () => {
+	it("uses fixed dark colors for named custom themes", () => {
 		const fg = vi.fn((_color: string, text: string) => text);
-		renderFooterLine(state, DEFAULT_CONFIG, { fg, bold: (text) => text, italic: (text) => text }, 180);
-		expect(fg).toHaveBeenCalledWith("muted", "in");
-		expect(fg).toHaveBeenCalledWith("thinkingLow", "324k");
-		expect(fg).toHaveBeenCalledWith("muted", "cache");
-		expect(fg).toHaveBeenCalledWith("syntaxType", "99%");
+		const line = renderFooterLine(
+			state,
+			DEFAULT_CONFIG,
+			{ name: "nord", fg, bold: (text) => text, italic: (text) => text },
+			180,
+		);
+		expect(line).toContain(`${darkRgb.muted}in\u001b[39m ${darkRgb.blue}324k\u001b[39m`);
+		expect(line).toContain(`${darkRgb.muted}cache\u001b[39m ${darkRgb.cyan}99%\u001b[39m`);
+		expect(fg).not.toHaveBeenCalled();
 	});
 
 	it("colors dark-theme values while keeping labels muted", () => {
 		const line = renderFooterLine(state, DEFAULT_CONFIG, namedTheme("dark"), 400);
-		expect(line).toContain(`<muted>in</muted> ${darkRgb.blue}324k\u001b[39m`);
-		expect(line).toContain(`<muted>out</muted> ${darkRgb.purple}15k\u001b[39m`);
-		expect(line).toContain(`<muted>cache</muted> ${darkRgb.cyan}99%\u001b[39m`);
-		expect(line).toContain(`${darkRgb.amber}$5.041\u001b[39m<muted> (sub)</muted>`);
-		expect(line).toContain(`<muted>ctx</muted> ${darkRgb.blue}27.0%\u001b[39m`);
+		expect(line).toContain(`${darkRgb.muted}in\u001b[39m ${darkRgb.blue}324k\u001b[39m`);
+		expect(line).toContain(`${darkRgb.muted}out\u001b[39m ${darkRgb.purple}15k\u001b[39m`);
+		expect(line).toContain(`${darkRgb.muted}cache\u001b[39m ${darkRgb.cyan}99%\u001b[39m`);
+		expect(line).toContain(`${darkRgb.amber}$5.041\u001b[39m${darkRgb.muted} (sub)\u001b[39m`);
+		expect(line).toContain(`${darkRgb.muted}ctx\u001b[39m ${darkRgb.blue}27.0%\u001b[39m`);
 		expect(line).toContain(`${darkRgb.purple}⌥A\u001b[39m`);
 	});
 
@@ -208,9 +207,9 @@ describe("footer", () => {
 			namedTheme("dark"),
 			400,
 		);
-		expect(line).toContain(`<muted>read</muted> ${darkRgb.cyan}5.9M\u001b[39m`);
-		expect(line).toContain(`<muted>write</muted> ${darkRgb.cyan}42k\u001b[39m`);
-		expect(line).toContain(`<muted>hit</muted> ${darkRgb.cyan}98.8%\u001b[39m`);
+		expect(line).toContain(`${darkRgb.muted}read\u001b[39m ${darkRgb.cyan}5.9M\u001b[39m`);
+		expect(line).toContain(`${darkRgb.muted}write\u001b[39m ${darkRgb.cyan}42k\u001b[39m`);
+		expect(line).toContain(`${darkRgb.muted}hit\u001b[39m ${darkRgb.cyan}98.8%\u001b[39m`);
 	});
 
 	it("keeps unavailable classic cache values dim without cache RGB", () => {
@@ -224,19 +223,21 @@ describe("footer", () => {
 			namedTheme("dark"),
 			400,
 		);
-		expect(line).toContain("<muted>read</muted> <dim>—</dim>");
-		expect(line).toContain("<muted>hit</muted> <dim>—</dim>");
+		expect(line).toContain(`${darkRgb.muted}read\u001b[39m ${darkRgb.dim}—\u001b[39m`);
+		expect(line).toContain(`${darkRgb.muted}hit\u001b[39m ${darkRgb.dim}—\u001b[39m`);
 		expect(line).not.toMatch(/\u001b\[38;2;125;211;252m—/);
 	});
 
-	it("colors light-theme values with the exact adaptive palette", () => {
-		const line = renderFooterLine(state, DEFAULT_CONFIG, namedTheme("light"), 400);
-		expect(line).toContain(`${lightRgb.blue}324k\u001b[39m`);
-		expect(line).toContain(`${lightRgb.purple}15k\u001b[39m`);
-		expect(line).toContain(`${lightRgb.cyan}99%\u001b[39m`);
-		expect(line).toContain(`${lightRgb.amber}$5.041\u001b[39m`);
-		expect(line).toContain(`${lightRgb.blue}27.0%\u001b[39m`);
-		expect(line).toContain(`${lightRgb.purple}⌥A\u001b[39m`);
+	it("renders the selected light theme with the same fixed dark palette", () => {
+		const light = renderFooterLine(state, DEFAULT_CONFIG, namedTheme("light"), 400);
+		const dark = renderFooterLine(state, DEFAULT_CONFIG, namedTheme("dark"), 400);
+		expect(light).toBe(dark);
+		expect(light).toContain(`${darkRgb.blue}324k\u001b[39m`);
+		expect(light).toContain(`${darkRgb.purple}15k\u001b[39m`);
+		expect(light).toContain(`${darkRgb.cyan}99%\u001b[39m`);
+		expect(light).toContain(`${darkRgb.amber}$5.041\u001b[39m`);
+		expect(light).toContain(`${darkRgb.blue}27.0%\u001b[39m`);
+		expect(light).toContain(`${darkRgb.purple}⌥A\u001b[39m`);
 	});
 
 	it("uses state-specific activity colors", () => {
@@ -284,7 +285,7 @@ describe("footer", () => {
 			namedTheme("light"),
 			180,
 		);
-		expect(lightDanger).toContain(`${lightRgb.red}90.0%\u001b[39m`);
+		expect(lightDanger).toContain(`${darkRgb.red}90.0%\u001b[39m`);
 	});
 
 	it("keeps unavailable values dim instead of category-colored", () => {
@@ -302,9 +303,12 @@ describe("footer", () => {
 			namedTheme("dark"),
 			400,
 		);
-		expect(line).toContain("<dim>—</dim>");
-		expect(line).toContain("<dim>$—</dim>");
-		expect(line).not.toMatch(/\u001b\[38;2;[^m]+m\$?—/);
+		expect(line).toContain(`${darkRgb.dim}—\u001b[39m`);
+		expect(line).toContain(`${darkRgb.dim}$—\u001b[39m`);
+		for (const category of [darkRgb.blue, darkRgb.purple, darkRgb.cyan, darkRgb.amber, darkRgb.red]) {
+			expect(line).not.toContain(`${category}—`);
+			expect(line).not.toContain(`${category}$—`);
+		}
 	});
 
 	it("does not request warning or error roles for a clean ready state", () => {
@@ -336,16 +340,18 @@ describe("footer", () => {
 		}
 	});
 
-	it("uses the same semantic theme hierarchy when color is disabled", () => {
+	it("uses the same semantic hierarchy without custom RGB when color is disabled", () => {
 		const fg = vi.fn((_color: string, text: string) => text);
 		const disabled = renderFooterLine(
 			state,
 			DEFAULT_CONFIG,
-			{ fg, bold: (text) => text, italic: (text) => text },
+			{ name: "light", fg, bold: (text) => text, italic: (text) => text },
 			180,
 			false,
 		);
-		expect(disabled).toBe(renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 180, true));
+		const colored = renderFooterLine(state, DEFAULT_CONFIG, namedTheme("light"), 180, true);
+		expect(stripAnsi(disabled)).toBe(stripAnsi(colored));
+		expect(disabled).not.toContain("\u001b[38;2;");
 		expect(fg.mock.calls.map(([color]) => color)).toEqual(
 			expect.arrayContaining(["text", "muted", "warning"]),
 		);
@@ -364,25 +370,14 @@ describe("footer", () => {
 		}
 	});
 
-	it.each([
-		["dark", { accent: 81, text: 252, muted: 245, warning: 214, error: 196, dim: 240 }],
-		["light", { accent: 25, text: 236, muted: 244, warning: 130, error: 160, dim: 250 }],
-	] as const)("smokes the %s theme fixture across representative widths", (_name, colors) => {
-		const theme = {
-			fg: (color: string, text: string) =>
-				`\u001b[38;5;${colors[color as keyof typeof colors] ?? colors.text}m${text}\u001b[0m`,
-			bold: (text: string) => `\u001b[1m${text}\u001b[22m`,
-			italic: (text: string) => `\u001b[3m${text}\u001b[23m`,
-		};
+	it("renders identically across selected themes at representative widths", () => {
 		for (const width of [160, 100, 56, 20]) {
-			const line = renderFooterLine(state, DEFAULT_CONFIG, theme, width);
-			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-			expect(stripAnsi(line)).toContain(width >= 56 ? "ctx" : "● READY");
-		}
-
-		const wide = renderFooterLine(state, DEFAULT_CONFIG, theme, 160);
-		for (const role of ["text", "muted", "warning"] as const) {
-			expect(wide).toContain(`\u001b[38;5;${colors[role]}m`);
+			const dark = renderFooterLine(state, DEFAULT_CONFIG, namedTheme("dark"), width);
+			for (const selectedTheme of ["light", "nord", "solarized"]) {
+				expect(renderFooterLine(state, DEFAULT_CONFIG, namedTheme(selectedTheme), width)).toBe(dark);
+			}
+			expect(visibleWidth(dark)).toBeLessThanOrEqual(width);
+			expect(stripAnsi(dark)).toContain(width >= 56 ? "ctx" : "● READY");
 		}
 	});
 
@@ -631,15 +626,22 @@ describe("footer", () => {
 		}
 	});
 
-	it("renders the full working phrase and dots in the custom-theme working color", () => {
+	it("renders the full working phrase and dots in fixed amber for custom themes", () => {
 		const fg = vi.fn((_color: string, text: string) => text);
 		const bold = vi.fn((text: string) => `<b>${text}</b>`);
 		const italic = vi.fn((text: string) => `<i>${text}</i>`);
 		const working = { ...state, activity: "working" as const, workingLabel: "PONDERING" };
-		const line = renderFooterLine(working, DEFAULT_CONFIG, { fg, bold, italic }, 160, true, "..");
+		const line = renderFooterLine(
+			working,
+			DEFAULT_CONFIG,
+			{ name: "nord", fg, bold, italic },
+			160,
+			true,
+			"..",
+		);
 
-		expect(line).toContain("<b>● PONDERING..</b>");
-		expect(fg).toHaveBeenCalledWith("mdHeading", "<b>● PONDERING..</b>");
+		expect(line).toContain(`${darkRgb.amber}<b>● PONDERING..</b>\u001b[39m`);
+		expect(fg).not.toHaveBeenCalled();
 		expect(italic).not.toHaveBeenCalled();
 	});
 

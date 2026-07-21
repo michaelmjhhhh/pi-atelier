@@ -4,7 +4,7 @@ An elegant, information-rich status and menu bar for [Pi](https://pi.dev).
 
 Pi Atelier replaces Pi's default footer with a calm, responsive Status Rail while preserving the operational metrics that matter during long coding sessions.
 
-Wide terminals use two stable zones: agent state and workspace identity stay left, while readable telemetry is right-aligned. Values use an adaptive Midnight Spectrum—blue input/context, purple output/menu, cyan cache, amber cost/working, and red danger—while labels and workspace metadata stay quiet.
+Wide terminals use two stable zones: agent state and workspace identity stay left, while readable telemetry is right-aligned. The extension always uses its fixed dark Midnight Spectrum—blue input/context, purple output/menu, cyan cache, amber cost/working, and red danger—regardless of the selected Pi theme.
 
 ## Preview
 
@@ -12,9 +12,9 @@ Wide terminals use two stable zones: agent state and workspace identity stay lef
 ● PONDERING... · gpt-5.6-sol · low · main*        in 324k  out 15k  cache 99%  $5.041 (sub)  ctx 27.0% (auto)  ⌥A
 ```
 
-### Adaptive Midnight Spectrum
+### Fixed Dark Midnight Spectrum
 
-Pi's built-in dark and light themes use contrast-tuned variants of the palette. Color is applied only to metric values and state anchors; labels and workspace metadata remain restrained. Custom themes use compatible theme tokens instead of guessed RGB colors, while warning and error states semantically override category colors. With `NO_COLOR`, the footer emits no custom RGB and uses theme-native neutral and semantic roles.
+Pi Atelier has one visual palette. Selecting a light, dark, or custom Pi theme does not change the footer's colors: labels, workspace text, metric values, state anchors, warnings, and errors all retain the same dark-style treatment. With `NO_COLOR`, the footer emits no custom RGB and uses theme-native neutral and semantic roles.
 
 ## Features
 
@@ -24,7 +24,7 @@ Pi's built-in dark and light themes use contrast-tuned variants of the palette. 
 - Searchable tool controls
 - Editorial, minimal, and classic display presets
 - Session details, renaming, and safe compaction controls
-- Adaptive dark/light Midnight Spectrum with custom-theme and `NO_COLOR` fallbacks
+- Fixed dark Midnight Spectrum across every selected theme, with a `NO_COLOR` fallback
 - User and trusted-project configuration
 - No telemetry or external network requests
 

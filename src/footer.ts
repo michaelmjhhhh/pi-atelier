@@ -73,23 +73,12 @@ interface DisplayValue {
 	available: boolean;
 }
 
-function paintValue(
-	value: DisplayValue,
-	role: PaletteRole,
-	palette: AtelierPalette,
-	theme: ThemeLike,
-): string {
-	return value.available ? palette.paint(role, value.text) : theme.fg("dim", value.text);
+function paintValue(value: DisplayValue, role: PaletteRole, palette: AtelierPalette): string {
+	return palette.paint(value.available ? role : "dim", value.text);
 }
 
-function metric(
-	label: string,
-	value: DisplayValue,
-	palette: AtelierPalette,
-	theme: ThemeLike,
-	role: PaletteRole,
-): string {
-	return `${palette.paint("muted", label)} ${paintValue(value, role, palette, theme)}`;
+function metric(label: string, value: DisplayValue, palette: AtelierPalette, role: PaletteRole): string {
+	return `${palette.paint("muted", label)} ${paintValue(value, role, palette)}`;
 }
 
 function availableValue(available: boolean, value: number): DisplayValue {
@@ -250,37 +239,24 @@ function buildItems(
 
 		if (segment === "metrics") {
 			const metrics = state.metrics;
-			const inputFull = metric(
-				"in",
-				availableValue(metrics.usageAvailable, metrics.input),
-				palette,
-				theme,
-				"input",
-			);
+			const inputFull = metric("in", availableValue(metrics.usageAvailable, metrics.input), palette, "input");
 			const outputFull = metric(
 				"out",
 				availableValue(metrics.usageAvailable, metrics.output),
 				palette,
-				theme,
 				"output",
 			);
-			const cacheHit = metric("cache", percentValue(metrics.cacheHitPercent, 0), palette, theme, "cache");
+			const cacheHit = metric("cache", percentValue(metrics.cacheHitPercent, 0), palette, "cache");
 			const cacheDetail = [
-				metric("read", availableValue(metrics.usageAvailable, metrics.cacheRead), palette, theme, "cache"),
+				metric("read", availableValue(metrics.usageAvailable, metrics.cacheRead), palette, "cache"),
 				metrics.cacheWrite > 0
-					? metric(
-							"write",
-							availableValue(metrics.usageAvailable, metrics.cacheWrite),
-							palette,
-							theme,
-							"cache",
-						)
+					? metric("write", availableValue(metrics.usageAvailable, metrics.cacheWrite), palette, "cache")
 					: "",
-				metric("hit", percentValue(metrics.cacheHitPercent, 1), palette, theme, "cache"),
+				metric("hit", percentValue(metrics.cacheHitPercent, 1), palette, "cache"),
 			]
 				.filter(Boolean)
 				.join(" ");
-			const cost = `${paintValue(costValue(metrics, config.currencyDecimals, false), "cost", palette, theme)}${
+			const cost = `${paintValue(costValue(metrics, config.currencyDecimals, false), "cost", palette)}${
 				metrics.subscription ? palette.paint("muted", " (sub)") : ""
 			}`;
 
@@ -315,10 +291,10 @@ function buildItems(
 		if (segment === "context") {
 			const metrics = state.metrics;
 			const role = contextRole(metrics, config);
-			const contextFull = `${metric("ctx", percentValue(metrics.contextPercent, 1), palette, theme, role)}${
+			const contextFull = `${metric("ctx", percentValue(metrics.contextPercent, 1), palette, role)}${
 				metrics.autoCompact === true ? palette.paint("muted", " (auto)") : ""
 			}`;
-			const contextCompact = metric("ctx", percentValue(metrics.contextPercent, 0), palette, theme, role);
+			const contextCompact = metric("ctx", percentValue(metrics.contextPercent, 0), palette, role);
 			add({
 				id: "context",
 				zone: "right",

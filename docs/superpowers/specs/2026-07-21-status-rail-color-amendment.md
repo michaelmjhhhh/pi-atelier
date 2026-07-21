@@ -1,4 +1,4 @@
-# Status Rail Adaptive Midnight Spectrum Amendment
+# Status Rail Fixed Dark Midnight Spectrum Amendment
 
 **Date:** 2026-07-21
 **Status:** Approved
@@ -9,11 +9,11 @@ This amendment changes only the color system defined in `2026-07-21-status-rail-
 
 ## Goal
 
-Make the approved Status Rail visibly colorful without returning to the previous flat rainbow strip. Color must reinforce category identity while muted labels, neutral workspace metadata, and restrained state overrides preserve the new hierarchy.
+Make the approved Status Rail visibly colorful and identical across every selected Pi theme. The extension owns one dark-style palette; theme selection must not alter its foreground colors.
 
 ## Direction
 
-The approved direction is **Adaptive Midnight Spectrum**:
+The approved direction is **Fixed Dark Midnight Spectrum**:
 
 ```text
 ● READY · model · main*       in 324k  out 15k  cache 99%  $5.04  ctx 27%  ⌥A
@@ -24,7 +24,7 @@ Only metric values and state anchors receive category colors. Labels and seconda
 
 ## Palette
 
-### Dark themes
+### Fixed palette
 
 | Role | Hex | Usage |
 |---|---:|---|
@@ -34,42 +34,24 @@ Only metric values and state anchors receive category colors. Labels and seconda
 | Amber | `#FF9F43` | Working state, cost values, warnings, dirty Git marker |
 | Red | `#FF5D73` | Error state, dangerous context |
 
-### Light themes
-
-| Role | Hex | Usage |
-|---|---:|---|
-| Deep blue | `#245FBF` | Ready, input values, healthy context values |
-| Deep purple | `#7042C1` | Output values, menu shortcut |
-| Deep cyan | `#087C9E` | Cache values |
-| Burnt amber | `#B45309` | Working state, cost values, warnings, dirty Git marker |
-| Crimson | `#C62845` | Error state, dangerous context |
-
-Pi's built-in `dark` and `light` themes use these exact variants.
+The extension also fixes primary text to `#D4D4D4`, muted text to `#808080`, and dim text to `#666666`. Every named Pi theme—including light and custom themes—uses these exact colors.
 
 ## Application Rules
 
-- Metric labels such as `in`, `out`, `cache`, `read`, `write`, `hit`, and `ctx` use the theme's muted role.
+- Metric labels such as `in`, `out`, `cache`, `read`, `write`, `hit`, and `ctx` use the extension's fixed muted color.
 - Metric values use their category role.
 - Currency values use the cost role; subscription markers remain muted.
 - Context values use blue while healthy, amber at the configured warning threshold, and red at the configured danger threshold.
-- Unavailable values use the theme's dim role and do not receive category color.
+- Unavailable values use the extension's fixed dim color and do not receive category color.
 - Ready is blue, working is amber, warning is amber, and error is red.
 - Git branch text remains neutral; only the dirty marker is amber.
 - Model text remains neutral; thinking level and separators remain muted.
 - The menu shortcut is purple.
 - No color change may alter spacing, visible width, truncation, or responsive priority.
 
-## Custom Themes
+## Theme Independence
 
-The footer must not guess the background luminance of arbitrary custom themes. When the active theme is not Pi's built-in `dark` or `light`, category roles map to compatible theme tokens:
-
-- Ready, input, and healthy context use `thinkingLow`.
-- Output and menu use `thinkingHigh`.
-- Cache uses `syntaxType`.
-- Working and cost use `mdHeading`.
-- Warning and error use native `warning` and `error` tokens.
-
-This fallback prioritizes contrast and custom-theme authorship over exact Midnight Spectrum RGB values.
+The footer ignores the selected named Pi theme when color is enabled. Built-in light, built-in dark, and named custom themes all receive the same fixed dark palette. An unnamed host theme may use safe theme-token fallbacks as an internal compatibility measure; user-selectable Pi themes are named and therefore always receive the fixed palette.
 
 ## Color-disabled Behavior
 
@@ -97,22 +79,21 @@ The palette interface expands from generic semantic roles to include category ro
 - `error`
 - `primary`
 - `muted`
+- `dim`
 
-The footer remains responsible for assigning roles to values and state. The palette remains responsible for selecting exact built-in-theme RGB variants, custom-theme token fallbacks, and color-disabled fallbacks.
-
-Built-in theme selection may use the active theme's exposed name. Unknown or unnamed themes must follow the custom-theme fallback rather than assuming a dark background.
+The footer remains responsible for assigning roles to values and state. The palette remains responsible for applying the single fixed dark RGB table to every named theme and for applying color-disabled or unnamed-host fallbacks.
 
 ## Validation
 
 Automated tests must verify:
 
-- Exact dark-theme RGB output for each category role
-- Exact light-theme RGB output for each category role
-- Muted labels and colored values
+- Exact fixed RGB output for every role across dark, light, and named custom themes
+- Identical rendered output across selected themes
+- Fixed primary, muted, and dim text colors
 - Ready, working, warning, and error state colors
 - Healthy, warning, and dangerous context colors
 - Dim unavailable values
-- Custom-theme token fallback behavior
+- Safe unnamed-host fallback behavior
 - No custom RGB escapes when color is disabled
 - ANSI-aware width limits at all representative responsive widths
 - Existing removal order, one-line rendering, animation lifecycle, presets, and commands remain unchanged
@@ -123,7 +104,7 @@ Manual validation must launch the isolated extension with:
 pi --no-extensions -e . --no-session
 ```
 
-Then compare Pi's built-in dark and light themes at wide, medium, narrow, and minimum terminal widths.
+Then select Pi's built-in dark, built-in light, and a custom theme at wide, medium, narrow, and minimum terminal widths. The footer colors must remain identical.
 
 ## Files in Scope
 
@@ -136,6 +117,7 @@ Then compare Pi's built-in dark and light themes at wide, medium, narrow, and mi
 ## Non-goals
 
 - Changing the Status Rail layout or responsive removal order
+- Adapting the palette to light or custom themes
 - Adding a palette selector or new configuration field
 - Changing the `/atelier` menu
 - Coloring labels or all workspace metadata
