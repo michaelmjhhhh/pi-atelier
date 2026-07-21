@@ -1,7 +1,8 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { createFooterComponent, renderFooterLine, selectResponsiveMode } from "../src/footer.js";
-import { type AtelierState, DEFAULT_CONFIG } from "../src/types.js";
+import { createMenuActions } from "../src/menu.js";
+import { type AtelierConfig, type AtelierState, DEFAULT_CONFIG } from "../src/types.js";
 
 const plainTheme = {
 	fg: (_color: string, text: string) => text,
@@ -10,16 +11,34 @@ const plainTheme = {
 };
 const stripAnsi = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "");
 
-function plainAt(width: number, config = DEFAULT_CONFIG): string {
-	return stripAnsi(renderFooterLine(state, config, plainTheme, width));
+function plainAt(width: number, config = DEFAULT_CONFIG, renderState = state): string {
+	return stripAnsi(renderFooterLine(renderState, config, plainTheme, width));
 }
 
-function firstWidthWithout(text: string): number {
+function firstWidthWithout(text: string, config = DEFAULT_CONFIG, renderState = state): number {
 	for (let width = 180; width >= 20; width -= 1) {
-		if (!plainAt(width).includes(text)) return width;
+		if (!plainAt(width, config, renderState).includes(text)) return width;
 	}
 	throw new Error(`Expected ${text} to be removed`);
 }
+
+const actualClassicPresetConfig = (() => {
+	let config: AtelierConfig = DEFAULT_CONFIG;
+	const actions = createMenuActions(
+		{} as never,
+		{} as never,
+		{
+			getConfig: () => config,
+			setConfig: (next: AtelierConfig) => {
+				config = next;
+			},
+			refreshUsage: () => {},
+		},
+		"unused",
+	);
+	actions.setPreset("classic");
+	return config;
+})();
 
 const state: AtelierState = {
 	activity: "ready",
@@ -91,6 +110,23 @@ describe("footer", () => {
 		expect(cacheGone).toBeGreaterThan(menuGone);
 	});
 
+	it("removes configured brand and extension statuses before Git and thinking", () => {
+		const config: AtelierConfig = {
+			...DEFAULT_CONFIG,
+			preset: "classic",
+			ornament: "restrained",
+		};
+		const configuredState = { ...state, extensionStatuses: ["INDEXING"] };
+		expect(plainAt(180, config, configuredState)).toEqual(expect.stringContaining("ATELIER"));
+		expect(plainAt(180, config, configuredState)).toEqual(expect.stringContaining("INDEXING"));
+
+		const brandGone = firstWidthWithout("ATELIER", config, configuredState);
+		const statusGone = firstWidthWithout("INDEXING", config, configuredState);
+		const gitGone = firstWidthWithout("main*", config, configuredState);
+		const thinkingGone = firstWidthWithout("medium", config, configuredState);
+		expect(Math.min(brandGone, statusGone)).toBeGreaterThan(Math.max(gitGone, thinkingGone));
+	});
+
 	it("keeps activity and context after optional information is removed", () => {
 		const line = plainAt(24);
 		expect(line).toContain("● READY");
@@ -106,9 +142,21 @@ describe("footer", () => {
 
 	it("uses cache hit for editorial and detailed cache values for classic", () => {
 		expect(plainAt(180, DEFAULT_CONFIG)).toContain("cache 99%");
-		const classic = plainAt(180, { ...DEFAULT_CONFIG, preset: "classic", ornament: "none" });
+		const classic = plainAt(180, actualClassicPresetConfig);
 		expect(classic).toContain("read 5.9M");
 		expect(classic).toContain("hit 98.8%");
+	});
+
+	it("renders the actual classic preset segment set", () => {
+		const classic = plainAt(180, actualClassicPresetConfig, {
+			...state,
+			extensionStatuses: ["INDEXING"],
+		});
+		for (const text of ["in 324k", "ctx 27.0%", "gpt-5.6-sol", "medium", "main*", "INDEXING"]) {
+			expect(classic).toContain(text);
+		}
+		expect(classic).not.toContain("● READY");
+		expect(classic).not.toContain("⌥A");
 	});
 
 	it("styles labels as muted and values as primary", () => {
@@ -174,6 +222,28 @@ describe("footer", () => {
 			expect(visibleWidth(renderFooterLine(state, DEFAULT_CONFIG, ansiTheme, width))).toBeLessThanOrEqual(
 				width,
 			);
+		}
+	});
+
+	it.each([
+		["dark", { accent: 81, text: 252, muted: 245, warning: 214, error: 196, dim: 240 }],
+		["light", { accent: 25, text: 236, muted: 244, warning: 130, error: 160, dim: 250 }],
+	] as const)("smokes the %s theme fixture across representative widths", (_name, colors) => {
+		const theme = {
+			fg: (color: string, text: string) =>
+				`\u001b[38;5;${colors[color as keyof typeof colors] ?? colors.text}m${text}\u001b[0m`,
+			bold: (text: string) => `\u001b[1m${text}\u001b[22m`,
+			italic: (text: string) => `\u001b[3m${text}\u001b[23m`,
+		};
+		for (const width of [160, 100, 56, 20]) {
+			const line = renderFooterLine(state, DEFAULT_CONFIG, theme, width);
+			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+			expect(stripAnsi(line)).toContain(width >= 56 ? "ctx" : "● READY");
+		}
+
+		const wide = renderFooterLine(state, DEFAULT_CONFIG, theme, 160);
+		for (const role of ["accent", "text", "muted", "warning"] as const) {
+			expect(wide).toContain(`\u001b[38;5;${colors[role]}m`);
 		}
 	});
 

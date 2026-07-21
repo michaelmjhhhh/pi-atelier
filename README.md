@@ -123,7 +123,7 @@ Complete example:
     "menu"
   ],
   "density": "comfortable",
-  "ornament": "restrained",
+  "ornament": "none",
   "contextWarning": 70,
   "contextDanger": 90,
   "currencyDecimals": 3,
@@ -132,7 +132,7 @@ Complete example:
 }
 ```
 
-Unknown or invalid values are ignored with one warning. The required `metrics` and `context` segments are restored if omitted.
+Unknown or invalid values are ignored with one warning. The required `metrics` and `context` segments are restored if omitted. The editorial preset always suppresses the brand ornament; `restrained` displays `ATELIER` only for non-editorial configurations that include the `brand` segment.
 
 ## Presets
 
