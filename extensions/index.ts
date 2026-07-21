@@ -27,6 +27,7 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 	let extensionStatuses: readonly string[] = [];
 	let enabled = true;
 	let shortcutRegistered = false;
+	let lifecycleGeneration = 0;
 
 	const requestAllRenders = (): void => {
 		requestRender();
@@ -44,12 +45,11 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 		sidebar?.requestRender();
 	}
 
-	function getSidebarSnapshot(ctx: ExtensionContext): SidebarSnapshot {
-		if (!runtime) throw new Error("Pi Atelier runtime unavailable");
+	function getSidebarSnapshot(ctx: ExtensionContext, targetRuntime: AtelierRuntime): SidebarSnapshot {
 		const sessionName = ctx.sessionManager.getSessionName();
 		const sessionFile = ctx.sessionManager.getSessionFile();
 		return buildSidebarSnapshot({
-			state: runtime.getState(),
+			state: targetRuntime.getState(),
 			cwd: ctx.cwd,
 			...(sessionName ? { sessionName } : {}),
 			...(sessionFile ? { sessionFile } : {}),
@@ -68,32 +68,37 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 		await openAtelierMenu(pi, ctx, runtime, join(getAgentDir(), "pi-atelier.json"), sidebar);
 	}
 
-	function installFooter(ctx: ExtensionContext): void {
-		if (!runtime || ctx.mode !== "tui") return;
+	function installFooter(
+		ctx: ExtensionContext,
+		targetRuntime: AtelierRuntime,
+		generation = lifecycleGeneration,
+	): void {
+		if (ctx.mode !== "tui") return;
 		ctx.ui.setFooter((tui, theme, footerData) => {
-			requestRender = () => tui.requestRender();
+			const isCurrentFooter = (): boolean => generation === lifecycleGeneration && runtime === targetRuntime;
+			const footerRequestRender = (): void => {
+				if (isCurrentFooter()) tui.requestRender();
+			};
+			if (isCurrentFooter()) requestRender = footerRequestRender;
 			return createFooterComponent({
 				getState: (): AtelierState => {
-					const state = runtime?.getState();
-					if (!state) throw new Error("Pi Atelier runtime unavailable");
+					const state = targetRuntime.getState();
 					const branch = footerData.getGitBranch();
-					updateExtensionStatuses(Array.from(footerData.getExtensionStatuses().values()));
+					if (isCurrentFooter()) {
+						updateExtensionStatuses(Array.from(footerData.getExtensionStatuses().values()));
+					}
 					return {
 						...state,
 						...(branch ? { branch } : {}),
 						extensionStatuses,
 					};
 				},
-				getConfig: () =>
-					runtime?.getConfig() ??
-					(() => {
-						throw new Error("Pi Atelier config unavailable");
-					})(),
+				getConfig: () => targetRuntime.getConfig(),
 				colorEnabled: !("NO_COLOR" in process.env),
-				requestRender,
+				requestRender: footerRequestRender,
 				onBranchChange: (callback) =>
 					footerData.onBranchChange(() => {
-						void runtime?.refreshGitState();
+						void targetRuntime.refreshGitState();
 						callback();
 					}),
 				theme: theme as unknown as ThemeLike,
@@ -136,7 +141,7 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 			}
 			if (action === "enable") {
 				enabled = true;
-				installFooter(ctx);
+				if (runtime) installFooter(ctx, runtime);
 				ctx.ui.notify("Pi Atelier enabled", "info");
 				return;
 			}
@@ -145,52 +150,76 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
-		if (ctx.mode !== "tui") return;
-		currentContext = ctx;
-		updateExtensionStatuses([]);
+		const initializationGeneration = ++lifecycleGeneration;
+		const initializationContext = ctx;
+		if (initializationContext.mode !== "tui") return;
+
+		let localRuntime: AtelierRuntime | undefined;
+		let localSidebar: SidebarController | undefined;
+		const isFresh = (): boolean => initializationGeneration === lifecycleGeneration;
 		try {
 			const userPath = join(getAgentDir(), "pi-atelier.json");
-			const projectPath = join(ctx.cwd, CONFIG_DIR_NAME, "pi-atelier.json");
+			const projectPath = join(initializationContext.cwd, CONFIG_DIR_NAME, "pi-atelier.json");
 			const loaded = await loadConfig({
 				userPath,
 				projectPath,
-				projectTrusted: ctx.isProjectTrusted(),
+				projectTrusted: initializationContext.isProjectTrusted(),
 			});
-			for (const warning of loaded.warnings) ctx.ui.notify(warning, "warning");
+			if (!isFresh()) return;
+			for (const warning of loaded.warnings) initializationContext.ui.notify(warning, "warning");
 			let autoCompact: boolean | null = null;
 			try {
 				autoCompact = SettingsManager.create(
-					ctx.isProjectTrusted() ? ctx.cwd : getAgentDir(),
+					initializationContext.isProjectTrusted() ? initializationContext.cwd : getAgentDir(),
 				).getCompactionSettings().enabled;
 			} catch {
-				ctx.ui.notify("Could not read Pi compaction settings; compaction mode is unavailable", "warning");
+				initializationContext.ui.notify(
+					"Could not read Pi compaction settings; compaction mode is unavailable",
+					"warning",
+				);
 			}
-			sidebar?.dispose();
-			sidebar = undefined;
-			runtime?.dispose();
-			runtime = new AtelierRuntime({
+			const candidateRuntime = new AtelierRuntime({
 				pi,
-				ctx,
+				ctx: initializationContext,
 				config: loaded.config,
 				autoCompact,
-				requestRender: requestAllRenders,
-			});
-			await runtime.refreshGitState();
-			sidebar = createSidebarController({
-				ctx,
-				getSnapshot: () => getSidebarSnapshot(ctx),
-				getConfig: () => {
-					if (!runtime) throw new Error("Pi Atelier runtime unavailable");
-					return runtime.getConfig();
+				requestRender: () => {
+					if (isFresh() && runtime === localRuntime) requestAllRenders();
 				},
+			});
+			localRuntime = candidateRuntime;
+			await candidateRuntime.refreshGitState();
+			if (!isFresh()) {
+				candidateRuntime.dispose();
+				return;
+			}
+			localSidebar = createSidebarController({
+				ctx: initializationContext,
+				getSnapshot: () => getSidebarSnapshot(initializationContext, candidateRuntime),
+				getConfig: () => candidateRuntime.getConfig(),
 				colorEnabled: !("NO_COLOR" in process.env),
 				onError: (error) =>
-					ctx.ui.notify(
+					initializationContext.ui.notify(
 						`Pi Atelier sidebar failed: ${error instanceof Error ? error.message : String(error)}`,
 						"error",
 					),
 			});
-			if (!shortcutRegistered) {
+			if (!isFresh()) {
+				localSidebar.dispose();
+				candidateRuntime.dispose();
+				return;
+			}
+
+			const previousSidebar = sidebar;
+			const previousRuntime = runtime;
+			runtime = candidateRuntime;
+			sidebar = localSidebar;
+			currentContext = initializationContext;
+			extensionStatuses = [];
+			previousSidebar?.dispose();
+			previousRuntime?.dispose();
+
+			if (isFresh() && !shortcutRegistered) {
 				try {
 					pi.registerShortcut(loaded.config.shortcut as KeyId, {
 						description: "Open Pi Atelier",
@@ -201,19 +230,28 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 						description: "Open Pi Atelier",
 						handler: async (shortcutContext) => openMenu(shortcutContext),
 					});
-					ctx.ui.notify(`Invalid Atelier shortcut "${loaded.config.shortcut}"; using alt+a`, "warning");
+					initializationContext.ui.notify(
+						`Invalid Atelier shortcut "${loaded.config.shortcut}"; using alt+a`,
+						"warning",
+					);
 				}
 				shortcutRegistered = true;
 			}
-			if (enabled) installFooter(ctx);
+			if (enabled && isFresh()) {
+				installFooter(initializationContext, candidateRuntime, initializationGeneration);
+			}
 		} catch (error) {
+			localSidebar?.dispose();
+			localRuntime?.dispose();
+			if (!isFresh()) return;
 			sidebar?.dispose();
 			sidebar = undefined;
 			runtime?.dispose();
 			runtime = undefined;
+			currentContext = undefined;
 			updateExtensionStatuses([]);
-			ctx.ui.setFooter(undefined);
-			ctx.ui.notify(
+			initializationContext.ui.setFooter(undefined);
+			initializationContext.ui.notify(
 				`Pi Atelier could not start: ${error instanceof Error ? error.message : String(error)}`,
 				"error",
 			);
@@ -231,6 +269,7 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 	pi.on("session_compact", () => runtime?.refreshUsage());
 	pi.on("session_info_changed", () => runtime?.refreshUsage());
 	pi.on("session_shutdown", () => {
+		lifecycleGeneration += 1;
 		sidebar?.dispose();
 		sidebar = undefined;
 		runtime?.dispose();

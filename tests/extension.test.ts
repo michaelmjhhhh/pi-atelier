@@ -1,6 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 import atelierExtension from "../extensions/index.js";
 
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((done) => {
+		resolve = done;
+	});
+	return { promise, resolve };
+}
+
+const gitResult = (branch: string) => ({
+	stdout: `## ${branch}\n`,
+	stderr: "",
+	code: 0,
+	killed: false,
+});
+
 function harness(mode: "tui" | "print" = "tui") {
 	const handlers = new Map<string, (...args: any[]) => unknown>();
 	const commands = new Map<string, any>();
@@ -141,6 +156,47 @@ describe("extension registration", () => {
 		await h.handlers.get("session_shutdown")?.({ reason: "quit" }, h.ctx);
 		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
 		expect(h.setFooter).toHaveBeenLastCalledWith(undefined);
+	});
+
+	it("does not publish an initializer that completes after shutdown", async () => {
+		const h = harness();
+		const git = deferred<ReturnType<typeof gitResult>>();
+		h.pi.exec.mockReturnValueOnce(git.promise);
+
+		const starting = start(h);
+		await vi.waitFor(() => expect(h.pi.exec).toHaveBeenCalledOnce());
+		await h.handlers.get("session_shutdown")?.({ reason: "quit" }, h.ctx);
+		git.resolve(gitResult("stale"));
+		await starting;
+
+		expect(h.setFooter).not.toHaveBeenCalled();
+		await command(h, "sidebar on");
+		expect(h.custom).not.toHaveBeenCalled();
+		expect(h.ctx.ui.notify).toHaveBeenLastCalledWith("Pi Atelier is not active in this session", "warning");
+	});
+
+	it("keeps the newer initializer authoritative when an older one completes last", async () => {
+		const h = harness();
+		const firstGit = deferred<ReturnType<typeof gitResult>>();
+		const secondGit = deferred<ReturnType<typeof gitResult>>();
+		h.pi.exec.mockReturnValueOnce(firstGit.promise).mockReturnValueOnce(secondGit.promise);
+
+		const firstStart = start(h);
+		await vi.waitFor(() => expect(h.pi.exec).toHaveBeenCalledTimes(1));
+		const secondStart = start(h);
+		await vi.waitFor(() => expect(h.pi.exec).toHaveBeenCalledTimes(2));
+		secondGit.resolve(gitResult("newer"));
+		await secondStart;
+		await command(h, "sidebar on");
+		expect(h.overlays[0]?.component.render(44).join("\n")).toContain("newer");
+
+		firstGit.resolve(gitResult("stale"));
+		await firstStart;
+
+		expect(h.overlays[0]?.done).not.toHaveBeenCalled();
+		expect(h.overlays[0]?.component.render(44).join("\n")).toContain("newer");
+		expect(h.overlays[0]?.component.render(44).join("\n")).not.toContain("stale");
+		expect(h.setFooter).toHaveBeenCalledOnce();
 	});
 
 	it("closes the old sidebar and starts the replacement hidden on session reload", async () => {

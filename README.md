@@ -85,6 +85,7 @@ The default shortcut is `alt+a`. The menu contains:
 - **Tools** — search and toggle active Pi tools
 - **Display** — switch presets and save user defaults
 - **Session** — inspect, rename, or compact the current session
+- **Sidebar** — dynamically show or hide the session sidecar
 
 Additional commands:
 
