@@ -1,7 +1,7 @@
 # Status Rail Adaptive Midnight Spectrum Amendment
 
-**Date:** 2026-07-21  
-**Status:** Design approved; written amendment awaiting review
+**Date:** 2026-07-21
+**Status:** Approved
 
 ## Relationship to the Status Rail Design
 
