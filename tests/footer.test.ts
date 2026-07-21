@@ -128,7 +128,9 @@ describe("footer", () => {
 			{ fg, bold: (text) => text, italic: (text) => text },
 			180,
 		);
-		expect(fg.mock.calls.map(([color]) => color)).not.toEqual(expect.arrayContaining(["warning", "error"]));
+		const colors = fg.mock.calls.map(([color]) => color);
+		expect(colors).not.toContain("warning");
+		expect(colors).not.toContain("error");
 	});
 
 	it("uses warning and error only for actionable states", () => {
@@ -246,6 +248,9 @@ describe("footer", () => {
 				width,
 			);
 		}
+		const narrow = renderFooterLine(extreme, DEFAULT_CONFIG, plainTheme, 40);
+		expect(narrow).toContain("● READY");
+		expect(narrow).toContain("ctx");
 	});
 
 	it("renders unavailable and non-finite telemetry safely", () => {

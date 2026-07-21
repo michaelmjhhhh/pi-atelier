@@ -85,13 +85,26 @@ describe("menu actions", () => {
 		expect(h.runtime.setConfig).toHaveBeenCalled();
 	});
 
-	it("maps editorial to the ornament-free Status Rail default", () => {
+	it("restores the ornament-free Status Rail defaults when selecting editorial", () => {
 		const h = harness();
+		h.actions.setPreset("minimal");
 		h.actions.setPreset("editorial");
 		expect(h.runtime.getConfig()).toMatchObject({
 			preset: "editorial",
+			segments: DEFAULT_CONFIG.segments,
 			ornament: "none",
 			density: "comfortable",
+		});
+	});
+
+	it("maps classic to its compatible segments and presentation", () => {
+		const h = harness();
+		h.actions.setPreset("classic");
+		expect(h.runtime.getConfig()).toMatchObject({
+			preset: "classic",
+			segments: ["metrics", "context", "model", "git", "statuses"],
+			density: "comfortable",
+			ornament: "none",
 		});
 	});
 
