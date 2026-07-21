@@ -8,9 +8,7 @@ Wide terminals use two stable zones: agent state and workspace identity stay lef
 
 ## Preview
 
-```text
-● PONDERING... · gpt-5.6-sol · low · main*        in 324k  out 15k  cache 99%  $5.041 (sub)  ctx 27.0% (auto)  ⌥A
-```
+![Pi Atelier status rail](https://raw.githubusercontent.com/michaelmjhhhh/pi-atelier/main/assets/preview.png)
 
 ### Fixed Dark Midnight Spectrum
 

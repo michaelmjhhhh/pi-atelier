@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.4
+
+- Replace the ASCII preview with the current Pi Atelier screenshot on GitHub and npm.
+
 ## 0.1.2
 
 - Animate the visible work-cycle phrase with orange italics and a shrinking three-to-one ellipsis.
