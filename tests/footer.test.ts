@@ -10,6 +10,17 @@ const plainTheme = {
 };
 const stripAnsi = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "");
 
+function plainAt(width: number, config = DEFAULT_CONFIG): string {
+	return stripAnsi(renderFooterLine(state, config, plainTheme, width));
+}
+
+function firstWidthWithout(text: string): number {
+	for (let width = 180; width >= 20; width -= 1) {
+		if (!plainAt(width).includes(text)) return width;
+	}
+	throw new Error(`Expected ${text} to be removed`);
+}
+
 const state: AtelierState = {
 	activity: "ready",
 	modelId: "gpt-5.6-sol",
@@ -66,6 +77,40 @@ describe("footer", () => {
 		expect(line.indexOf("in 324k")).toBeGreaterThan(line.indexOf("main*"));
 	});
 
+	it("removes optional information in the approved order", () => {
+		const gitAndThinkingGone = Math.min(firstWidthWithout("main*"), firstWidthWithout("medium"));
+		const costGone = firstWidthWithout("$5.041");
+		const modelGone = firstWidthWithout("gpt-5.6-sol");
+		const inputAndOutputGone = Math.min(firstWidthWithout("in 324k"), firstWidthWithout("out 15k"));
+		const cacheGone = firstWidthWithout("cache 99%");
+		const menuGone = firstWidthWithout("⌥A");
+		expect(gitAndThinkingGone).toBeGreaterThan(costGone);
+		expect(costGone).toBeGreaterThan(modelGone);
+		expect(modelGone).toBeGreaterThan(inputAndOutputGone);
+		expect(inputAndOutputGone).toBeGreaterThan(cacheGone);
+		expect(cacheGone).toBeGreaterThan(menuGone);
+	});
+
+	it("keeps activity and context after optional information is removed", () => {
+		const line = plainAt(24);
+		expect(line).toContain("● READY");
+		expect(line).toContain("ctx");
+		expect(visibleWidth(line)).toBeLessThanOrEqual(24);
+	});
+
+	it("never introduces old cryptic compact labels", () => {
+		for (const width of [180, 132, 96, 72, 56, 40, 24]) {
+			expect(plainAt(width)).not.toMatch(/(?:^|\s)(?:R|W|CH)\d|◔/);
+		}
+	});
+
+	it("uses cache hit for editorial and detailed cache values for classic", () => {
+		expect(plainAt(180, DEFAULT_CONFIG)).toContain("cache 99%");
+		const classic = plainAt(180, { ...DEFAULT_CONFIG, preset: "classic", ornament: "none" });
+		expect(classic).toContain("read 5.9M");
+		expect(classic).toContain("hit 98.8%");
+	});
+
 	it("styles labels as muted and values as primary", () => {
 		const fg = vi.fn((_color: string, text: string) => text);
 		renderFooterLine(state, DEFAULT_CONFIG, { fg, bold: (text) => text, italic: (text) => text }, 180);
@@ -73,6 +118,17 @@ describe("footer", () => {
 		expect(fg).toHaveBeenCalledWith("text", "324k");
 		expect(fg).toHaveBeenCalledWith("muted", "cache");
 		expect(fg).toHaveBeenCalledWith("text", "99%");
+	});
+
+	it("does not request warning or error roles for a clean ready state", () => {
+		const fg = vi.fn((_color: string, text: string) => text);
+		renderFooterLine(
+			{ ...state, dirty: false },
+			DEFAULT_CONFIG,
+			{ fg, bold: (text) => text, italic: (text) => text },
+			180,
+		);
+		expect(fg.mock.calls.map(([color]) => color)).not.toEqual(expect.arrayContaining(["warning", "error"]));
 	});
 
 	it("uses warning and error only for actionable states", () => {
@@ -170,6 +226,26 @@ describe("footer", () => {
 		expect(contextOnly).toContain("ctx 27.0%");
 		expect(contextOnly).not.toContain("in 324k");
 		expect(contextOnly).not.toContain("● READY");
+	});
+
+	it("keeps extreme numeric telemetry within the requested width", () => {
+		const extreme = {
+			...state,
+			metrics: {
+				...state.metrics,
+				input: Number.MAX_VALUE,
+				output: Number.MAX_SAFE_INTEGER,
+				cacheRead: Number.MAX_VALUE,
+				cacheWrite: Number.MAX_VALUE,
+				cost: Number.MAX_VALUE,
+				contextPercent: Number.MAX_VALUE,
+			},
+		};
+		for (const width of [180, 96, 56, 24, 12]) {
+			expect(visibleWidth(renderFooterLine(extreme, DEFAULT_CONFIG, plainTheme, width))).toBeLessThanOrEqual(
+				width,
+			);
+		}
 	});
 
 	it("renders unavailable and non-finite telemetry safely", () => {

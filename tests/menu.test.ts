@@ -85,6 +85,16 @@ describe("menu actions", () => {
 		expect(h.runtime.setConfig).toHaveBeenCalled();
 	});
 
+	it("maps editorial to the ornament-free Status Rail default", () => {
+		const h = harness();
+		h.actions.setPreset("editorial");
+		expect(h.runtime.getConfig()).toMatchObject({
+			preset: "editorial",
+			ornament: "none",
+			density: "comfortable",
+		});
+	});
+
 	it("renames a session only after non-empty input", async () => {
 		const h = harness();
 		h.ctx.ui.input.mockResolvedValue("  Release prep  ");
