@@ -4,6 +4,7 @@ import { type AtelierPalette, createPalette, type PaletteRole } from "./palette.
 import type { AtelierConfig, AtelierMetrics, AtelierState } from "./types.js";
 
 export interface ThemeLike {
+	readonly name?: string;
 	fg(color: string, text: string): string;
 	bold(text: string): string;
 	italic(text: string): string;
@@ -67,36 +68,56 @@ export function selectResponsiveMode(width: number): ResponsiveMode {
 	return "safe";
 }
 
+interface DisplayValue {
+	text: string;
+	available: boolean;
+}
+
+function paintValue(
+	value: DisplayValue,
+	role: PaletteRole,
+	palette: AtelierPalette,
+	theme: ThemeLike,
+): string {
+	return value.available ? palette.paint(role, value.text) : theme.fg("dim", value.text);
+}
+
 function metric(
 	label: string,
-	value: string,
+	value: DisplayValue,
 	palette: AtelierPalette,
-	role: PaletteRole = "primary",
+	theme: ThemeLike,
+	role: PaletteRole,
 ): string {
-	return `${palette.paint("muted", label)} ${palette.paint(role, value)}`;
+	return `${palette.paint("muted", label)} ${paintValue(value, role, palette, theme)}`;
 }
 
-function availableValue(available: boolean, value: number, theme: ThemeLike): string {
-	return available && Number.isFinite(value) ? formatTokens(value) : theme.fg("dim", "—");
+function availableValue(available: boolean, value: number): DisplayValue {
+	return available && Number.isFinite(value)
+		? { text: formatTokens(value), available: true }
+		: { text: "—", available: false };
 }
 
-function percentValue(value: number | null | undefined, decimals: number, theme: ThemeLike): string {
+function percentValue(value: number | null | undefined, decimals: number): DisplayValue {
 	return value !== null && value !== undefined && Number.isFinite(value)
-		? `${value.toFixed(decimals)}%`
-		: theme.fg("dim", "—");
+		? { text: `${value.toFixed(decimals)}%`, available: true }
+		: { text: "—", available: false };
 }
 
-function costValue(metrics: AtelierMetrics, decimals: number, compact: boolean, theme: ThemeLike): string {
-	if (!metrics.costAvailable || !Number.isFinite(metrics.cost)) return theme.fg("dim", "—");
-	if (compact && metrics.cost >= 1_000) return formatTokens(metrics.cost);
-	return metrics.cost.toFixed(compact ? Math.min(2, decimals) : decimals);
+function costValue(metrics: AtelierMetrics, decimals: number, compact: boolean): DisplayValue {
+	if (!metrics.costAvailable || !Number.isFinite(metrics.cost)) return { text: "$—", available: false };
+	const amount =
+		compact && metrics.cost >= 1_000
+			? formatTokens(metrics.cost)
+			: metrics.cost.toFixed(compact ? Math.min(2, decimals) : decimals);
+	return { text: `$${amount}`, available: true };
 }
 
 function contextRole(metrics: AtelierMetrics, config: AtelierConfig): PaletteRole {
-	if (metrics.contextPercent === null || !Number.isFinite(metrics.contextPercent)) return "muted";
+	if (metrics.contextPercent === null || !Number.isFinite(metrics.contextPercent)) return "context";
 	if (metrics.contextPercent >= config.contextDanger) return "error";
 	if (metrics.contextPercent >= config.contextWarning) return "warning";
-	return "primary";
+	return "context";
 }
 
 function activityText(
@@ -110,7 +131,13 @@ function activityText(
 	const label = state.activity === "working" && !compact ? (state.workingLabel ?? fallback) : fallback;
 	const dots = state.activity === "working" && !compact ? workingDots : "";
 	const role: PaletteRole =
-		state.activity === "warning" ? "warning" : state.activity === "error" ? "error" : "accent";
+		state.activity === "ready"
+			? "ready"
+			: state.activity === "working"
+				? "working"
+				: state.activity === "warning"
+					? "warning"
+					: "error";
 	return palette.paint(role, theme.bold(`● ${sanitize(label)}${dots}`));
 }
 
@@ -223,23 +250,37 @@ function buildItems(
 
 		if (segment === "metrics") {
 			const metrics = state.metrics;
-			const inputFull = metric("in", availableValue(metrics.usageAvailable, metrics.input, theme), palette);
+			const inputFull = metric(
+				"in",
+				availableValue(metrics.usageAvailable, metrics.input),
+				palette,
+				theme,
+				"input",
+			);
 			const outputFull = metric(
 				"out",
-				availableValue(metrics.usageAvailable, metrics.output, theme),
+				availableValue(metrics.usageAvailable, metrics.output),
 				palette,
+				theme,
+				"output",
 			);
-			const cacheHit = metric("cache", percentValue(metrics.cacheHitPercent, 0, theme), palette);
+			const cacheHit = metric("cache", percentValue(metrics.cacheHitPercent, 0), palette, theme, "cache");
 			const cacheDetail = [
-				metric("read", availableValue(metrics.usageAvailable, metrics.cacheRead, theme), palette),
+				metric("read", availableValue(metrics.usageAvailable, metrics.cacheRead), palette, theme, "cache"),
 				metrics.cacheWrite > 0
-					? metric("write", availableValue(metrics.usageAvailable, metrics.cacheWrite, theme), palette)
+					? metric(
+							"write",
+							availableValue(metrics.usageAvailable, metrics.cacheWrite),
+							palette,
+							theme,
+							"cache",
+						)
 					: "",
-				metric("hit", percentValue(metrics.cacheHitPercent, 1, theme), palette),
+				metric("hit", percentValue(metrics.cacheHitPercent, 1), palette, theme, "cache"),
 			]
 				.filter(Boolean)
 				.join(" ");
-			const cost = `${palette.paint("primary", `$${costValue(metrics, config.currencyDecimals, false, theme)}`)}${
+			const cost = `${paintValue(costValue(metrics, config.currencyDecimals, false), "cost", palette, theme)}${
 				metrics.subscription ? palette.paint("muted", " (sub)") : ""
 			}`;
 
@@ -274,10 +315,10 @@ function buildItems(
 		if (segment === "context") {
 			const metrics = state.metrics;
 			const role = contextRole(metrics, config);
-			const contextFull = `${metric("ctx", percentValue(metrics.contextPercent, 1, theme), palette, role)}${
+			const contextFull = `${metric("ctx", percentValue(metrics.contextPercent, 1), palette, theme, role)}${
 				metrics.autoCompact === true ? palette.paint("muted", " (auto)") : ""
 			}`;
-			const contextCompact = metric("ctx", percentValue(metrics.contextPercent, 0, theme), palette, role);
+			const contextCompact = metric("ctx", percentValue(metrics.contextPercent, 0), palette, theme, role);
 			add({
 				id: "context",
 				zone: "right",
@@ -293,7 +334,7 @@ function buildItems(
 			const configuredShortcut = sanitize(config.shortcut);
 			const shortcut = configuredShortcut.toLowerCase() === "alt+a" ? "⌥A" : configuredShortcut.toUpperCase();
 			if (shortcut) {
-				const rendered = palette.paint("muted", shortcut);
+				const rendered = palette.paint("menu", shortcut);
 				add({
 					id: "menu",
 					zone: "right",

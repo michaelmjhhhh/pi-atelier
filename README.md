@@ -4,13 +4,17 @@ An elegant, information-rich status and menu bar for [Pi](https://pi.dev).
 
 Pi Atelier replaces Pi's default footer with a calm, responsive Status Rail while preserving the operational metrics that matter during long coding sessions.
 
-Wide terminals use two stable zones: agent state and workspace identity stay left, while readable telemetry is right-aligned. The footer uses the active Pi theme accent for agent state, neutral text for telemetry, and warning/error colors only when attention is required.
+Wide terminals use two stable zones: agent state and workspace identity stay left, while readable telemetry is right-aligned. Values use an adaptive Midnight Spectrum—blue input/context, purple output/menu, cyan cache, amber cost/working, and red danger—while labels and workspace metadata stay quiet.
 
 ## Preview
 
 ```text
 ● PONDERING... · gpt-5.6-sol · low · main*        in 324k  out 15k  cache 99%  $5.041 (sub)  ctx 27.0% (auto)  ⌥A
 ```
+
+### Adaptive Midnight Spectrum
+
+Pi's built-in dark and light themes use contrast-tuned variants of the palette. Color is applied only to metric values and state anchors; labels and workspace metadata remain restrained. Custom themes use compatible theme tokens instead of guessed RGB colors, while warning and error states semantically override category colors.
 
 ## Features
 
@@ -20,7 +24,7 @@ Wide terminals use two stable zones: agent state and workspace identity stay lef
 - Searchable tool controls
 - Editorial, minimal, and classic display presets
 - Session details, renaming, and safe compaction controls
-- Theme-aware styling with no hard-coded ANSI colors
+- Adaptive dark/light Midnight Spectrum with custom-theme and `NO_COLOR` fallbacks
 - User and trusted-project configuration
 - No telemetry or external network requests
 
