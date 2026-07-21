@@ -1,14 +1,14 @@
 # Pi Atelier
 
-An elegant, information-rich status and menu bar for [Pi](https://pi.dev).
+A responsive status rail and live activity sidebar for [Pi](https://pi.dev).
 
-Pi Atelier replaces Pi's default footer with a calm, responsive Status Rail while preserving the operational metrics that matter during long coding sessions.
+Pi Atelier replaces Pi's default footer with a calm Status Rail and adds an optional docked sidebar for live agent, turn, tool, context, session, and project information.
 
 Wide terminals use two stable zones: agent state and workspace identity stay left, while readable telemetry is right-aligned. The extension always uses its fixed dark Midnight Spectrum—blue input/context, purple output/menu, cyan cache, amber cost/working, and red danger—regardless of the selected Pi theme.
 
-## Preview
+## Demo
 
-![Pi Atelier status rail](https://raw.githubusercontent.com/michaelmjhhhh/pi-atelier/main/assets/preview.png)
+![Pi Atelier live activity sidebar](https://raw.githubusercontent.com/michaelmjhhhh/pi-atelier/main/assets/preview.png)
 
 ### Fixed Dark Midnight Spectrum
 
@@ -96,15 +96,15 @@ Additional commands:
 
 ## Sidebar
 
-Control the live docked information rail with:
+The sidebar starts hidden in every session. Use these commands to control it explicitly:
 
 ```text
-/atelier sidebar
-/atelier sidebar on
-/atelier sidebar off
+/atelier sidebar       # toggle between shown and hidden
+/atelier sidebar on    # show it; safe to repeat
+/atelier sidebar off   # hide it; safe to repeat
 ```
 
-The session-scoped rail attaches to the top-right, fills the terminal height, and stays visible without taking editor focus. Its quiet, information-first layout uses restrained semantic color, compact section labels, and aligned context and token/cache/cost metrics. It also shows project and Git state, model and thinking level, the active-tool count with exact activated names in two columns, and extension statuses.
+You can also press `alt+a`, choose **Sidebar**, and select the dynamic **On/Off** action. When enabled, the session-scoped rail attaches to the top-right, fills the terminal height, and stays visible without taking editor focus. Its quiet, information-first layout uses restrained semantic color, compact section labels, and aligned context and token/cache/cost metrics. It also shows project and Git state, model and thinking level, the active-tool count with exact activated names in two columns, and extension statuses.
 
 During an agent run, the sidebar adds information the compact footer intentionally omits: current one-based turn, elapsed run time, active parallel tool calls, the three most recent tool results, per-tool durations, and total done/failed tool counts. The footer remains a stable one-line status rail and never repeats tool names or tool history.
 
