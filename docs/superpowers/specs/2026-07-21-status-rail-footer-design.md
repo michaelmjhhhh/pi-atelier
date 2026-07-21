@@ -1,7 +1,9 @@
 # Status Rail Footer Redesign
 
 **Date:** 2026-07-21  
-**Status:** Design approved; written specification awaiting review
+**Status:** Approved; color system amended on 2026-07-21
+
+> **Color amendment:** [`2026-07-21-status-rail-color-amendment.md`](2026-07-21-status-rail-color-amendment.md) supersedes this document's one-accent and neutral-telemetry color requirements. Layout, hierarchy, responsive behavior, and interaction requirements remain authoritative here.
 
 ## Goal
 
@@ -185,7 +187,7 @@ Automated tests must cover:
 - Approved information-removal priority
 - Human-readable labels
 - One-line rendering and ANSI-safe width limits
-- Theme-derived accent, neutral telemetry, warning, error, and monochrome fallback roles
+- Adaptive category colors, warning/error overrides, and monochrome fallback behavior defined by the color amendment
 - Context threshold state changes
 - Missing/unavailable metrics and workspace information
 - Working animation visibility, timer lifecycle, and disposal
