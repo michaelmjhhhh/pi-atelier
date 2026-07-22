@@ -95,13 +95,21 @@ describe("temporary Resize mode", () => {
 		h.split.beginResize();
 		expect(h.send("a")).toBeUndefined();
 	});
-	it("cancels when pressing outside the divider", () => {
+	it("keeps Resize mode active on misses and starts dragging within one column of the divider", () => {
 		const h = resizeHarness();
 		h.split.beginResize();
 		h.send("\u001b[C");
 		expect(h.split.getSidebarWidth()).toBe(43);
+
 		h.send(press(10));
-		expect(h.split.getSidebarWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
+		expect(h.split.getSidebarWidth()).toBe(43);
+		expect(h.split.isResizing()).toBe(true);
+
+		const dividerX = 120 - 43 + 1;
+		h.send(press(dividerX - 1));
+		h.send(motion(70));
+		expect(h.split.getSidebarWidth()).toBe(51);
+		h.send(release(70));
 		expect(h.split.isResizing()).toBe(false);
 	});
 	it("supports arrows, shifted arrows, Enter, and Escape rollback", () => {
@@ -228,6 +236,20 @@ describe("split pane width reservation", () => {
 			margin: 0,
 			nonCapturing: true,
 		});
+	});
+
+	it("keeps one overlay options object and updates its width with the split", () => {
+		const h = harness(120);
+		const split = createSplitPaneController();
+		split.attach(h.tui);
+		split.show();
+		const retainedOptions = split.overlayOptions();
+
+		split.setSidebarWidth(36);
+
+		expect(split.overlayOptions()).toBe(retainedOptions);
+		expect(retainedOptions.width).toBe(36);
+		expect(h.tui.render(120)).toEqual(["base:84"]);
 	});
 
 	it("uses full width when hidden or too narrow and restores on widen", () => {

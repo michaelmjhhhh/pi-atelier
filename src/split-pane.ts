@@ -102,9 +102,34 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		}
 	};
 
+	const visibleAt = (terminalWidth: number): boolean =>
+		enabled && Number.isFinite(terminalWidth) && terminalWidth >= minimumMain + minimumSidebar;
+
+	const effectiveSidebarWidth = (terminalWidth: number): number => {
+		if (!visibleAt(terminalWidth)) return 0;
+		return clamp(sidebarWidth, minimumSidebar, Math.min(maximumSidebar, terminalWidth - minimumMain));
+	};
+
+	const overlayLayout: OverlayOptions = {
+		anchor: "top-right",
+		width: sidebarWidth,
+		maxHeight: "100%",
+		margin: 0,
+		nonCapturing: true,
+		visible: (terminalWidth) => visibleAt(terminalWidth),
+	};
+
+	const syncOverlayWidth = (terminalWidth = tui?.terminal.columns) => {
+		const effectiveWidth = terminalWidth === undefined ? 0 : effectiveSidebarWidth(terminalWidth);
+		overlayLayout.width = effectiveWidth > 0 ? effectiveWidth : sidebarWidth;
+	};
+
+	const requestRender = () => tui?.requestRender();
+
 	const stopResize = (restore: boolean) => {
 		if (!resizing && !mouseReportingEnabled && !unsubscribeInput) return;
 		if (restore) sidebarWidth = resizeStartWidth;
+		syncOverlayWidth();
 		const shouldDisableMouse = mouseReportingEnabled;
 		const unsubscribe = unsubscribeInput;
 		dragging = false;
@@ -127,16 +152,6 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		sidebarWidth = clamp(sidebarWidth, minimumSidebar, Math.max(minimumSidebar, effectiveMax));
 	};
 
-	const visibleAt = (terminalWidth: number): boolean =>
-		enabled && Number.isFinite(terminalWidth) && terminalWidth >= minimumMain + minimumSidebar;
-
-	const effectiveSidebarWidth = (terminalWidth: number): number => {
-		if (!visibleAt(terminalWidth)) return 0;
-		return clamp(sidebarWidth, minimumSidebar, Math.min(maximumSidebar, terminalWidth - minimumMain));
-	};
-
-	const requestRender = () => tui?.requestRender();
-
 	const attach = (nextTui: TUI) => {
 		if (disposed) throw new Error("Cannot attach a disposed split pane");
 		if (tui === nextTui) return;
@@ -147,6 +162,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		wrappedRender = function (this: TUI, terminalWidth: number): string[] {
 			reconcileResizeWidth(terminalWidth);
 			const reserved = effectiveSidebarWidth(terminalWidth);
+			syncOverlayWidth(terminalWidth);
 			try {
 				return previousRender.call(nextTui, terminalWidth - reserved);
 			} catch (error) {
@@ -169,14 +185,14 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			}
 			if (!mouse.motion && (mouse.button & 3) === 0 && (mouse.button & 64) === 0) {
 				const dividerX = (tui?.terminal.columns ?? 0) - sidebarWidth + 1;
-				if (mouse.x !== dividerX) stopResize(true);
-				else dragging = true;
+				if (Math.abs(mouse.x - dividerX) <= 1) dragging = true;
 				return { consume: true };
 			}
 			if (mouse.motion && dragging && tui) {
 				const proposed = tui.terminal.columns - mouse.x + 1;
 				const effectiveMax = Math.min(maximumSidebar, tui.terminal.columns - minimumMain);
 				sidebarWidth = clamp(proposed, minimumSidebar, Math.max(minimumSidebar, effectiveMax));
+				syncOverlayWidth();
 				requestRender();
 			}
 			return { consume: true };
@@ -213,6 +229,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		show() {
 			if (disposed || enabled) return;
 			enabled = true;
+			syncOverlayWidth();
 			requestRender();
 		},
 		hide() {
@@ -225,6 +242,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			const next = clamp(finiteInteger(width, sidebarWidth), minimumSidebar, maximumSidebar);
 			if (next === sidebarWidth) return;
 			sidebarWidth = next;
+			syncOverlayWidth();
 			requestRender();
 		},
 		getSidebarWidth: () => sidebarWidth,
@@ -243,6 +261,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 				return false;
 			}
 			sidebarWidth = effectiveSidebarWidth(tui.terminal.columns);
+			syncOverlayWidth();
 			resizeStartWidth = sidebarWidth;
 			dragging = false;
 			resizing = true;
@@ -264,14 +283,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		isResizing: () => resizing,
 		isEnabled: () => enabled,
 		isVisibleAtWidth: visibleAt,
-		overlayOptions: () => ({
-			anchor: "top-right",
-			width: tui ? effectiveSidebarWidth(tui.terminal.columns) : sidebarWidth,
-			maxHeight: "100%",
-			margin: 0,
-			nonCapturing: true,
-			visible: (terminalWidth) => visibleAt(terminalWidth),
-		}),
+		overlayOptions: () => overlayLayout,
 		requestRender,
 		dispose() {
 			if (disposed) return;
