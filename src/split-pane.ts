@@ -1,4 +1,27 @@
+import { matchesKey } from "@earendil-works/pi-tui";
 import type { OverlayOptions, TUI } from "@earendil-works/pi-tui";
+
+const ENABLE_MOUSE = "\u001b[?1002h\u001b[?1006h";
+const DISABLE_MOUSE = "\u001b[?1006l\u001b[?1002l";
+const SGR_MOUSE = /^\u001b\[<(\d+);(\d+);(\d+)([Mm])$/;
+
+export interface SgrMouseEvent {
+	button: number;
+	x: number;
+	y: number;
+	release: boolean;
+	motion: boolean;
+}
+
+export function parseSgrMouseEvent(data: string): SgrMouseEvent | undefined {
+	const match = data.match(SGR_MOUSE);
+	if (!match) return undefined;
+	const button = Number(match[1]);
+	const x = Number(match[2]);
+	const y = Number(match[3]);
+	if (![button, x, y].every(Number.isFinite) || x < 1 || y < 1) return undefined;
+	return { button, x, y, release: match[4] === "m", motion: (button & 32) !== 0 };
+}
 
 export const DEFAULT_SIDEBAR_WIDTH = 44;
 export const MIN_SIDEBAR_WIDTH = 28;
@@ -13,6 +36,9 @@ export interface SplitPaneControllerOptions {
 	maxSidebarWidth?: number;
 	minMainWidth?: number;
 	onError?(error: unknown): void;
+	subscribeInput?(handler: (data: string) => { consume?: boolean; data?: string } | undefined): () => void;
+	onResizeChange?(resizing: boolean): void;
+	onWarning?(message: string): void;
 }
 
 export interface SplitPaneController {
@@ -23,6 +49,10 @@ export interface SplitPaneController {
 	getSidebarWidth(): number;
 	isEnabled(): boolean;
 	isVisibleAtWidth(terminalWidth: number): boolean;
+	beginResize(): boolean;
+	finishResize(): void;
+	cancelResize(): void;
+	isResizing(): boolean;
 	overlayOptions(): OverlayOptions;
 	requestRender(): void;
 	dispose(): void;
@@ -54,6 +84,37 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 	let wrappedRender: RenderFunction | undefined;
 	let enabled = false;
 	let disposed = false;
+	let resizing = false;
+	let resizeStartWidth = sidebarWidth;
+	let dragging = false;
+	let unsubscribeInput: (() => void) | undefined;
+	let mouseReportingEnabled = false;
+	let controller: SplitPaneController;
+
+	const stopResize = (restore: boolean) => {
+		if (!resizing && !mouseReportingEnabled && !unsubscribeInput) return;
+		if (restore) sidebarWidth = resizeStartWidth;
+		dragging = false;
+		resizing = false;
+		if (mouseReportingEnabled) {
+			tui?.terminal.write(DISABLE_MOUSE);
+			mouseReportingEnabled = false;
+		}
+		unsubscribeInput?.();
+		unsubscribeInput = undefined;
+		options.onResizeChange?.(false);
+		requestRender();
+	};
+
+	const reconcileResizeWidth = (terminalWidth: number) => {
+		if (!resizing) return;
+		if (!visibleAt(terminalWidth)) {
+			stopResize(true);
+			return;
+		}
+		const effectiveMax = Math.min(maximumSidebar, terminalWidth - minimumMain);
+		sidebarWidth = clamp(sidebarWidth, minimumSidebar, Math.max(minimumSidebar, effectiveMax));
+	};
 
 	const visibleAt = (terminalWidth: number): boolean =>
 		enabled && Number.isFinite(terminalWidth) && terminalWidth >= minimumMain + minimumSidebar;
@@ -73,6 +134,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		originalRender = nextTui.render;
 		const previousRender = nextTui.render;
 		wrappedRender = function (this: TUI, terminalWidth: number): string[] {
+			reconcileResizeWidth(terminalWidth);
 			const reserved = effectiveSidebarWidth(terminalWidth);
 			try {
 				return previousRender.call(nextTui, terminalWidth - reserved);
@@ -86,7 +148,55 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		requestRender();
 	};
 
-	return {
+	const handleResizeInput = (data: string): { consume?: boolean; data?: string } | undefined => {
+		const mouse = parseSgrMouseEvent(data);
+		if (mouse) {
+			if (mouse.release) {
+				if (dragging) stopResize(false);
+				return { consume: true };
+			}
+			if (!mouse.motion && (mouse.button & 3) === 0) {
+				const dividerX = (tui?.terminal.columns ?? 0) - sidebarWidth + 1;
+				if (mouse.x !== dividerX) stopResize(true);
+				else dragging = true;
+				return { consume: true };
+			}
+			if (mouse.motion && dragging && tui) {
+				const proposed = tui.terminal.columns - mouse.x + 1;
+				const effectiveMax = Math.min(maximumSidebar, tui.terminal.columns - minimumMain);
+				sidebarWidth = clamp(proposed, minimumSidebar, Math.max(minimumSidebar, effectiveMax));
+				requestRender();
+			}
+			return { consume: true };
+		}
+		if (matchesKey(data, "shift+left")) {
+			controller.setSidebarWidth(sidebarWidth + 4);
+			return { consume: true };
+		}
+		if (matchesKey(data, "shift+right")) {
+			controller.setSidebarWidth(sidebarWidth - 4);
+			return { consume: true };
+		}
+		if (matchesKey(data, "left")) {
+			controller.setSidebarWidth(sidebarWidth + 1);
+			return { consume: true };
+		}
+		if (matchesKey(data, "right")) {
+			controller.setSidebarWidth(sidebarWidth - 1);
+			return { consume: true };
+		}
+		if (matchesKey(data, "enter")) {
+			stopResize(false);
+			return { consume: true };
+		}
+		if (matchesKey(data, "escape")) {
+			stopResize(true);
+			return { consume: true };
+		}
+		return undefined;
+	};
+
+	controller = {
 		attach,
 		show() {
 			if (disposed || enabled) return;
@@ -94,6 +204,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			requestRender();
 		},
 		hide() {
+			stopResize(true);
 			if (!enabled) return;
 			enabled = false;
 			requestRender();
@@ -105,6 +216,40 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			requestRender();
 		},
 		getSidebarWidth: () => sidebarWidth,
+		beginResize() {
+			if (resizing) return true;
+			if (!tui || !enabled) {
+				options.onWarning?.("Atelier sidebar is not ready to resize");
+				return false;
+			}
+			if (!visibleAt(tui.terminal.columns)) {
+				options.onWarning?.("Terminal is too narrow to resize the Atelier sidebar");
+				return false;
+			}
+			if (!options.subscribeInput) {
+				options.onWarning?.("Terminal input is unavailable for sidebar resizing");
+				return false;
+			}
+			sidebarWidth = effectiveSidebarWidth(tui.terminal.columns);
+			resizeStartWidth = sidebarWidth;
+			dragging = false;
+			resizing = true;
+			try {
+				unsubscribeInput = options.subscribeInput(handleResizeInput);
+				mouseReportingEnabled = true;
+				tui.terminal.write(ENABLE_MOUSE);
+				options.onResizeChange?.(true);
+				requestRender();
+				return true;
+			} catch (error) {
+				options.onError?.(error);
+				stopResize(true);
+				return false;
+			}
+		},
+		finishResize: () => stopResize(false),
+		cancelResize: () => stopResize(true),
+		isResizing: () => resizing,
 		isEnabled: () => enabled,
 		isVisibleAtWidth: visibleAt,
 		overlayOptions: () => ({
@@ -118,6 +263,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		requestRender,
 		dispose() {
 			if (disposed) return;
+			stopResize(true);
 			disposed = true;
 			enabled = false;
 			if (tui && originalRender && tui.render === wrappedRender) tui.render = originalRender;
@@ -127,4 +273,5 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			wrappedRender = undefined;
 		},
 	};
+	return controller;
 }

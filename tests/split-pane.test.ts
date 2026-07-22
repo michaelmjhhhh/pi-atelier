@@ -6,6 +6,7 @@ import {
 	MIN_MAIN_WIDTH,
 	MIN_SIDEBAR_WIDTH,
 	createSplitPaneController,
+	parseSgrMouseEvent,
 } from "../src/split-pane.js";
 
 function harness(columns = 120) {
@@ -19,6 +20,118 @@ function harness(columns = 120) {
 	} as unknown as TUI;
 	return { tui, baseRender, requestRender, write };
 }
+
+const press = (x: number, y = 4) => `\u001b[<0;${x};${y}M`;
+const motion = (x: number, y = 4) => `\u001b[<32;${x};${y}M`;
+const release = (x: number, y = 4) => `\u001b[<0;${x};${y}m`;
+
+function resizeHarness(columns = 120) {
+	const h = harness(columns);
+	let input: ((data: string) => { consume?: boolean; data?: string } | undefined) | undefined;
+	const unsubscribe = vi.fn();
+	const onResizeChange = vi.fn();
+	const split = createSplitPaneController({
+		subscribeInput(handler) {
+			input = handler;
+			return unsubscribe;
+		},
+		onResizeChange,
+	});
+	split.attach(h.tui);
+	split.show();
+	return { ...h, split, unsubscribe, onResizeChange, send: (data: string) => input?.(data) };
+}
+
+describe("SGR mouse parsing", () => {
+	it("parses press, held motion, and release coordinates", () => {
+		expect(parseSgrMouseEvent(press(77))).toEqual({ button: 0, x: 77, y: 4, release: false, motion: false });
+		expect(parseSgrMouseEvent(motion(70))).toMatchObject({ x: 70, motion: true, release: false });
+		expect(parseSgrMouseEvent(release(70))).toMatchObject({ x: 70, motion: false, release: true });
+	});
+	it.each(["", "left", "\u001b[<x;1;1M", "\u001b[<0;0;1M"])("rejects malformed input: %j", (data) =>
+		expect(parseSgrMouseEvent(data)).toBeUndefined(),
+	);
+});
+
+describe("temporary Resize mode", () => {
+	it("enables mouse reporting only during Resize mode", () => {
+		const h = resizeHarness();
+		expect(h.write).not.toHaveBeenCalled();
+		expect(h.split.beginResize()).toBe(true);
+		expect(h.write).toHaveBeenCalledWith("\u001b[?1002h\u001b[?1006h");
+		expect(h.split.isResizing()).toBe(true);
+		h.split.finishResize();
+		expect(h.write).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
+		expect(h.unsubscribe).toHaveBeenCalledOnce();
+		expect(h.split.isResizing()).toBe(false);
+	});
+	it("drags only from the divider and accepts on release", () => {
+		const h = resizeHarness();
+		h.split.beginResize();
+		const dividerX = 120 - DEFAULT_SIDEBAR_WIDTH + 1;
+		expect(h.send(press(dividerX))).toEqual({ consume: true });
+		expect(h.send(motion(70))).toEqual({ consume: true });
+		expect(h.split.getSidebarWidth()).toBe(51);
+		expect(h.send(release(70))).toEqual({ consume: true });
+		expect(h.split.isResizing()).toBe(false);
+		expect(h.split.getSidebarWidth()).toBe(51);
+	});
+	it("cancels when pressing outside the divider", () => {
+		const h = resizeHarness();
+		h.split.beginResize();
+		h.send("\u001b[C");
+		expect(h.split.getSidebarWidth()).toBe(43);
+		h.send(press(10));
+		expect(h.split.getSidebarWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
+		expect(h.split.isResizing()).toBe(false);
+	});
+	it("supports arrows, shifted arrows, Enter, and Escape rollback", () => {
+		const h = resizeHarness();
+		h.split.beginResize();
+		h.send("\u001b[D");
+		expect(h.split.getSidebarWidth()).toBe(45);
+		h.send("\u001b[1;2D");
+		expect(h.split.getSidebarWidth()).toBe(49);
+		h.send("\u001b");
+		expect(h.split.getSidebarWidth()).toBe(44);
+		h.split.beginResize();
+		h.send("\u001b[C");
+		h.send("\r");
+		expect(h.split.getSidebarWidth()).toBe(43);
+		expect(h.split.isResizing()).toBe(false);
+	});
+	it("refuses Resize mode when the split is hidden or not attached", () => {
+		const warnings: string[] = [];
+		const split = createSplitPaneController({ onWarning: (message) => warnings.push(message) });
+		expect(split.beginResize()).toBe(false);
+		expect(warnings.at(-1)).toContain("not ready");
+		const h = harness(91);
+		split.attach(h.tui);
+		split.show();
+		expect(split.beginResize()).toBe(false);
+		expect(h.write).not.toHaveBeenCalled();
+	});
+	it.each(["hide", "dispose"] as const)("cleans mouse state on %s", (action) => {
+		const h = resizeHarness();
+		h.split.beginResize();
+		h.split[action]();
+		expect(h.write).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
+		expect(h.unsubscribe).toHaveBeenCalledOnce();
+	});
+	it("reclamps while resizing and exits safely when terminal becomes too narrow", () => {
+		const h = resizeHarness();
+		h.split.setSidebarWidth(72);
+		h.split.beginResize();
+		expect(h.split.getSidebarWidth()).toBe(56);
+		(h.tui.terminal as { columns: number }).columns = 100;
+		h.tui.render(100);
+		expect(h.split.getSidebarWidth()).toBe(36);
+		(h.tui.terminal as { columns: number }).columns = 91;
+		h.tui.render(91);
+		expect(h.split.isResizing()).toBe(false);
+		expect(h.write).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
+	});
+});
 
 describe("split pane width reservation", () => {
 	it("reserves the default sidebar width without changing overlay coordinates", () => {
