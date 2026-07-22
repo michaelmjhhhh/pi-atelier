@@ -157,9 +157,7 @@ describe("extension registration", () => {
 		await start(h);
 		await start(h, replacementContext(h.ctx, "Replacement session"));
 
-		expect(
-			h.pi.registerShortcut.mock.calls.filter(([key]) => key === "ctrl+shift+r"),
-		).toHaveLength(1);
+		expect(h.pi.registerShortcut.mock.calls.filter(([key]) => key === "ctrl+shift+r")).toHaveLength(1);
 	});
 
 	it("does not install terminal UI outside TUI mode", async () => {
