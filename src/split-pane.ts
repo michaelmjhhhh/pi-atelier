@@ -91,19 +91,30 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 	let mouseReportingEnabled = false;
 	let controller: SplitPaneController;
 
+	const safely = (action: () => unknown) => {
+		try {
+			const result = action();
+			if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+				void Promise.resolve(result).catch(() => undefined);
+			}
+		} catch {
+			// Cleanup and error reporting are best effort; continue with remaining actions.
+		}
+	};
+
 	const stopResize = (restore: boolean) => {
 		if (!resizing && !mouseReportingEnabled && !unsubscribeInput) return;
 		if (restore) sidebarWidth = resizeStartWidth;
+		const shouldDisableMouse = mouseReportingEnabled;
+		const unsubscribe = unsubscribeInput;
 		dragging = false;
 		resizing = false;
-		if (mouseReportingEnabled) {
-			tui?.terminal.write(DISABLE_MOUSE);
-			mouseReportingEnabled = false;
-		}
-		unsubscribeInput?.();
+		mouseReportingEnabled = false;
 		unsubscribeInput = undefined;
-		options.onResizeChange?.(false);
-		requestRender();
+		if (shouldDisableMouse) safely(() => tui?.terminal.write(DISABLE_MOUSE));
+		if (unsubscribe) safely(unsubscribe);
+		safely(() => options.onResizeChange?.(false));
+		safely(requestRender);
 	};
 
 	const reconcileResizeWidth = (terminalWidth: number) => {
@@ -141,7 +152,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			} catch (error) {
 				stopResize(true);
 				enabled = false;
-				options.onError?.(error);
+				safely(() => options.onError?.(error));
 				return previousRender.call(nextTui, terminalWidth);
 			}
 		};
@@ -243,8 +254,8 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 				requestRender();
 				return true;
 			} catch (error) {
-				options.onError?.(error);
 				stopResize(true);
+				safely(() => options.onError?.(error));
 				return false;
 			}
 		},

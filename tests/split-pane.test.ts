@@ -137,6 +137,66 @@ describe("temporary Resize mode", () => {
 		expect(h.write).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
 		expect(h.unsubscribe).toHaveBeenCalledOnce();
 	});
+	it("attempts remaining cleanup when disabling mouse reporting throws", () => {
+		const h = resizeHarness();
+		h.write.mockImplementation((sequence: string) => {
+			if (sequence === "\u001b[?1006l\u001b[?1002l") throw new Error("disable failed");
+		});
+		h.split.beginResize();
+
+		expect(() => h.split.finishResize()).not.toThrow();
+		expect(h.unsubscribe).toHaveBeenCalledOnce();
+		expect(h.onResizeChange).toHaveBeenLastCalledWith(false);
+		expect(h.split.isResizing()).toBe(false);
+	});
+	it("attempts remaining cleanup when unsubscribe throws", () => {
+		const h = resizeHarness();
+		h.unsubscribe.mockImplementation(() => {
+			throw new Error("unsubscribe failed");
+		});
+		h.split.beginResize();
+
+		expect(() => h.split.finishResize()).not.toThrow();
+		expect(h.write).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
+		expect(h.onResizeChange).toHaveBeenLastCalledWith(false);
+		expect(h.split.isResizing()).toBe(false);
+	});
+	it("cleans up before safely reporting begin errors", () => {
+		const h = resizeHarness();
+		const error = new Error("enable failed");
+		h.write.mockImplementationOnce(() => {
+			throw error;
+		});
+		const onError = vi.fn(() => {
+			throw new Error("report failed");
+		});
+		const split = createSplitPaneController({
+			subscribeInput: () => h.unsubscribe,
+			onResizeChange: h.onResizeChange,
+			onError,
+		});
+		split.attach(h.tui);
+		split.show();
+
+		expect(() => split.beginResize()).not.toThrow();
+		expect(h.write).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
+		expect(h.unsubscribe).toHaveBeenCalledOnce();
+		expect(h.onResizeChange).toHaveBeenLastCalledWith(false);
+		expect(onError).toHaveBeenCalledWith(error);
+		expect(split.isResizing()).toBe(false);
+	});
+	it("continues cleanup when onResizeChange throws", () => {
+		const h = resizeHarness();
+		h.onResizeChange.mockImplementation(() => {
+			throw new Error("resize callback failed");
+		});
+		h.split.beginResize();
+
+		expect(() => h.split.finishResize()).not.toThrow();
+		expect(h.write).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
+		expect(h.unsubscribe).toHaveBeenCalledOnce();
+		expect(h.split.isResizing()).toBe(false);
+	});
 	it("reclamps while resizing and exits safely when terminal becomes too narrow", () => {
 		const h = resizeHarness();
 		h.split.setSidebarWidth(72);
