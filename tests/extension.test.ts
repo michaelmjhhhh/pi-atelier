@@ -152,6 +152,16 @@ describe("extension registration", () => {
 		expect(h.shortcuts).toContain("ctrl+shift+r");
 	});
 
+	it("registers the resize shortcut exactly once across session replacement", async () => {
+		const h = harness();
+		await start(h);
+		await start(h, replacementContext(h.ctx, "Replacement session"));
+
+		expect(
+			h.pi.registerShortcut.mock.calls.filter(([key]) => key === "ctrl+shift+r"),
+		).toHaveLength(1);
+	});
+
 	it("does not install terminal UI outside TUI mode", async () => {
 		const h = harness("print");
 		await start(h);
@@ -224,6 +234,10 @@ describe("extension registration", () => {
 		const writeCount = h.terminalWrite.mock.calls.length;
 		await h.shortcutHandlers.get("ctrl+shift+r")?.(staleCtx);
 		expect(h.terminalWrite).toHaveBeenCalledTimes(writeCount);
+		expect(staleCtx.ui.notify).toHaveBeenLastCalledWith(
+			"Show the Pi Atelier sidebar before resizing it",
+			"warning",
+		);
 	});
 
 	it("disable closes the sidebar and restores render and mouse state", async () => {
