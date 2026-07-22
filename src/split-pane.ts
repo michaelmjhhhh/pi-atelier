@@ -75,7 +75,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		wrappedRender = function (this: TUI, terminalWidth: number): string[] {
 			const reserved = effectiveSidebarWidth(terminalWidth);
 			try {
-				return previousRender.call(nextTui, Math.max(1, terminalWidth - reserved));
+				return previousRender.call(nextTui, terminalWidth - reserved);
 			} catch (error) {
 				enabled = false;
 				options.onError?.(error);

@@ -52,6 +52,25 @@ describe("split pane width reservation", () => {
 		expect(h.tui.render(120)).toEqual(["base:120"]);
 	});
 
+	it("shows the pane at the exact minimum terminal width", () => {
+		const h = harness();
+		const split = createSplitPaneController();
+		split.attach(h.tui);
+		split.show();
+
+		expect(split.isVisibleAtWidth(MIN_MAIN_WIDTH + MIN_SIDEBAR_WIDTH)).toBe(true);
+		expect(h.tui.render(MIN_MAIN_WIDTH + MIN_SIDEBAR_WIDTH)).toEqual(["base:64"]);
+	});
+
+	it("passes zero and negative widths through unchanged", () => {
+		const h = harness();
+		const split = createSplitPaneController();
+		split.attach(h.tui);
+
+		expect(h.tui.render(0)).toEqual(["base:0"]);
+		expect(h.tui.render(-5)).toEqual(["base:-5"]);
+	});
+
 	it("clamps configured and runtime widths while preserving the main pane", () => {
 		const h = harness(100);
 		const split = createSplitPaneController();
@@ -101,6 +120,31 @@ describe("split pane render lifecycle", () => {
 
 		expect(h.tui.render).toBe(laterWrapper);
 		expect(h.tui.render(120)).toEqual(["base:120"]);
+	});
+
+	it("calls onError, disables the split, and retries the prior renderer full-width", () => {
+		const error = new Error("render failed");
+		const onError = vi.fn();
+		const baseRender = vi
+			.fn()
+			.mockImplementationOnce(() => {
+				throw error;
+			})
+			.mockImplementation((width: number) => [`base:${width}`]);
+		const requestRender = vi.fn();
+		const tui = {
+			render: baseRender,
+			requestRender,
+			terminal: { columns: 120, rows: 36, write: vi.fn() },
+		} as unknown as TUI;
+		const split = createSplitPaneController({ onError });
+		split.attach(tui);
+		split.show();
+
+		expect(tui.render(120)).toEqual(["base:120"]);
+		expect(onError).toHaveBeenCalledWith(error);
+		expect(split.isEnabled()).toBe(false);
+		expect(baseRender.mock.calls).toEqual([[76], [120]]);
 	});
 
 	it("keeps show, hide, width updates, and requests idempotent", () => {
