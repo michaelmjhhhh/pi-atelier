@@ -30,6 +30,7 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 	let extensionStatuses: readonly string[] = [];
 	let enabled = true;
 	let shortcutRegistered = false;
+	let resizeShortcutRegistered = false;
 	let lifecycleGeneration = 0;
 
 	const requestAllRenders = (): void => {
@@ -162,6 +163,7 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 			}
 			if (action === "disable") {
 				enabled = false;
+				sidebar?.hide();
 				updateExtensionStatuses([]);
 				ctx.ui.setFooter(undefined);
 				ctx.ui.notify("Pi Atelier disabled", "info");
@@ -234,6 +236,7 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 				getConfig: () => candidateRuntime.getConfig(),
 				colorEnabled: !("NO_COLOR" in process.env),
 				shouldAnimate: () => runActivity?.isRunning() ?? false,
+				onWarning: (message) => initializationContext.ui.notify(message, "warning"),
 				onError: (error) =>
 					initializationContext.ui.notify(
 						`Pi Atelier sidebar failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -277,6 +280,20 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 					);
 				}
 				shortcutRegistered = true;
+			}
+			if (isFresh() && !resizeShortcutRegistered) {
+				pi.registerShortcut("ctrl+shift+r" as KeyId, {
+					description: "Resize Pi Atelier sidebar",
+					handler: (shortcutContext) => {
+						const current = getCurrentContextState(shortcutContext);
+						if (!current?.sidebar || !current.sidebar.isVisible()) {
+							shortcutContext.ui.notify("Show the Pi Atelier sidebar before resizing it", "warning");
+							return;
+						}
+						current.sidebar.beginResize();
+					},
+				});
+				resizeShortcutRegistered = true;
 			}
 			if (enabled && isFresh()) {
 				installFooter(initializationContext, candidateRuntime, initializationGeneration);

@@ -20,18 +20,26 @@ function harness(mode: "tui" | "print" = "tui") {
 	const handlers = new Map<string, (...args: any[]) => unknown>();
 	const commands = new Map<string, any>();
 	const shortcuts: string[] = [];
+	const shortcutHandlers = new Map<string, (ctx: any) => Promise<void> | void>();
 	const setFooter = vi.fn();
+	let terminalInput: ((data: string) => unknown) | undefined;
+	const terminalWrite = vi.fn();
+	const baseRender = vi.fn((width: number) => [`main:${width}`]);
 	const overlays: Array<{
 		component: any;
 		done: ReturnType<typeof vi.fn>;
 		handle: { hide: ReturnType<typeof vi.fn> };
 		options: any;
 		requestRender: ReturnType<typeof vi.fn>;
+		tui: any;
 	}> = [];
 	const pi = {
 		on: vi.fn((name: string, handler: (...args: any[]) => unknown) => handlers.set(name, handler)),
 		registerCommand: vi.fn((name: string, options: any) => commands.set(name, options)),
-		registerShortcut: vi.fn((key: string) => shortcuts.push(key)),
+		registerShortcut: vi.fn((key: string, options: any) => {
+			shortcuts.push(key);
+			shortcutHandlers.set(key, options.handler);
+		}),
 		exec: vi.fn().mockResolvedValue({ stdout: "", stderr: "", code: 0, killed: false }),
 		getThinkingLevel: vi.fn().mockReturnValue("medium"),
 		getActiveTools: vi.fn().mockReturnValue(["read"]),
@@ -39,6 +47,11 @@ function harness(mode: "tui" | "print" = "tui") {
 	};
 	const custom = vi.fn((factory: (...args: any[]) => any, options: any) => {
 		const requestRender = vi.fn();
+		const tui = {
+			render: baseRender,
+			terminal: { columns: 120, rows: 36, width: 120, write: terminalWrite },
+			requestRender,
+		};
 		let resolve!: (value: undefined) => void;
 		const pending = new Promise<undefined>((done) => {
 			resolve = done;
@@ -46,11 +59,7 @@ function harness(mode: "tui" | "print" = "tui") {
 		const done = vi.fn(() => resolve(undefined));
 		const handle = { hide: vi.fn() };
 		const component = factory(
-			{
-				render: vi.fn((width: number) => [`main:${width}`]),
-				terminal: { columns: 120, rows: 36, width: 120, write: vi.fn() },
-				requestRender,
-			},
+			tui,
 			{
 				name: "dark",
 				fg: (_color: string, text: string) => text,
@@ -61,7 +70,7 @@ function harness(mode: "tui" | "print" = "tui") {
 			done,
 		);
 		requestRender.mockClear();
-		overlays.push({ component, done, handle, options, requestRender });
+		overlays.push({ component, done, handle, options, requestRender, tui });
 		options?.onHandle?.(handle);
 		const overlayOptions =
 			typeof options?.overlayOptions === "function" ? options.overlayOptions() : options?.overlayOptions;
@@ -81,10 +90,34 @@ function harness(mode: "tui" | "print" = "tui") {
 			getSessionName: vi.fn().mockReturnValue("Test session"),
 			getSessionFile: vi.fn().mockReturnValue("/tmp/session.jsonl"),
 		},
-		ui: { setFooter, notify: vi.fn(), theme: {}, custom, onTerminalInput: vi.fn(() => vi.fn()) },
+		ui: {
+			setFooter,
+			notify: vi.fn(),
+			theme: {},
+			custom,
+			onTerminalInput: vi.fn((handler) => {
+				terminalInput = handler;
+				return vi.fn();
+			}),
+		},
 	};
 	atelierExtension(pi as never);
-	return { handlers, commands, shortcuts, setFooter, ctx, pi, overlays, custom };
+	return {
+		handlers,
+		commands,
+		shortcuts,
+		shortcutHandlers,
+		setFooter,
+		ctx,
+		pi,
+		overlays,
+		custom,
+		terminalWrite,
+		baseRender,
+		get terminalInput() {
+			return terminalInput;
+		},
+	};
 }
 
 function replacementContext(
@@ -116,6 +149,7 @@ describe("extension registration", () => {
 		await start(h);
 		expect(h.setFooter).toHaveBeenCalledTimes(1);
 		expect(h.shortcuts).toContain("alt+a");
+		expect(h.shortcuts).toContain("ctrl+shift+r");
 	});
 
 	it("does not install terminal UI outside TUI mode", async () => {
@@ -160,15 +194,50 @@ describe("extension registration", () => {
 		expect(h.custom).not.toHaveBeenCalled();
 	});
 
-	it("keeps sidebar and footer enablement independent", async () => {
+	it("reflows the Pi workspace beside the visible sidebar", async () => {
 		const h = harness();
 		await start(h);
 		await command(h, "sidebar on");
-		await command(h, "disable");
-		expect(h.overlays[0]?.done).not.toHaveBeenCalled();
+
+		expect(h.overlays[0]?.options.overlayOptions()).toMatchObject({ width: 44 });
+		expect(h.overlays[0]?.tui.render(120)).toEqual(["main:76"]);
+
 		await command(h, "sidebar off");
-		await command(h, "enable");
-		expect(h.custom).toHaveBeenCalledTimes(1);
+		expect(h.overlays[0]?.tui.render(120)).toEqual(["main:120"]);
+	});
+
+	it("enters Resize mode with Ctrl+Shift+R only for the active visible sidebar", async () => {
+		const h = harness();
+		await start(h);
+		await h.shortcutHandlers.get("ctrl+shift+r")?.(h.ctx);
+		expect(h.terminalWrite).not.toHaveBeenCalled();
+		expect(h.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("sidebar"), "warning");
+
+		await command(h, "sidebar on");
+		await h.shortcutHandlers.get("ctrl+shift+r")?.(h.ctx);
+		expect(h.terminalWrite).toHaveBeenCalledWith("\u001b[?1002h\u001b[?1006h");
+
+		const staleCtx = h.ctx;
+		const currentCtx = replacementContext(h.ctx, "Replacement session");
+		await start(h, currentCtx);
+		await command(h, "sidebar on", currentCtx);
+		const writeCount = h.terminalWrite.mock.calls.length;
+		await h.shortcutHandlers.get("ctrl+shift+r")?.(staleCtx);
+		expect(h.terminalWrite).toHaveBeenCalledTimes(writeCount);
+	});
+
+	it("disable closes the sidebar and restores render and mouse state", async () => {
+		const h = harness();
+		await start(h);
+		await command(h, "sidebar on");
+		await h.shortcutHandlers.get("ctrl+shift+r")?.(h.ctx);
+
+		await command(h, "disable");
+
+		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
+		expect(h.terminalWrite).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
+		expect(h.overlays[0]?.tui.render(120)).toEqual(["main:120"]);
+		expect(h.setFooter).toHaveBeenLastCalledWith(undefined);
 	});
 
 	it("closes an enabled sidebar during shutdown", async () => {
