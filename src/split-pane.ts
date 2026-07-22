@@ -155,7 +155,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 				if (dragging) stopResize(false);
 				return { consume: true };
 			}
-			if (!mouse.motion && (mouse.button & 3) === 0) {
+			if (!mouse.motion && (mouse.button & 3) === 0 && (mouse.button & 64) === 0) {
 				const dividerX = (tui?.terminal.columns ?? 0) - sidebarWidth + 1;
 				if (mouse.x !== dividerX) stopResize(true);
 				else dragging = true;

@@ -24,6 +24,7 @@ function harness(columns = 120) {
 const press = (x: number, y = 4) => `\u001b[<0;${x};${y}M`;
 const motion = (x: number, y = 4) => `\u001b[<32;${x};${y}M`;
 const release = (x: number, y = 4) => `\u001b[<0;${x};${y}m`;
+const mousePress = (button: number, x: number, y = 4) => `\u001b[<${button};${x};${y}M`;
 
 function resizeHarness(columns = 120) {
 	const h = harness(columns);
@@ -75,6 +76,24 @@ describe("temporary Resize mode", () => {
 		expect(h.send(release(70))).toEqual({ consume: true });
 		expect(h.split.isResizing()).toBe(false);
 		expect(h.split.getSidebarWidth()).toBe(51);
+	});
+	it("does not start dragging for wheel or non-primary mouse events", () => {
+		const h = resizeHarness();
+		h.split.beginResize();
+		const dividerX = 120 - DEFAULT_SIDEBAR_WIDTH + 1;
+
+		expect(h.send(mousePress(64, dividerX))).toEqual({ consume: true });
+		expect(h.send(motion(70))).toEqual({ consume: true });
+		expect(h.split.getSidebarWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
+
+		expect(h.send(mousePress(1, dividerX))).toEqual({ consume: true });
+		expect(h.send(motion(70))).toEqual({ consume: true });
+		expect(h.split.getSidebarWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
+	});
+	it("leaves unrelated keyboard input unconsumed", () => {
+		const h = resizeHarness();
+		h.split.beginResize();
+		expect(h.send("a")).toBeUndefined();
 	});
 	it("cancels when pressing outside the divider", () => {
 		const h = resizeHarness();
