@@ -101,7 +101,8 @@ function harness(mode: "tui" | "print" = "tui") {
 			}),
 		},
 	};
-	atelierExtension(pi as never);
+	const saveConfig = vi.fn().mockResolvedValue(undefined);
+	atelierExtension(pi as never, { saveConfig });
 	return {
 		handlers,
 		commands,
@@ -114,6 +115,7 @@ function harness(mode: "tui" | "print" = "tui") {
 		custom,
 		terminalWrite,
 		baseRender,
+		saveConfig,
 		get terminalInput() {
 			return terminalInput;
 		},
@@ -194,12 +196,43 @@ describe("extension registration", () => {
 		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
 	});
 
+	it("toggles and persists sidebar tool-name details", async () => {
+		const h = harness();
+		await start(h);
+		await command(h, "sidebar on");
+		expect(h.overlays[0]?.component.render(44).join("\n")).not.toContain("\n│ read");
+
+		await command(h, "sidebar tools on");
+
+		expect(h.saveConfig).toHaveBeenLastCalledWith(
+			expect.stringContaining("pi-atelier.json"),
+			expect.objectContaining({ showSidebarToolNames: true }),
+		);
+		expect(h.overlays[0]?.component.render(44).join("\n")).toContain("read");
+		expect(h.ctx.ui.notify).toHaveBeenLastCalledWith("Sidebar tool list expanded", "info");
+
+		await command(h, "sidebar tools off");
+		expect(h.saveConfig).toHaveBeenLastCalledWith(
+			expect.stringContaining("pi-atelier.json"),
+			expect.objectContaining({ showSidebarToolNames: false }),
+		);
+		expect(h.ctx.ui.notify).toHaveBeenLastCalledWith("Sidebar tool list collapsed", "info");
+	});
+
 	it.each(["sidebar maybe", "sidebar on extra"])("warns for invalid syntax: %s", async (args) => {
 		const h = harness();
 		await start(h);
 		await command(h, args);
 		expect(h.ctx.ui.notify).toHaveBeenCalledWith("Usage: /atelier sidebar [on|off]", "warning");
 		expect(h.custom).not.toHaveBeenCalled();
+	});
+
+	it("warns for invalid sidebar tool-list syntax", async () => {
+		const h = harness();
+		await start(h);
+		await command(h, "sidebar tools maybe");
+		expect(h.ctx.ui.notify).toHaveBeenCalledWith("Usage: /atelier sidebar tools [on|off]", "warning");
+		expect(h.saveConfig).not.toHaveBeenCalled();
 	});
 
 	it("reflows the Pi workspace beside the visible sidebar", async () => {
@@ -369,7 +402,7 @@ describe("extension registration", () => {
 		expect(h.overlays[0]?.requestRender).toHaveBeenCalledTimes(4);
 	});
 
-	it("shows exact activated tools without listing inactive tools", async () => {
+	it("collapses activated tool names at narrow sidebar widths", async () => {
 		const h = harness();
 		h.pi.getActiveTools.mockReturnValue(["write", "read", "bash", "edit"]);
 		h.pi.getAllTools.mockReturnValue([
@@ -382,12 +415,13 @@ describe("extension registration", () => {
 		await start(h);
 		await command(h, "sidebar on");
 
-		const text = h.overlays[0]?.component.render(44).join("\n") ?? "";
+		const text = h.overlays[0]?.component.render(39).join("\n") ?? "";
 		expect(text).toContain("4 / 5 active");
-		expect(text).toContain("bash");
-		expect(text).toContain("edit");
-		expect(text).toContain("read");
-		expect(text).toContain("write");
+		expect(text).toContain("▸");
+		expect(text).not.toContain("bash");
+		expect(text).not.toContain("edit");
+		expect(text).not.toContain("read");
+		expect(text).not.toContain("write");
 		expect(text).not.toContain("grep");
 	});
 

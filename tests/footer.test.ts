@@ -530,6 +530,18 @@ describe("footer", () => {
 		expect(line.match(/ctx 27\.0%/g)).toHaveLength(1);
 	});
 
+	it("reserves ellipsis width so animated frames never move the model", () => {
+		const working = { ...state, activity: "working" as const, workingLabel: "CLAUDING" };
+		const lines = ["...", "..", "."].map((dots) =>
+			stripAnsi(renderFooterLine(working, DEFAULT_CONFIG, plainTheme, 160, true, dots)),
+		);
+		const modelColumns = lines.map((line) => line.indexOf("gpt-5.6-sol"));
+		expect(new Set(modelColumns).size).toBe(1);
+		expect(lines[0]).toContain("CLAUDING... · gpt-5.6-sol");
+		expect(lines[1]).toContain("CLAUDING..  · gpt-5.6-sol");
+		expect(lines[2]).toContain("CLAUDING.   · gpt-5.6-sol");
+	});
+
 	it("animates shrinking dots every 400 ms while retaining the selected phrase", () => {
 		vi.useFakeTimers();
 		const requestRender = vi.fn();
@@ -640,7 +652,7 @@ describe("footer", () => {
 			"..",
 		);
 
-		expect(line).toContain(`${darkRgb.amber}<b>● PONDERING..</b>\u001b[39m`);
+		expect(line).toContain(`${darkRgb.amber}<b>● PONDERING.. </b>\u001b[39m`);
 		expect(fg).not.toHaveBeenCalled();
 		expect(italic).not.toHaveBeenCalled();
 	});

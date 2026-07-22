@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.2.0 — 2026-07-22
+
+- Reorder the sidebar around agent status, a compact context meter, and a merged workspace summary for faster scanning.
+- Hide unavailable usage metrics and routine healthy extension statuses while surfacing explicit warning/error alerts.
+- Collapse active tool names by default, automatically hide expanded names below 40 columns, and add a persistent command/menu toggle.
+- Add a unified compact mode below 40 columns that reflows Agent, Workspace, Usage, Context, and Tools instead of truncating dense rows.
+- Size paired metrics and tool columns from their content so wide sidebars do not introduce oversized empty gaps.
+- Drop Tools, Usage, then Workspace as terminal height contracts.
+- Reserve footer ellipsis width so working-state animation never shifts the model or following workspace text.
+
 ## 0.1.6
 
 - Reflow Pi beside the sidebar with an extension-only, non-overlapping split presentation.

@@ -7,7 +7,7 @@ import {
 	SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import type { KeyId } from "@earendil-works/pi-tui";
-import { loadConfig } from "../src/config.js";
+import { loadConfig, saveUserConfig } from "../src/config.js";
 import { createFooterComponent, type ThemeLike } from "../src/footer.js";
 import { openAtelierMenu } from "../src/menu.js";
 import { createRunActivityTracker, type RunActivityTracker } from "../src/run-activity.js";
@@ -20,7 +20,15 @@ import {
 import { AtelierRuntime } from "../src/state.js";
 import type { AtelierState } from "../src/types.js";
 
-export default function atelierExtension(pi: ExtensionAPI): void {
+export interface AtelierExtensionDependencies {
+	saveConfig?: typeof saveUserConfig;
+}
+
+export default function atelierExtension(
+	pi: ExtensionAPI,
+	dependencies: AtelierExtensionDependencies = {},
+): void {
+	const saveConfig = dependencies.saveConfig ?? saveUserConfig;
 	let runtime: AtelierRuntime | undefined;
 	let currentContext: ExtensionContext | undefined;
 	let currentSessionManager: ExtensionContext["sessionManager"] | undefined;
@@ -89,12 +97,46 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 		return { ctx: currentContext, runtime, sidebar, runActivity };
 	}
 
+	async function setSidebarToolNames(
+		ctx: ExtensionContext,
+		visible?: boolean,
+		targetRuntime = runtime,
+		targetSidebar = sidebar,
+	): Promise<void> {
+		if (!targetRuntime || !targetSidebar || runtime !== targetRuntime || sidebar !== targetSidebar) {
+			ctx.ui.notify("Pi Atelier is not active in this session", "warning");
+			return;
+		}
+		const next = visible ?? !targetRuntime.getConfig().showSidebarToolNames;
+		if (targetRuntime.getConfig().showSidebarToolNames !== next) {
+			targetRuntime.setConfig({ ...targetRuntime.getConfig(), showSidebarToolNames: next });
+		}
+		try {
+			await saveConfig(join(getAgentDir(), "pi-atelier.json"), targetRuntime.getConfig());
+			ctx.ui.notify(`Sidebar tool list ${next ? "expanded" : "collapsed"}`, "info");
+		} catch (error) {
+			ctx.ui.notify(
+				`Sidebar tool list changed for this session but could not be saved: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+				"warning",
+			);
+		}
+	}
+
 	async function openMenu(ctx: ExtensionContext): Promise<void> {
 		if (!runtime || !sidebar) {
 			ctx.ui.notify("Pi Atelier is not active in this session", "warning");
 			return;
 		}
-		await openAtelierMenu(pi, ctx, runtime, join(getAgentDir(), "pi-atelier.json"), sidebar);
+		const targetRuntime = runtime;
+		const targetSidebar = sidebar;
+		await openAtelierMenu(pi, ctx, targetRuntime, join(getAgentDir(), "pi-atelier.json"), {
+			isVisible: () => targetSidebar.isVisible(),
+			toggle: () => targetSidebar.toggle(),
+			isToolListExpanded: () => targetRuntime.getConfig().showSidebarToolNames,
+			toggleToolList: async () => setSidebarToolNames(ctx, undefined, targetRuntime, targetSidebar),
+		});
 	}
 
 	function installFooter(
@@ -141,19 +183,31 @@ export default function atelierExtension(pi: ExtensionAPI): void {
 			const parts = args.trim().toLowerCase().split(/\s+/).filter(Boolean);
 			const [action, sidebarAction, ...extra] = parts;
 			if (action === "sidebar") {
-				if (
-					extra.length > 0 ||
-					(sidebarAction !== undefined && sidebarAction !== "on" && sidebarAction !== "off")
-				) {
-					ctx.ui.notify("Usage: /atelier sidebar [on|off]", "warning");
-					return;
-				}
 				if (ctx.mode !== "tui") {
 					ctx.ui.notify("Pi Atelier sidebar requires TUI mode", "warning");
 					return;
 				}
 				if (!runtime || !sidebar) {
 					ctx.ui.notify("Pi Atelier is not active in this session", "warning");
+					return;
+				}
+				if (sidebarAction === "tools") {
+					const [toolAction, ...toolExtra] = extra;
+					if (
+						toolExtra.length > 0 ||
+						(toolAction !== undefined && toolAction !== "on" && toolAction !== "off")
+					) {
+						ctx.ui.notify("Usage: /atelier sidebar tools [on|off]", "warning");
+						return;
+					}
+					await setSidebarToolNames(ctx, toolAction === undefined ? undefined : toolAction === "on");
+					return;
+				}
+				if (
+					extra.length > 0 ||
+					(sidebarAction !== undefined && sidebarAction !== "on" && sidebarAction !== "off")
+				) {
+					ctx.ui.notify("Usage: /atelier sidebar [on|off]", "warning");
 					return;
 				}
 				if (sidebarAction === "on") sidebar.show();

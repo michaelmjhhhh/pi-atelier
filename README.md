@@ -78,7 +78,7 @@ pi -e .
 - `(auto)` automatic context compaction
 - `*` tracked working-tree changes
 
-`READY` remains fixed when idle. During each work cycle, the working label is selected once from a playful built-in phrase set—such as `KNEADING`, `MOONWALKING`, or `PONDERING`—and remains stable until the cycle ends. When the full activity label fits, its ellipsis shrinks from `...` to `..` to `.` every 400 ms. Narrower terminals use the compact, static `WORKING` label.
+`READY` remains fixed when idle. During each work cycle, the working label is selected once from a playful built-in phrase set—such as `KNEADING`, `MOONWALKING`, or `PONDERING`—and remains stable until the cycle ends. When the full activity label fits, its ellipsis shrinks from `...` to `..` to `.` every 400 ms. The ellipsis reserves its maximum width so the model and following workspace text remain stationary. Narrower terminals use the compact, static `WORKING` label.
 
 ## Menu
 
@@ -94,7 +94,7 @@ The default shortcut is `alt+a`. The menu contains:
 - **Tools** — search and toggle active Pi tools
 - **Display** — switch presets and save user defaults
 - **Session** — inspect, rename, or compact the current session
-- **Sidebar** — dynamically show or hide the docked information rail
+- **Sidebar** — show or hide the docked information rail and expand or collapse tool-name details
 
 Additional commands:
 
@@ -111,9 +111,13 @@ The sidebar starts hidden in every session. Use these commands to control it exp
 /atelier sidebar       # toggle between shown and hidden
 /atelier sidebar on    # show it; safe to repeat
 /atelier sidebar off   # hide it; safe to repeat
+/atelier sidebar tools  # toggle active tool-name details
+/atelier sidebar tools on|off
 ```
 
-You can also press `alt+a`, choose **Sidebar**, and select the dynamic **On/Off** action. When enabled, the session-scoped rail attaches to the top-right, fills the terminal height, and stays visible without taking editor focus. Its quiet, information-first layout uses restrained semantic color, compact section labels, and aligned context and token/cache/cost metrics. It also shows project and Git state, model and thinking level, the active-tool count with exact activated names in two columns, and extension statuses.
+You can also press `alt+a` to access separate sidebar visibility and tool-detail controls from the menu. When enabled, the session-scoped rail attaches to the top-right, fills the terminal height, and stays visible without taking editor focus.
+
+The scan-first hierarchy leads with agent state and model, followed by a compact segmented context meter and a merged workspace summary. Below 40 sidebar columns, a unified compact mode stacks Agent and Workspace metadata, uses inline Usage pairs, and collapses tool details so important values remain complete instead of truncating. At wider sizes, paired metrics and tool columns use intrinsic content measurements rather than stretching gaps across the available width. Usage appears only when token or cost data exists. Access type remains visible with the agent metadata. Active tool names are collapsed by default behind the tool count and can be expanded through the command or menu; that preference is saved to user configuration. Expanded names automatically collapse below 40 sidebar columns and reappear when widened. Routine healthy extension statuses stay hidden, while warnings and errors appear as explicit alerts.
 
 During an agent run, the sidebar adds information the compact footer intentionally omits: current one-based turn, elapsed run time, active parallel tool calls, the three most recent tool results, per-tool durations, and total done/failed tool counts. The footer remains a stable one-line status rail and never repeats tool names or tool history.
 
@@ -137,7 +141,7 @@ Trusted project configuration:
 <project>/.pi/pi-atelier.json
 ```
 
-Project settings override user settings only after Pi trusts the project. Menu changes apply to the current session; **Save as user default** writes user configuration atomically. Pi Atelier never modifies project configuration from the menu.
+Project settings override user settings only after Pi trusts the project. Most menu changes apply to the current session; **Save as user default** writes display configuration atomically. The sidebar tool-detail toggle is saved immediately so its expanded/collapsed state survives future sessions. Pi Atelier never modifies project configuration from the menu.
 
 Complete example:
 
@@ -161,7 +165,8 @@ Complete example:
   "contextDanger": 90,
   "currencyDecimals": 3,
   "showExtensionStatuses": true,
-  "showSessionActions": true
+  "showSessionActions": true,
+  "showSidebarToolNames": false
 }
 ```
 

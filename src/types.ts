@@ -15,6 +15,7 @@ export interface AtelierConfig {
 	currencyDecimals: number;
 	showExtensionStatuses: boolean;
 	showSessionActions: boolean;
+	showSidebarToolNames: boolean;
 }
 
 export interface AtelierMetrics {
@@ -56,4 +57,5 @@ export const DEFAULT_CONFIG: AtelierConfig = {
 	currencyDecimals: 3,
 	showExtensionStatuses: true,
 	showSessionActions: true,
+	showSidebarToolNames: false,
 };

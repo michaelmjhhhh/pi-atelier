@@ -18,8 +18,9 @@ beforeEach(async () => {
 });
 
 describe("configuration", () => {
-	it("defaults to no brand ornament", () => {
+	it("defaults to no brand ornament and collapsed sidebar tool details", () => {
 		expect(DEFAULT_CONFIG.ornament).toBe("none");
+		expect(DEFAULT_CONFIG.showSidebarToolNames).toBe(false);
 	});
 
 	it("merges defaults, user, trusted project, then session overrides", async () => {
@@ -61,6 +62,13 @@ describe("configuration", () => {
 				expect.stringContaining("unknown"),
 			]),
 		);
+	});
+
+	it("validates the sidebar tool-detail preference", () => {
+		expect(validateConfig({ showSidebarToolNames: true }).config.showSidebarToolNames).toBe(true);
+		const invalid = validateConfig({ showSidebarToolNames: "yes" });
+		expect(invalid.config.showSidebarToolNames).toBe(false);
+		expect(invalid.warnings).toContain("showSidebarToolNames must be boolean");
 	});
 
 	it("reports malformed JSON once and retains defaults", async () => {

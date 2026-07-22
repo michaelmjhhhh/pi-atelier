@@ -74,6 +74,8 @@ describe("menu presentation", () => {
 		const sidebar: SidebarControls = {
 			isVisible: vi.fn(() => visible),
 			toggle: vi.fn(),
+			isToolListExpanded: vi.fn(() => false),
+			toggleToolList: vi.fn().mockResolvedValue(undefined),
 		};
 		let invocation = 0;
 		const ctx = {
@@ -99,6 +101,44 @@ describe("menu presentation", () => {
 
 		expect(rootMenuItems[0]).toContainEqual(expected);
 		expect(sidebar.toggle).toHaveBeenCalledOnce();
+	});
+
+	it("shows and toggles collapsed sidebar tool details", async () => {
+		rootMenuItems.length = 0;
+		const sidebar: SidebarControls = {
+			isVisible: vi.fn(() => true),
+			toggle: vi.fn(),
+			isToolListExpanded: vi.fn(() => false),
+			toggleToolList: vi.fn().mockResolvedValue(undefined),
+		};
+		let invocation = 0;
+		const ctx = {
+			mode: "tui",
+			ui: {
+				custom: vi.fn(
+					(factory: (...args: any[]) => unknown) =>
+						new Promise((resolve) => {
+							const value = invocation++ === 0 ? "sidebar-tools" : "close";
+							factory(
+								{ requestRender: vi.fn() },
+								{ fg: (_color: string, text: string) => text, bold: (text: string) => text },
+								{},
+								resolve,
+							);
+							resolve(value);
+						}),
+				),
+			},
+		};
+
+		await openAtelierMenu({} as never, ctx as never, harness().runtime as never, "/tmp/user.json", sidebar);
+
+		expect(rootMenuItems[0]).toContainEqual({
+			value: "sidebar-tools",
+			label: "Tool list: Collapsed",
+			description: "Show active tool names in the sidebar",
+		});
+		expect(sidebar.toggleToolList).toHaveBeenCalledOnce();
 	});
 
 	it("uses a heavy theme-aware border that fills the available width", () => {

@@ -22,6 +22,8 @@ export type SaveConfig = typeof saveUserConfig;
 export interface SidebarControls {
 	isVisible(): boolean;
 	toggle(): void;
+	isToolListExpanded(): boolean;
+	toggleToolList(): Promise<void>;
 }
 
 interface MenuTheme {
@@ -279,11 +281,19 @@ export async function openAtelierMenu(
 	const actions = createMenuActions(pi, ctx, runtime, userConfigPath);
 	for (;;) {
 		const sidebarVisible = sidebar.isVisible();
+		const toolListExpanded = sidebar.isToolListExpanded();
 		const section = await showSelection(ctx, "◆ Pi Atelier", [
 			{
 				value: "sidebar",
 				label: `Sidebar: ${sidebarVisible ? "On" : "Off"}`,
 				description: sidebarVisible ? "Hide the docked information rail" : "Show the docked information rail",
+			},
+			{
+				value: "sidebar-tools",
+				label: `Tool list: ${toolListExpanded ? "Expanded" : "Collapsed"}`,
+				description: toolListExpanded
+					? "Collapse sidebar tool names"
+					: "Show active tool names in the sidebar",
 			},
 			{ value: "model", label: "Model", description: "Model and thinking level" },
 			{ value: "tools", label: "Tools", description: "Search and toggle active tools" },
@@ -295,6 +305,10 @@ export async function openAtelierMenu(
 
 		if (section === "sidebar") {
 			sidebar.toggle();
+			continue;
+		}
+		if (section === "sidebar-tools") {
+			await sidebar.toggleToolList();
 			continue;
 		}
 

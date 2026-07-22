@@ -118,7 +118,8 @@ function activityText(
 ): string {
 	const fallback = state.activity.toUpperCase();
 	const label = state.activity === "working" && !compact ? (state.workingLabel ?? fallback) : fallback;
-	const dots = state.activity === "working" && !compact ? workingDots : "";
+	const dots =
+		state.activity === "working" && !compact ? workingDots.padEnd(WORKING_DOT_FRAMES[0].length, " ") : "";
 	const role: PaletteRole =
 		state.activity === "ready"
 			? "ready"
