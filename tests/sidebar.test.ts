@@ -1187,6 +1187,82 @@ describe("sidebar component and overlay", () => {
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
+	it("makes show after dispose a no-op", async () => {
+		const tui = fakeTui();
+		const doneCallbacks: Array<ReturnType<typeof vi.fn>> = [];
+		const custom = vi.fn(
+			(factory, customOptions) =>
+				new Promise<undefined>((resolve) => {
+					const done = vi.fn((value: undefined) => resolve(value));
+					doneCallbacks.push(done);
+					factory(tui as never, theme as never, {} as never, done);
+					customOptions.onHandle?.({ hide: vi.fn() });
+				}),
+		);
+		const controller = createSidebarController({
+			ctx: { mode: "tui", ui: { custom } } as never,
+			getSnapshot: snapshot,
+			getConfig: () => DEFAULT_CONFIG,
+		});
+
+		controller.show();
+		expect(tui.render(120)).toEqual([`main:${120 - DEFAULT_SIDEBAR_WIDTH}`]);
+		controller.dispose();
+		await flushOverlay();
+
+		controller.show();
+
+		expect(controller.isVisible()).toBe(false);
+		expect(custom).toHaveBeenCalledOnce();
+		expect(doneCallbacks[0]).toHaveBeenCalledOnce();
+		expect(tui.render(120)).toEqual(["main:120"]);
+	});
+
+	it("aborts overlay activation when a replacement TUI cannot attach", async () => {
+		vi.useFakeTimers();
+		const firstTui = fakeTui();
+		const replacementTui = fakeTui();
+		const tuis = [firstTui, replacementTui];
+		const doneCallbacks: Array<ReturnType<typeof vi.fn>> = [];
+		const handles: Array<{ hide: ReturnType<typeof vi.fn> }> = [];
+		const onError = vi.fn();
+		const custom = vi.fn((factory, customOptions) => {
+			const tui = tuis[doneCallbacks.length];
+			return new Promise<undefined>((resolve) => {
+				const done = vi.fn((value: undefined) => resolve(value));
+				const handle = { hide: vi.fn() };
+				doneCallbacks.push(done);
+				handles.push(handle);
+				factory(tui as never, theme as never, {} as never, done);
+				customOptions.onHandle?.(handle as never);
+			});
+		});
+		const controller = createSidebarController({
+			ctx: { mode: "tui", ui: { custom } } as never,
+			getSnapshot: snapshot,
+			getConfig: () => DEFAULT_CONFIG,
+			shouldAnimate: () => true,
+			animationIntervalMs: 10,
+			onError,
+		});
+
+		controller.show();
+		controller.hide();
+		await flushOverlay();
+		controller.show();
+		await flushOverlay();
+
+		expect(onError).toHaveBeenCalledWith(
+			expect.objectContaining({ message: expect.stringContaining("another TUI") }),
+		);
+		expect(controller.isVisible()).toBe(false);
+		expect(doneCallbacks[1]).toHaveBeenCalledOnce();
+		expect(handles[1]?.hide).toHaveBeenCalledOnce();
+		expect(vi.getTimerCount()).toBe(0);
+		expect(firstTui.render(120)).toEqual(["main:120"]);
+		expect(replacementTui.render(120)).toEqual(["main:120"]);
+	});
+
 	it("reports unsupported modes without enabling the sidebar", () => {
 		const onError = vi.fn();
 		const custom = vi.fn();

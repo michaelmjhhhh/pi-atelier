@@ -614,6 +614,7 @@ export interface SidebarControllerOptions {
 
 export function createSidebarController(options: SidebarControllerOptions): SidebarController {
 	let enabled = false;
+	let disposed = false;
 	let generation = 0;
 	let closeOverlay: (() => void) | undefined;
 	let requestOverlayRender: (() => void) | undefined;
@@ -690,7 +691,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	};
 
 	const show = () => {
-		if (enabled) return;
+		if (disposed || enabled) return;
 		if (options.ctx.mode !== "tui") {
 			reportError(new Error("Pi Atelier sidebar requires TUI mode"));
 			return;
@@ -708,20 +709,28 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		try {
 			const pending = options.ctx.ui.custom<void>(
 				(tui, theme, _keybindings, done) => {
-					safely(() => split.attach(tui));
-					splitRequestRender = () => tui.requestRender();
 					let closed = false;
 					const close = () => {
 						if (closed) return;
 						closed = true;
 						done(undefined);
 					};
-					if (enabled && generation === currentGeneration) {
-						closeOverlay = close;
-						requestOverlayRender = () => tui.requestRender();
-						syncAnimation();
+					if (!safely(() => split.attach(tui))) {
+						enabled = false;
+						generation += 1;
+						stopAnimation();
+						clearOverlayCallbacks();
+						safely(split.hide);
+						safely(close);
 					} else {
-						close();
+						splitRequestRender = () => tui.requestRender();
+						if (enabled && generation === currentGeneration) {
+							closeOverlay = close;
+							requestOverlayRender = () => tui.requestRender();
+							syncAnimation();
+						} else {
+							close();
+						}
 					}
 					return createSidebarComponent({
 						getSnapshot: options.getSnapshot,
@@ -786,6 +795,8 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 			syncAnimation();
 		},
 		dispose() {
+			if (disposed) return;
+			disposed = true;
 			hide();
 			safely(split.dispose);
 		},
