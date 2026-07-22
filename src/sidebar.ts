@@ -1,13 +1,7 @@
 import { homedir } from "node:os";
 import { basename } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import {
-	type Component,
-	type OverlayHandle,
-	type OverlayOptions,
-	truncateToWidth,
-	visibleWidth,
-} from "@earendil-works/pi-tui";
+import { type Component, type OverlayHandle, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { ThemeLike } from "./footer.js";
 import { formatTokens } from "./metrics.js";
 import { type AtelierPalette, createPalette, type PaletteRole } from "./palette.js";
@@ -17,6 +11,7 @@ import {
 	type RunActivitySnapshot,
 	type ToolActivity,
 } from "./run-activity.js";
+import { createSplitPaneController, type SplitPaneController } from "./split-pane.js";
 import type { AtelierConfig, AtelierState } from "./types.js";
 
 export interface SidebarSnapshotInput {
@@ -65,17 +60,6 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
 	};
 }
 
-export function sidebarOverlayOptions(): OverlayOptions {
-	return {
-		anchor: "top-right",
-		width: 44,
-		maxHeight: "100%",
-		margin: 0,
-		nonCapturing: true,
-		visible: (termWidth) => termWidth >= 88,
-	};
-}
-
 const sanitize = (text: string): string =>
 	text
 		.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
@@ -104,12 +88,18 @@ function padToWidth(text: string, width: number): string {
 	return `${content}${" ".repeat(Math.max(0, safeWidth - visibleWidth(content)))}`;
 }
 
-function renderDock(rows: string[], width: number, height: number, palette: AtelierPalette): string[] {
+function renderDock(
+	rows: string[],
+	width: number,
+	height: number,
+	palette: AtelierPalette,
+	resizing = false,
+): string[] {
 	const safeWidth = Math.max(0, Math.trunc(width));
 	const safeHeight = Math.max(0, Math.trunc(height));
 	if (safeWidth <= 0 || safeHeight <= 0) return [];
 	const contentWidth = Math.max(0, safeWidth - 2);
-	const divider = palette.paint("dim", "│");
+	const divider = palette.paint(resizing ? "warning" : "dim", "│");
 	return Array.from({ length: safeHeight }, (_, index) => {
 		const content = truncateToWidth(rows[index] ?? "", contentWidth, "");
 		const padding = " ".repeat(Math.max(0, contentWidth - visibleWidth(content)));
@@ -485,6 +475,7 @@ export function renderSidebarLines(
 	height: number,
 	colorEnabled = true,
 	now = Date.now(),
+	resizing = false,
 ): string[] {
 	const palette = createPalette(theme, colorEnabled);
 	const safeWidth = Math.max(0, Math.trunc(width));
@@ -492,6 +483,16 @@ export function renderSidebarLines(
 	if (safeWidth <= 0 || safeHeight <= 0) return [];
 	const contentWidth = Math.max(0, safeWidth - 2);
 	const groups: SidebarGroup[] = [
+		...(resizing
+			? [
+					{
+						name: "resize",
+						rows: [palette.paint("warning", "RESIZE · drag divider"), ""],
+						required: true,
+						dropRank: Number.POSITIVE_INFINITY,
+					},
+				]
+			: []),
 		{
 			name: "project",
 			rows: projectRows(snapshot, palette),
@@ -527,34 +528,49 @@ export function renderSidebarLines(
 		})),
 		{ name: "statusDetails", rows: statusDetailRows(snapshot, palette), required: false, dropRank: 0 },
 	];
-	return renderDock(flattenGroups(composeGroups(groups, safeHeight)), safeWidth, safeHeight, palette);
+	return renderDock(
+		flattenGroups(composeGroups(groups, safeHeight)),
+		safeWidth,
+		safeHeight,
+		palette,
+		resizing,
+	);
 }
 
 export interface SidebarComponentOptions {
 	getSnapshot(): SidebarSnapshot;
 	getConfig(): AtelierConfig;
 	getHeight(): number;
+	isResizing?(): boolean;
 	theme: ThemeLike;
 	colorEnabled?: boolean;
 }
 
-function renderSidebarError(error: unknown, width: number, height: number): string[] {
+function renderSidebarError(error: unknown, width: number, height: number, resizing = false): string[] {
 	let detail = "Unknown error";
 	try {
 		detail = sanitize(error instanceof Error ? error.message : String(error)) || detail;
 	} catch {
 		// Keep the fallback render path safe even for unusual thrown values.
 	}
-	return renderDock(["Sidebar unavailable", detail], width, height, {
-		paint: (_role, text) => text,
-	});
+	return renderDock(
+		["Sidebar unavailable", detail],
+		width,
+		height,
+		{
+			paint: (_role, text) => text,
+		},
+		resizing,
+	);
 }
 
 export function createSidebarComponent(options: SidebarComponentOptions): Component {
 	return {
 		render(width) {
 			const height = options.getHeight();
+			let resizing = false;
 			try {
+				resizing = options.isResizing?.() ?? false;
 				return renderSidebarLines(
 					options.getSnapshot(),
 					options.getConfig(),
@@ -562,9 +578,11 @@ export function createSidebarComponent(options: SidebarComponentOptions): Compon
 					width,
 					height,
 					options.colorEnabled ?? true,
+					Date.now(),
+					resizing,
 				);
 			} catch (error) {
-				return renderSidebarError(error, width, height);
+				return renderSidebarError(error, width, height, resizing);
 			}
 		},
 		invalidate() {},
@@ -576,6 +594,9 @@ export interface SidebarController {
 	hide(): void;
 	toggle(): void;
 	isVisible(): boolean;
+	beginResize(): boolean;
+	isResizing(): boolean;
+	getWidth(): number;
 	requestRender(): void;
 	dispose(): void;
 }
@@ -587,6 +608,7 @@ export interface SidebarControllerOptions {
 	colorEnabled?: boolean;
 	shouldAnimate?(): boolean;
 	animationIntervalMs?: number;
+	onWarning?(message: string): void;
 	onError?(error: unknown): void;
 }
 
@@ -595,9 +617,28 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	let generation = 0;
 	let closeOverlay: (() => void) | undefined;
 	let requestOverlayRender: (() => void) | undefined;
+	let splitRequestRender: (() => void) | undefined;
 	let overlayHandle: OverlayHandle | undefined;
 	let animationTimer: ReturnType<typeof setInterval> | undefined;
 	const animationIntervalMs = Math.max(1, Math.trunc(options.animationIntervalMs ?? 1_000));
+
+	const safely = (action: () => unknown) => {
+		try {
+			action();
+		} catch {
+			// Lifecycle cleanup remains best effort so later cleanup steps still run.
+		}
+	};
+
+	const split: SplitPaneController = createSplitPaneController({
+		subscribeInput: (handler) => options.ctx.ui.onTerminalInput(handler),
+		onResizeChange: () => {
+			requestOverlayRender?.();
+			splitRequestRender?.();
+		},
+		...(options.onWarning ? { onWarning: options.onWarning } : {}),
+		...(options.onError ? { onError: options.onError } : {}),
+	});
 
 	const stopAnimation = () => {
 		if (!animationTimer) return;
@@ -617,32 +658,42 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		animationTimer.unref?.();
 	};
 
+	const clearOverlayCallbacks = () => {
+		closeOverlay = undefined;
+		requestOverlayRender = undefined;
+		splitRequestRender = undefined;
+		overlayHandle = undefined;
+	};
+
 	const hide = () => {
-		if (!enabled && !closeOverlay && !overlayHandle) return;
+		if (!enabled && !closeOverlay && !overlayHandle && !split.isEnabled()) return;
 		enabled = false;
 		generation += 1;
 		stopAnimation();
+		safely(split.cancelResize);
 		const close = closeOverlay;
 		const handle = overlayHandle;
-		closeOverlay = undefined;
-		requestOverlayRender = undefined;
-		overlayHandle = undefined;
-		if (close) close();
-		else handle?.hide();
+		clearOverlayCallbacks();
+		if (close) safely(close);
+		else if (handle) safely(() => handle.hide());
+		safely(split.hide);
 	};
 
 	const show = () => {
 		if (enabled) return;
 		if (options.ctx.mode !== "tui") {
-			options.onError?.(new Error("Pi Atelier sidebar requires TUI mode"));
+			safely(() => options.onError?.(new Error("Pi Atelier sidebar requires TUI mode")));
 			return;
 		}
 
 		enabled = true;
 		const currentGeneration = ++generation;
+		split.show();
 		try {
 			const pending = options.ctx.ui.custom<void>(
 				(tui, theme, _keybindings, done) => {
+					split.attach(tui);
+					splitRequestRender = () => tui.requestRender();
 					let closed = false;
 					const close = () => {
 						if (closed) return;
@@ -660,42 +711,44 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 						getSnapshot: options.getSnapshot,
 						getConfig: options.getConfig,
 						getHeight: () => tui.terminal.rows,
+						isResizing: split.isResizing,
 						theme: theme as unknown as ThemeLike,
 						...(options.colorEnabled === undefined ? {} : { colorEnabled: options.colorEnabled }),
 					});
 				},
 				{
 					overlay: true,
-					overlayOptions: sidebarOverlayOptions(),
+					overlayOptions: () => split.overlayOptions(),
 					onHandle: (handle) => {
 						if (enabled && generation === currentGeneration) {
 							overlayHandle = handle;
 							syncAnimation();
 						} else {
-							handle.hide();
+							safely(() => handle.hide());
 						}
 					},
 				},
 			);
 			void pending
-				.catch((error: unknown) => options.onError?.(error))
+				.catch((error: unknown) => {
+					if (generation === currentGeneration) split.hide();
+					safely(() => options.onError?.(error));
+				})
 				.finally(() => {
 					if (generation !== currentGeneration) return;
 					enabled = false;
-					closeOverlay = undefined;
-					requestOverlayRender = undefined;
-					overlayHandle = undefined;
+					clearOverlayCallbacks();
+					split.hide();
 					syncAnimation();
 				});
 		} catch (error) {
 			if (generation === currentGeneration) {
 				enabled = false;
-				closeOverlay = undefined;
-				requestOverlayRender = undefined;
-				overlayHandle = undefined;
+				clearOverlayCallbacks();
+				split.hide();
 				syncAnimation();
 			}
-			options.onError?.(error);
+			safely(() => options.onError?.(error));
 		}
 	};
 
@@ -709,10 +762,17 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		isVisible() {
 			return enabled;
 		},
+		beginResize: split.beginResize,
+		isResizing: split.isResizing,
+		getWidth: split.getSidebarWidth,
 		requestRender() {
 			requestOverlayRender?.();
+			split.requestRender();
 			syncAnimation();
 		},
-		dispose: hide,
+		dispose() {
+			hide();
+			split.dispose();
+		},
 	};
 }

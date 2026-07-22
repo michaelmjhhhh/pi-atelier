@@ -6,8 +6,8 @@ import {
 	createSidebarComponent,
 	createSidebarController,
 	renderSidebarLines,
-	sidebarOverlayOptions,
 } from "../src/sidebar.js";
+import { DEFAULT_SIDEBAR_WIDTH } from "../src/split-pane.js";
 import { type AtelierState, DEFAULT_CONFIG } from "../src/types.js";
 
 const stripAnsi = (text: string) => text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
@@ -103,6 +103,14 @@ function contentRows(lines: string[]) {
 async function flushOverlay() {
 	await Promise.resolve();
 	await Promise.resolve();
+}
+
+function fakeTui(requestRender = vi.fn()) {
+	return {
+		render: vi.fn((width: number) => [`main:${width}`]),
+		requestRender,
+		terminal: { columns: 120, rows: 36, write: vi.fn() },
+	};
 }
 
 describe("sidebar snapshot and layout", () => {
@@ -208,19 +216,6 @@ describe("sidebar snapshot and layout", () => {
 		const contextIndex = rows.indexOf("CONTEXT");
 		expect(rows[contextIndex + 1]).toMatch(/^32k \/ 400k\s+8\.1%$/);
 		expect(visibleWidth(rows[contextIndex + 2] ?? "")).toBe(42);
-	});
-
-	it("uses an attached non-capturing overlay with responsive visibility", () => {
-		const options = sidebarOverlayOptions();
-		expect(options).toMatchObject({
-			anchor: "top-right",
-			width: 44,
-			margin: 0,
-			nonCapturing: true,
-		});
-		expect(options.visible?.(87, 40)).toBe(false);
-		expect(options.visible?.(88, 40)).toBe(true);
-		expect(options.visible?.(160, 40)).toBe(true);
 	});
 
 	it("omits a standalone unavailable marker when session name is missing", () => {
@@ -845,6 +840,20 @@ describe("sidebar component and overlay", () => {
 		expect(component.render(44).join("\n")).not.toContain("esc/q close");
 	});
 
+	it("shows a visible Resize state and active divider styling", () => {
+		const fg = vi.fn((_color: string, text: string) => text);
+		const component = createSidebarComponent({
+			getSnapshot: snapshot,
+			getConfig: () => DEFAULT_CONFIG,
+			getHeight: () => 36,
+			isResizing: () => true,
+			theme: { fg, bold: theme.bold, italic: theme.italic },
+		});
+
+		expect(component.render(44).join("\n")).toContain("RESIZE");
+		expect(fg).toHaveBeenCalledWith("warning", "│");
+	});
+
 	it("reads live terminal height on every render without recreation", () => {
 		let height = 24;
 		const component = createSidebarComponent({
@@ -897,6 +906,7 @@ describe("sidebar component and overlay", () => {
 		const closeCallbacks: Array<ReturnType<typeof vi.fn>> = [];
 		const handles: Array<{ hide: ReturnType<typeof vi.fn> }> = [];
 		const components: unknown[] = [];
+		const tui = fakeTui(requestRender);
 		const custom = vi.fn((factory, customOptions) => {
 			return new Promise<undefined>((resolve) => {
 				let closed = false;
@@ -908,9 +918,17 @@ describe("sidebar component and overlay", () => {
 				const handle = { hide: vi.fn() };
 				closeCallbacks.push(done);
 				handles.push(handle);
-				components.push(
-					factory({ requestRender, terminal: { rows: 36 } } as never, theme as never, {} as never, done),
-				);
+				components.push(factory(tui as never, theme as never, {} as never, done));
+				const overlayOptions =
+					typeof customOptions.overlayOptions === "function"
+						? customOptions.overlayOptions()
+						: customOptions.overlayOptions;
+				expect(overlayOptions).toMatchObject({
+					anchor: "top-right",
+					width: DEFAULT_SIDEBAR_WIDTH,
+					nonCapturing: true,
+				});
+				expect(tui.render(120)).toEqual([`main:${120 - DEFAULT_SIDEBAR_WIDTH}`]);
 				customOptions.onHandle?.(handle as never);
 			});
 		});
@@ -926,19 +944,16 @@ describe("sidebar component and overlay", () => {
 		expect(custom).toHaveBeenCalledOnce();
 		expect(custom.mock.calls[0]?.[1]).toMatchObject({
 			overlay: true,
-			overlayOptions: expect.objectContaining({
-				anchor: "top-right",
-				width: 44,
-				nonCapturing: true,
-			}),
+			overlayOptions: expect.any(Function),
 			onHandle: expect.any(Function),
 		});
 		expect(components).toHaveLength(1);
 		controller.show();
 		expect(custom).toHaveBeenCalledOnce();
 
+		requestRender.mockClear();
 		controller.requestRender();
-		expect(requestRender).toHaveBeenCalledOnce();
+		expect(requestRender).toHaveBeenCalledTimes(2);
 		controller.hide();
 		expect(controller.isVisible()).toBe(false);
 		expect(closeCallbacks[0]).toHaveBeenCalledOnce();
@@ -951,10 +966,11 @@ describe("sidebar component and overlay", () => {
 		expect(custom).toHaveBeenCalledTimes(2);
 		expect(components).toHaveLength(2);
 
-		// Cross both the overlay promise and its chained finally() while the replacement is active.
-		await Promise.resolve();
-		await Promise.resolve();
+		// Cross the overlay promise and its catch/finally chain while the replacement is active.
+		await flushOverlay();
+		await flushOverlay();
 		expect(controller.isVisible()).toBe(true);
+		requestRender.mockClear();
 		controller.requestRender();
 		expect(requestRender).toHaveBeenCalledTimes(2);
 
@@ -967,10 +983,11 @@ describe("sidebar component and overlay", () => {
 		vi.useFakeTimers();
 		let running = true;
 		const requestRender = vi.fn();
+		const tui = fakeTui(requestRender);
 		const custom = vi.fn((factory, customOptions) => {
 			return new Promise<undefined>((resolve) => {
 				const handle = { hide: vi.fn() };
-				factory({ requestRender, terminal: { rows: 36 } } as never, theme as never, {} as never, resolve);
+				factory(tui as never, theme as never, {} as never, resolve);
 				customOptions.onHandle?.(handle as never);
 			});
 		});
@@ -987,31 +1004,33 @@ describe("sidebar component and overlay", () => {
 		controller.show();
 		await flushOverlay();
 		controller.show();
+		requestRender.mockClear();
 		vi.advanceTimersByTime(30);
 		expect(requestRender).toHaveBeenCalledTimes(3);
 
 		controller.requestRender();
-		expect(requestRender).toHaveBeenCalledTimes(4);
-		vi.advanceTimersByTime(10);
 		expect(requestRender).toHaveBeenCalledTimes(5);
+		vi.advanceTimersByTime(10);
+		expect(requestRender).toHaveBeenCalledTimes(6);
 
 		running = false;
 		controller.requestRender();
-		expect(requestRender).toHaveBeenCalledTimes(6);
+		expect(requestRender).toHaveBeenCalledTimes(8);
 		vi.advanceTimersByTime(30);
-		expect(requestRender).toHaveBeenCalledTimes(6);
+		expect(requestRender).toHaveBeenCalledTimes(8);
 	});
 
 	it("stops animation on hide, overlay closure, dispose, and stale generation", async () => {
 		vi.useFakeTimers();
 		const requestRender = vi.fn();
+		const tui = fakeTui(requestRender);
 		const doneCallbacks: Array<(value: undefined) => void> = [];
 		const custom = vi.fn((factory, customOptions) => {
 			return new Promise<undefined>((resolve) => {
 				const done = (value: undefined) => resolve(value);
 				doneCallbacks.push(done);
 				const handle = { hide: vi.fn() };
-				factory({ requestRender, terminal: { rows: 36 } } as never, theme as never, {} as never, done);
+				factory(tui as never, theme as never, {} as never, done);
 				customOptions.onHandle?.(handle as never);
 			});
 		});
@@ -1025,39 +1044,69 @@ describe("sidebar component and overlay", () => {
 
 		controller.show();
 		await flushOverlay();
+		requestRender.mockClear();
 		vi.advanceTimersByTime(10);
-		expect(requestRender).toHaveBeenCalledTimes(1);
+		expect(requestRender).toHaveBeenCalledOnce();
 		controller.hide();
+		requestRender.mockClear();
 		vi.advanceTimersByTime(30);
-		expect(requestRender).toHaveBeenCalledTimes(1);
+		expect(requestRender).not.toHaveBeenCalled();
 
 		controller.show();
 		await flushOverlay();
+		requestRender.mockClear();
 		vi.advanceTimersByTime(10);
-		expect(requestRender).toHaveBeenCalledTimes(2);
+		expect(requestRender).toHaveBeenCalledOnce();
 		doneCallbacks[1]?.(undefined);
 		await flushOverlay();
+		requestRender.mockClear();
 		vi.advanceTimersByTime(30);
-		expect(requestRender).toHaveBeenCalledTimes(2);
-
-		controller.show();
-		await flushOverlay();
-		vi.advanceTimersByTime(10);
-		expect(requestRender).toHaveBeenCalledTimes(3);
-		controller.dispose();
-		vi.advanceTimersByTime(30);
-		expect(requestRender).toHaveBeenCalledTimes(3);
+		expect(requestRender).not.toHaveBeenCalled();
 
 		controller.show();
 		await flushOverlay();
 		controller.hide();
 		controller.show();
 		await flushOverlay();
-		doneCallbacks[3]?.(undefined);
+		doneCallbacks[2]?.(undefined);
 		await flushOverlay();
+		requestRender.mockClear();
 		vi.advanceTimersByTime(10);
-		expect(requestRender).toHaveBeenCalledTimes(4);
+		expect(requestRender).toHaveBeenCalledOnce();
 		controller.dispose();
+		requestRender.mockClear();
+		vi.advanceTimersByTime(30);
+		expect(requestRender).not.toHaveBeenCalled();
+	});
+
+	it("enters Resize mode through the composed sidebar controller", () => {
+		let input: ((data: string) => unknown) | undefined;
+		const tui = fakeTui();
+		const custom = vi.fn((factory, customOptions) => {
+			factory(tui as never, theme as never, {} as never, vi.fn());
+			customOptions.onHandle?.({ hide: vi.fn() });
+			return new Promise(() => undefined);
+		});
+		const controller = createSidebarController({
+			ctx: {
+				mode: "tui",
+				ui: {
+					custom,
+					onTerminalInput: vi.fn((handler) => {
+						input = handler;
+						return vi.fn();
+					}),
+				},
+			} as never,
+			getSnapshot: snapshot,
+			getConfig: () => DEFAULT_CONFIG,
+		});
+
+		controller.show();
+		expect(controller.beginResize()).toBe(true);
+		expect(controller.isResizing()).toBe(true);
+		expect(controller.getWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
+		expect(input).toBeTypeOf("function");
 	});
 
 	it("reports unsupported modes without enabling the sidebar", () => {

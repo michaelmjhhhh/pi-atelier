@@ -46,7 +46,11 @@ function harness(mode: "tui" | "print" = "tui") {
 		const done = vi.fn(() => resolve(undefined));
 		const handle = { hide: vi.fn() };
 		const component = factory(
-			{ terminal: { columns: 120, rows: 36, width: 120 }, requestRender },
+			{
+				render: vi.fn((width: number) => [`main:${width}`]),
+				terminal: { columns: 120, rows: 36, width: 120, write: vi.fn() },
+				requestRender,
+			},
 			{
 				name: "dark",
 				fg: (_color: string, text: string) => text,
@@ -56,9 +60,12 @@ function harness(mode: "tui" | "print" = "tui") {
 			{},
 			done,
 		);
+		requestRender.mockClear();
 		overlays.push({ component, done, handle, options, requestRender });
 		options?.onHandle?.(handle);
-		if (!options?.overlayOptions?.nonCapturing) done();
+		const overlayOptions =
+			typeof options?.overlayOptions === "function" ? options.overlayOptions() : options?.overlayOptions;
+		if (!overlayOptions?.nonCapturing) done();
 		return pending;
 	});
 	const ctx = {
@@ -74,7 +81,7 @@ function harness(mode: "tui" | "print" = "tui") {
 			getSessionName: vi.fn().mockReturnValue("Test session"),
 			getSessionFile: vi.fn().mockReturnValue("/tmp/session.jsonl"),
 		},
-		ui: { setFooter, notify: vi.fn(), theme: {}, custom },
+		ui: { setFooter, notify: vi.fn(), theme: {}, custom, onTerminalInput: vi.fn(() => vi.fn()) },
 	};
 	atelierExtension(pi as never);
 	return { handlers, commands, shortcuts, setFooter, ctx, pi, overlays, custom };
@@ -125,9 +132,10 @@ describe("extension registration", () => {
 		expect(h.overlays).toHaveLength(1);
 		expect(h.overlays[0]?.options).toMatchObject({
 			overlay: true,
-			overlayOptions: expect.objectContaining({ nonCapturing: true }),
+			overlayOptions: expect.any(Function),
 			onHandle: expect.any(Function),
 		});
+		expect(h.overlays[0]?.options.overlayOptions()).toMatchObject({ nonCapturing: true });
 		await command(h, "sidebar");
 		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
 		expect(h.custom).toHaveBeenCalledTimes(1);
@@ -274,10 +282,10 @@ describe("extension registration", () => {
 		);
 		footer.render(120);
 		footer.render(120);
-		expect(h.overlays[0]?.requestRender).toHaveBeenCalledTimes(1);
+		expect(h.overlays[0]?.requestRender).toHaveBeenCalledTimes(2);
 		statuses = new Map([["one", "extension two"]]);
 		footer.render(120);
-		expect(h.overlays[0]?.requestRender).toHaveBeenCalledTimes(2);
+		expect(h.overlays[0]?.requestRender).toHaveBeenCalledTimes(4);
 	});
 
 	it("shows exact activated tools without listing inactive tools", async () => {
