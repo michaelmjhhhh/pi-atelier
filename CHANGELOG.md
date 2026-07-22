@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Reflow Pi beside the sidebar with an extension-only, non-overlapping split presentation.
+- Add session-scoped sidebar resizing through temporary `Ctrl+Shift+R` mouse and keyboard controls.
+
 ## 0.1.5
 
 - Add a packaged live-sidebar demo image and explicit sidebar toggle instructions.
