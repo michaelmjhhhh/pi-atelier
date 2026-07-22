@@ -197,7 +197,6 @@ function contextRows(
 	const usage = available ? formatTokens(metrics.contextTokens ?? 0) : "—";
 	const window = metrics.contextWindow > 0 ? formatTokens(metrics.contextWindow) : "—";
 	const percent = available ? `${metrics.contextPercent?.toFixed(1)}%` : "—";
-	const auto = metrics.autoCompact === null ? "—" : metrics.autoCompact ? "auto compact" : "manual compact";
 	const barWidth = Math.max(0, contentWidth);
 	const cells = available
 		? Math.min(barWidth, Math.max(0, Math.round(((metrics.contextPercent ?? 0) / 100) * barWidth)))
@@ -207,7 +206,6 @@ function contextRows(
 		headingRow("CONTEXT", palette),
 		spacedRow(palette.paint(role, `${usage} / ${window}`), palette.paint(role, percent), contentWidth),
 		palette.paint(role, bar),
-		palette.paint(metrics.autoCompact === null ? "dim" : "muted", auto),
 		"",
 	];
 }

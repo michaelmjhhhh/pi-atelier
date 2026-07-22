@@ -168,7 +168,6 @@ describe("sidebar snapshot and layout", () => {
 			  "CONTEXT",
 			  "32k / 400k                            8.1%",
 			  "███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░",
-			  "auto compact",
 			  "",
 			  "SESSION",
 			  "6 entries · ephemeral",
@@ -183,6 +182,7 @@ describe("sidebar snapshot and layout", () => {
 			  "",
 			  "TOOLS",
 			  "8 / 12 active",
+			  "",
 			  "",
 			  "",
 			  "",
@@ -754,7 +754,7 @@ describe("sidebar snapshot and layout", () => {
 	});
 
 	it("drops extension status detail rows before the tool count in shorter rails", () => {
-		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 29, false));
+		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 28, false));
 		expect(rows).toContain("8 / 12 active");
 		expect(rows).not.toContain("tests passing");
 	});
