@@ -254,6 +254,32 @@ describe("split pane render lifecycle", () => {
 		expect(h.tui.render(120)).toEqual(["base:120"]);
 	});
 
+	it("cleans up Resize mode before retrying full-width when the prior renderer throws", () => {
+		const h = harness();
+		const error = new Error("render failed");
+		h.baseRender
+			.mockImplementationOnce(() => {
+				throw error;
+			})
+			.mockImplementation((width: number) => [`base:${width}`]);
+		const unsubscribe = vi.fn();
+		const onError = vi.fn();
+		const split = createSplitPaneController({
+			subscribeInput: () => unsubscribe,
+			onError,
+		});
+		split.attach(h.tui);
+		split.show();
+		expect(split.beginResize()).toBe(true);
+
+		expect(h.tui.render(120)).toEqual(["base:120"]);
+		expect(h.write).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
+		expect(unsubscribe).toHaveBeenCalledOnce();
+		expect(split.isResizing()).toBe(false);
+		expect(onError).toHaveBeenCalledWith(error);
+		expect(h.baseRender.mock.calls).toEqual([[76], [120]]);
+	});
+
 	it("calls onError, disables the split, and retries the prior renderer full-width", () => {
 		const error = new Error("render failed");
 		const onError = vi.fn();

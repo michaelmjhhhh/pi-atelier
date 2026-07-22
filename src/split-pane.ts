@@ -139,6 +139,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			try {
 				return previousRender.call(nextTui, terminalWidth - reserved);
 			} catch (error) {
+				stopResize(true);
 				enabled = false;
 				options.onError?.(error);
 				return previousRender.call(nextTui, terminalWidth);
