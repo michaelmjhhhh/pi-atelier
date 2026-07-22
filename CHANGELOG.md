@@ -2,8 +2,12 @@
 
 ## Unreleased
 
+## 0.1.6
+
 - Reflow Pi beside the sidebar with an extension-only, non-overlapping split presentation.
 - Add session-scoped sidebar resizing through temporary `Ctrl+Shift+R` mouse and keyboard controls.
+- Keep the visible sidebar width synchronized while resizing and make divider dragging tolerant of near misses.
+- Remove the compaction-mode label from the sidebar context section.
 
 ## 0.1.5
 
