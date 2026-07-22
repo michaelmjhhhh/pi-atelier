@@ -622,19 +622,29 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	let animationTimer: ReturnType<typeof setInterval> | undefined;
 	const animationIntervalMs = Math.max(1, Math.trunc(options.animationIntervalMs ?? 1_000));
 
-	const safely = (action: () => unknown) => {
+	const reportError = (error: unknown) => {
+		try {
+			options.onError?.(error);
+		} catch {
+			// External error reporting must not interrupt lifecycle cleanup.
+		}
+	};
+
+	const safely = (action: () => unknown): boolean => {
 		try {
 			action();
-		} catch {
-			// Lifecycle cleanup remains best effort so later cleanup steps still run.
+			return true;
+		} catch (error) {
+			reportError(error);
+			return false;
 		}
 	};
 
 	const split: SplitPaneController = createSplitPaneController({
 		subscribeInput: (handler) => options.ctx.ui.onTerminalInput(handler),
 		onResizeChange: () => {
-			requestOverlayRender?.();
-			splitRequestRender?.();
+			safely(() => requestOverlayRender?.());
+			safely(() => splitRequestRender?.());
 		},
 		...(options.onWarning ? { onWarning: options.onWarning } : {}),
 		...(options.onError ? { onError: options.onError } : {}),
@@ -653,7 +663,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		}
 		if (animationTimer) return;
 		animationTimer = setInterval(() => {
-			requestOverlayRender?.();
+			safely(() => requestOverlayRender?.());
 		}, animationIntervalMs);
 		animationTimer.unref?.();
 	};
@@ -682,17 +692,23 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	const show = () => {
 		if (enabled) return;
 		if (options.ctx.mode !== "tui") {
-			safely(() => options.onError?.(new Error("Pi Atelier sidebar requires TUI mode")));
+			reportError(new Error("Pi Atelier sidebar requires TUI mode"));
 			return;
 		}
 
 		enabled = true;
 		const currentGeneration = ++generation;
-		split.show();
+		if (!safely(split.show)) {
+			enabled = false;
+			stopAnimation();
+			clearOverlayCallbacks();
+			safely(split.hide);
+			return;
+		}
 		try {
 			const pending = options.ctx.ui.custom<void>(
 				(tui, theme, _keybindings, done) => {
-					split.attach(tui);
+					safely(() => split.attach(tui));
 					splitRequestRender = () => tui.requestRender();
 					let closed = false;
 					const close = () => {
@@ -731,24 +747,23 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 			);
 			void pending
 				.catch((error: unknown) => {
-					if (generation === currentGeneration) split.hide();
-					safely(() => options.onError?.(error));
+					reportError(error);
 				})
 				.finally(() => {
 					if (generation !== currentGeneration) return;
 					enabled = false;
+					stopAnimation();
 					clearOverlayCallbacks();
-					split.hide();
-					syncAnimation();
+					safely(split.hide);
 				});
 		} catch (error) {
 			if (generation === currentGeneration) {
 				enabled = false;
+				stopAnimation();
 				clearOverlayCallbacks();
-				split.hide();
-				syncAnimation();
+				safely(split.hide);
 			}
-			safely(() => options.onError?.(error));
+			reportError(error);
 		}
 	};
 
@@ -766,13 +781,13 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		isResizing: split.isResizing,
 		getWidth: split.getSidebarWidth,
 		requestRender() {
-			requestOverlayRender?.();
-			split.requestRender();
+			safely(() => requestOverlayRender?.());
+			safely(split.requestRender);
 			syncAnimation();
 		},
 		dispose() {
 			hide();
-			split.dispose();
+			safely(split.dispose);
 		},
 	};
 }

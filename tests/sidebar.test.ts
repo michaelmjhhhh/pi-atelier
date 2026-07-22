@@ -1109,6 +1109,84 @@ describe("sidebar component and overlay", () => {
 		expect(input).toBeTypeOf("function");
 	});
 
+	it("cleans composed Resize state and restores full-width rendering on hide", () => {
+		let input: ((data: string) => unknown) | undefined;
+		const tui = fakeTui();
+		const custom = vi.fn((factory, customOptions) => {
+			factory(tui as never, theme as never, {} as never, vi.fn());
+			customOptions.onHandle?.({ hide: vi.fn() });
+			return new Promise(() => undefined);
+		});
+		const controller = createSidebarController({
+			ctx: {
+				mode: "tui",
+				ui: {
+					custom,
+					onTerminalInput: vi.fn((handler) => {
+						input = handler;
+						return vi.fn();
+					}),
+				},
+			} as never,
+			getSnapshot: snapshot,
+			getConfig: () => DEFAULT_CONFIG,
+		});
+
+		controller.show();
+		expect(controller.beginResize()).toBe(true);
+		input?.("\u001b[D");
+		expect(controller.getWidth()).toBe(DEFAULT_SIDEBAR_WIDTH + 1);
+		expect(tui.render(120)).toEqual([`main:${120 - DEFAULT_SIDEBAR_WIDTH - 1}`]);
+
+		controller.hide();
+
+		expect(controller.isResizing()).toBe(false);
+		expect(tui.render(120)).toEqual(["main:120"]);
+	});
+
+	it("continues overlay cleanup when the external TUI render request throws", async () => {
+		vi.useFakeTimers();
+		const renderError = new Error("request render failed");
+		const requestRender = vi.fn();
+		const tui = fakeTui(requestRender);
+		let finishOverlay: ((value: undefined) => void) | undefined;
+		const custom = vi.fn(
+			(factory, customOptions) =>
+				new Promise<undefined>((resolve) => {
+					finishOverlay = resolve;
+					factory(tui as never, theme as never, {} as never, resolve);
+					customOptions.onHandle?.({ hide: vi.fn() });
+				}),
+		);
+		const onError = vi.fn();
+		const controller = createSidebarController({
+			ctx: { mode: "tui", ui: { custom } } as never,
+			getSnapshot: snapshot,
+			getConfig: () => DEFAULT_CONFIG,
+			shouldAnimate: () => true,
+			animationIntervalMs: 10,
+			onError,
+		});
+
+		controller.show();
+		expect(vi.getTimerCount()).toBe(1);
+		requestRender.mockImplementation(() => {
+			throw renderError;
+		});
+		finishOverlay?.(undefined);
+		await flushOverlay();
+
+		expect(controller.isVisible()).toBe(false);
+		expect(controller.isResizing()).toBe(false);
+		expect(tui.render(120)).toEqual(["main:120"]);
+		expect(vi.getTimerCount()).toBe(0);
+		expect(onError).toHaveBeenCalledWith(renderError);
+
+		expect(() => controller.show()).not.toThrow();
+		expect(controller.isVisible()).toBe(false);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
 	it("reports unsupported modes without enabling the sidebar", () => {
 		const onError = vi.fn();
 		const custom = vi.fn();
