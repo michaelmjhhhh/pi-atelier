@@ -107,8 +107,21 @@ function renderDock(
 	});
 }
 
-function headingRow(title: string, palette: AtelierPalette): string {
-	return palette.paint("muted", sanitize(title).toUpperCase());
+function panelRows(title: string, rows: readonly string[], width: number, palette: AtelierPalette): string[] {
+	const safeWidth = Math.max(4, Math.trunc(width));
+	const innerWidth = Math.max(0, safeWidth - 4);
+	const safeTitle = sanitize(title).toUpperCase();
+	const titleText = `─ ${safeTitle} `;
+	const topFill = "─".repeat(Math.max(0, safeWidth - visibleWidth(titleText) - 2));
+	const top = `${palette.paint("dim", "╭─")} ${palette.paint("muted", safeTitle)} ${palette.paint(
+		"dim",
+		`${topFill}╮`,
+	)}`;
+	const body = rows.map((row) => {
+		const content = padToWidth(row, innerWidth);
+		return `${palette.paint("dim", "│")} ${content} ${palette.paint("dim", "│")}`;
+	});
+	return [top, ...body, palette.paint("dim", `╰${"─".repeat(safeWidth - 2)}╯`), ""];
 }
 
 function valueRow(value: string | undefined, palette: AtelierPalette, role: PaletteRole): string {
@@ -116,7 +129,7 @@ function valueRow(value: string | undefined, palette: AtelierPalette, role: Pale
 	return palette.paint(text === "—" ? "dim" : role, text);
 }
 
-const COMPACT_SIDEBAR_MAX_WIDTH = 39;
+const COMPACT_SIDEBAR_MAX_WIDTH = 43;
 
 interface SidebarLayout {
 	compact: boolean;
@@ -148,6 +161,7 @@ function activitySymbol(activity: SidebarSnapshot["activity"]): string {
 function agentRows(
 	snapshot: SidebarSnapshot,
 	layout: SidebarLayout,
+	contentWidth: number,
 	palette: AtelierPalette,
 	theme: ThemeLike,
 ): string[] {
@@ -176,20 +190,17 @@ function agentRows(
 	const separator = ` ${palette.paint("dim", "·")} `;
 
 	if (layout.compact) {
-		const rows = [headingRow("AGENT", palette), status, model];
+		const rows = [status, model];
 		if (provider) rows.push(provider);
 		const secondary = [thinking, access].filter(Boolean);
 		if (secondary.length > 0) rows.push(secondary.join(separator));
-		rows.push("");
 		return rows;
 	}
 
 	const metadata = [provider, thinking, access].filter(Boolean);
 	return [
-		headingRow("AGENT", palette),
-		`${status}  ${model}`,
+		spacedRow(status, model, contentWidth),
 		metadata.length > 0 ? metadata.join(separator) : palette.paint("dim", "—"),
-		"",
 	];
 }
 
@@ -200,7 +211,7 @@ function workspaceRows(snapshot: SidebarSnapshot, layout: SidebarLayout, palette
 		? palette.paint(snapshot.dirty ? "warning" : "ready", snapshot.dirty ? "▲" : "✓")
 		: "";
 	const identity = branch ? `${project} ${palette.paint("dim", "·")} ${branch} ${gitState}` : project;
-	const rows = [headingRow("WORKSPACE", palette)];
+	const rows: string[] = [];
 	if (layout.compact) {
 		rows.push(project);
 		if (branch) rows.push(`${branch} ${gitState}`);
@@ -215,7 +226,6 @@ function workspaceRows(snapshot: SidebarSnapshot, layout: SidebarLayout, palette
 			"dim",
 			"·",
 		)} ${palette.paint(snapshot.persisted ? "ready" : "muted", snapshot.persisted ? "persisted" : "ephemeral")}`,
-		"",
 	);
 	return rows;
 }
@@ -251,7 +261,7 @@ function contextRows(
 		metrics.contextPercent !== null &&
 		Number.isFinite(metrics.contextPercent);
 	if (!available) {
-		return [headingRow("CONTEXT", palette), palette.paint("dim", "Context unavailable"), ""];
+		return [palette.paint("dim", "Context unavailable")];
 	}
 
 	const role = contextRole(snapshot, config);
@@ -271,18 +281,9 @@ function contextRows(
 		"·".repeat(Math.max(0, meterWidth - filled)),
 	)}${palette.paint("dim", "]")}`;
 	if (layout.compact) {
-		return [
-			headingRow("CONTEXT", palette),
-			spacedRow(palette.paint(role, usage), palette.paint(role, percent), contentWidth),
-			meter,
-			"",
-		];
+		return [spacedRow(palette.paint(role, usage), palette.paint(role, percent), contentWidth), meter];
 	}
-	return [
-		headingRow("CONTEXT", palette),
-		`${palette.paint(role, usage)} ${meter} ${palette.paint(role, percent)}`,
-		"",
-	];
+	return [spacedRow(palette.paint(role, usage), palette.paint(role, percent), contentWidth), meter];
 }
 
 const currencyDecimals = (value: number): number =>
@@ -322,7 +323,7 @@ function usageRows(
 	const { metrics } = snapshot;
 	if (!metrics.usageAvailable && !metrics.costAvailable) return [];
 
-	const rows = [headingRow("USAGE", palette)];
+	const rows: string[] = [];
 	if (metrics.usageAvailable) {
 		rows.push(
 			...metricPairRows(
@@ -340,7 +341,9 @@ function usageRows(
 		rows.push(
 			...metricPairRows(
 				metricValue("Cache", formatUsageTokens(metrics.cacheRead), palette, "cache"),
-				metricValue("Hit", hit, palette, hit === "—" ? "dim" : "cache"),
+				layout.compact
+					? palette.paint(hit === "—" ? "dim" : "cache", hit)
+					: metricValue("Hit", hit, palette, hit === "—" ? "dim" : "cache"),
 				contentWidth,
 				layout,
 				palette,
@@ -353,22 +356,25 @@ function usageRows(
 		)}`;
 		rows.push(metricValue("Cost", cost, palette, "cost"));
 	}
-	rows.push("");
 	return rows;
 }
 
 function toolsStatusRows(
 	snapshot: SidebarSnapshot,
 	showToolNames: boolean,
+	contentWidth: number,
 	palette: AtelierPalette,
 ): string[] {
 	const disclosure = showToolNames ? "▾" : "▸";
 	return [
-		headingRow("TOOLS", palette),
-		`${palette.paint(
-			"primary",
-			`${finiteCount(snapshot.activeToolCount)} / ${finiteCount(snapshot.availableToolCount)} active`,
-		)} ${palette.paint("dim", disclosure)}`,
+		spacedRow(
+			palette.paint(
+				"primary",
+				`${finiteCount(snapshot.activeToolCount)} / ${finiteCount(snapshot.availableToolCount)} active`,
+			),
+			palette.paint("dim", disclosure),
+			contentWidth,
+		),
 	];
 }
 
@@ -409,14 +415,12 @@ function statusDetailRows(snapshot: SidebarSnapshot, palette: AtelierPalette): s
 		.filter((status) => status && exceptionStatusPattern.test(status));
 	if (statuses.length === 0) return [];
 	return [
-		headingRow("ALERTS", palette),
 		...statuses.map((status) => {
 			const role: PaletteRole = /\b(error|failed?|failure|offline|unavailable)\b/i.test(status)
 				? "error"
 				: "warning";
 			return palette.paint(role, `${role === "error" ? "✕" : "▲"} ${status}`);
 		}),
-		"",
 	];
 }
 
@@ -428,12 +432,34 @@ interface ActivityGroups {
 
 interface SidebarGroup {
 	name: string;
+	panel?: string;
 	rows: string[];
 	required: boolean;
 	dropRank: number;
 }
 
-const flattenGroups = (groups: readonly SidebarGroup[]): string[] => groups.flatMap((group) => group.rows);
+function renderGroups(groups: readonly SidebarGroup[], width: number, palette: AtelierPalette): string[] {
+	const rendered: string[] = [];
+	for (let index = 0; index < groups.length; ) {
+		const group = groups[index];
+		if (!group) break;
+		if (!group.panel) {
+			rendered.push(...group.rows);
+			index += 1;
+			continue;
+		}
+
+		const rows: string[] = [];
+		let next = index;
+		while (groups[next]?.panel === group.panel) {
+			rows.push(...(groups[next]?.rows ?? []));
+			next += 1;
+		}
+		if (rows.length > 0) rendered.push(...panelRows(group.panel, rows, width, palette));
+		index = next;
+	}
+	return rendered;
+}
 
 function durationForTool(tool: ToolActivity, now: number): string {
 	return formatDuration(tool.durationMs ?? Math.max(0, now - tool.startedAt));
@@ -508,13 +534,12 @@ function activityRows(
 	const aggregateText = aggregateActivityText(activity);
 	return {
 		core: [
-			headingRow("ACTIVITY", palette),
 			runSummaryRow(activity, palette, now),
 			...activeTools.map((tool) => toolActivityRow(tool, contentWidth, palette, now)),
 		],
 		recent,
 		aggregate: aggregateText
-			? [palette.paint(activity.failedCount > 0 ? "error" : "ready", aggregateText), ""]
+			? [palette.paint(activity.failedCount > 0 ? "error" : "ready", aggregateText)]
 			: [],
 	};
 }
@@ -536,20 +561,38 @@ function activitySidebarGroups(
 	if (!groups) return [];
 	const recentCount = groups.recent.length;
 	return [
-		{ name: "activityCore", rows: groups.core, required: true, dropRank: Number.POSITIVE_INFINITY },
+		{
+			name: "activityCore",
+			panel: "ACTIVITY",
+			rows: groups.core,
+			required: true,
+			dropRank: Number.POSITIVE_INFINITY,
+		},
 		...groups.recent.map((recent, index) => ({
 			name: `activityRecent:${recent.id}`,
+			panel: "ACTIVITY",
 			rows: [recent.row],
 			required: false,
 			dropRank: index === 0 ? 30 : 10 + (recentCount - index - 1),
 		})),
-		{ name: "activityAggregate", rows: groups.aggregate, required: false, dropRank: 20 },
+		{
+			name: "activityAggregate",
+			panel: "ACTIVITY",
+			rows: groups.aggregate,
+			required: false,
+			dropRank: 20,
+		},
 	].filter((group) => group.rows.length > 0);
 }
 
-function composeGroups(groups: SidebarGroup[], height: number): SidebarGroup[] {
-	let candidate = groups;
-	while (flattenGroups(candidate).length > height) {
+function composeGroups(
+	groups: SidebarGroup[],
+	height: number,
+	width: number,
+	palette: AtelierPalette,
+): SidebarGroup[] {
+	let candidate = groups.filter((group) => group.rows.length > 0);
+	while (renderGroups(candidate, width, palette).length > height) {
 		let dropIndex = -1;
 		let dropRank = Number.POSITIVE_INFINITY;
 		for (const [index, group] of candidate.entries()) {
@@ -578,8 +621,9 @@ export function renderSidebarLines(
 	const safeHeight = Math.max(0, Math.trunc(height));
 	if (safeWidth <= 0 || safeHeight <= 0) return [];
 	const contentWidth = Math.max(0, safeWidth - 2);
+	const panelContentWidth = Math.max(0, contentWidth - 4);
 	const layout = sidebarLayout(safeWidth, config);
-	const toolNameRows = layout.showToolNames ? activeToolNameRows(snapshot, contentWidth, palette) : [];
+	const toolNameRows = layout.showToolNames ? activeToolNameRows(snapshot, panelContentWidth, palette) : [];
 	const groups: SidebarGroup[] = [
 		...(resizing
 			? [
@@ -593,54 +637,61 @@ export function renderSidebarLines(
 			: []),
 		{
 			name: "agent",
-			rows: agentRows(snapshot, layout, palette, theme),
+			panel: "AGENT",
+			rows: agentRows(snapshot, layout, panelContentWidth, palette, theme),
 			required: true,
 			dropRank: Number.POSITIVE_INFINITY,
 		},
-		...activitySidebarGroups(snapshot, contentWidth, palette, now).map((group) => ({
+		...activitySidebarGroups(snapshot, panelContentWidth, palette, now).map((group) => ({
 			...group,
 			required: false,
 			dropRank: group.name === "activityCore" ? 70 : group.dropRank + 40,
 		})),
 		{
 			name: "statusDetails",
+			panel: "ALERTS",
 			rows: statusDetailRows(snapshot, palette),
 			required: false,
 			dropRank: 80,
 		},
 		{
 			name: "context",
-			rows: contextRows(snapshot, config, contentWidth, layout, palette),
+			panel: "CONTEXT",
+			rows: contextRows(snapshot, config, panelContentWidth, layout, palette),
 			required: true,
 			dropRank: Number.POSITIVE_INFINITY,
 		},
 		{
 			name: "workspace",
+			panel: "WORKSPACE",
 			rows: workspaceRows(snapshot, layout, palette),
 			required: false,
 			dropRank: 30,
 		},
 		{
 			name: "usage",
-			rows: usageRows(snapshot, config, contentWidth, layout, palette),
+			panel: "USAGE",
+			rows: usageRows(snapshot, config, panelContentWidth, layout, palette),
 			required: false,
 			dropRank: 20,
 		},
 		{
 			name: "toolsStatus",
-			rows: toolsStatusRows(snapshot, layout.showToolNames, palette),
+			panel: "TOOLS",
+			rows: toolsStatusRows(snapshot, layout.showToolNames, panelContentWidth, palette),
 			required: false,
 			dropRank: 10,
 		},
 		...toolNameRows.map((row, index, rows) => ({
 			name: `activeToolNames:${index}`,
+			panel: "TOOLS",
 			rows: [row],
 			required: false,
 			dropRank: (rows.length - index) / 100,
 		})),
 	];
 	return renderDock(
-		flattenGroups(composeGroups(groups, safeHeight)),
+		renderGroups(composeGroups(groups, safeHeight, contentWidth, palette), contentWidth, palette),
 		safeWidth,
 		safeHeight,
 		palette,

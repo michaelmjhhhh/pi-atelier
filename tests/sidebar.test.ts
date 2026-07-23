@@ -97,7 +97,14 @@ function activeActivity(): RunActivitySnapshot {
 }
 
 function contentRows(lines: string[]) {
-	return lines.map((line) => stripAnsi(line).slice(2).trimEnd());
+	return lines.map((line) => {
+		const row = stripAnsi(line).slice(2).trimEnd();
+		const title = row.match(/^╭─ ([A-Z]+) ─*╮$/)?.[1];
+		if (title) return title;
+		if (/^╰─+╯$/.test(row)) return "";
+		if (row.startsWith("│ ") && row.endsWith(" │")) return row.slice(2, -2).trimEnd();
+		return row;
+	});
 }
 
 async function flushOverlay() {
@@ -127,19 +134,22 @@ describe("sidebar snapshot and layout", () => {
 		});
 	});
 
-	it("renders a full-height dock without rounded corners or a brand block", () => {
+	it("renders a full-height dock with elegant terminal-native panels", () => {
 		const lines = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false);
 		const text = lines.join("\n");
 		expect(lines).toHaveLength(36);
 		expect(lines.every((line) => visibleWidth(line) <= 44)).toBe(true);
 		expect(lines.every((line) => stripAnsi(line).startsWith("│ "))).toBe(true);
-		expect(text).not.toMatch(/[╭╮╰╯]/);
+		expect(text).toContain("╭─ AGENT ");
+		expect(text).toContain("╭─ CONTEXT ");
+		expect(text).toContain("╰────────────────");
 		expect(text).not.toContain("ATELIER");
 		expect(text).not.toMatch(/PI ATELIER|ATELIER|▛▀▜/);
 		expect(contentRows(lines)[0]).toBe("AGENT");
-		expect(contentRows(lines).some((row) => /^AGENT ─/.test(row))).toBe(false);
 		expect(contentRows(lines)).toContain("pi-atelier · feature/sidebar ▲");
-		expect(contentRows(lines)).toContain("◆ Working · gitifying  gpt-5.6-sol");
+		expect(contentRows(lines)).toContainEqual(
+			expect.stringMatching(/^◆ Working · gitifying\s+gpt-5\.6-sol$/),
+		);
 	});
 
 	it("matches the representative 44x36 no-color docked rail", () => {
@@ -156,29 +166,29 @@ describe("sidebar snapshot and layout", () => {
 		).toMatchInlineSnapshot(`
 			[
 			  "AGENT",
-			  "◆ Working · gitifying  gpt-5.6-sol",
+			  "◆ Working · gitifying      gpt-5.6-sol",
 			  "openai-codex · medium · subscription",
 			  "",
+			  "",
 			  "CONTEXT",
-			  "32k / 400k [■·········] 8.1%",
+			  "32k / 400k                        8.1%",
+			  "[■·········]",
+			  "",
 			  "",
 			  "WORKSPACE",
 			  "pi-atelier · feature/sidebar ▲",
 			  "/Users/example/projects/pi-atelier",
 			  "6 entries · ephemeral",
 			  "",
+			  "",
 			  "USAGE",
 			  "In 50.0k  Out 1.9k",
 			  "Cache 100.0k  Hit 96.0%",
 			  "Cost $0.479",
 			  "",
+			  "",
 			  "TOOLS",
-			  "8 / 12 active ▸",
-			  "",
-			  "",
-			  "",
-			  "",
-			  "",
+			  "8 / 12 active                        ▸",
 			  "",
 			  "",
 			  "",
@@ -224,15 +234,15 @@ describe("sidebar snapshot and layout", () => {
 		expect(compact).toContain("pi-atelier");
 		expect(compact).toContain("feature/sidebar ▲");
 		expect(compact).toContain("In 50.0k · Out 1.9k");
-		expect(compact).toContain("Cache 100.0k · Hit 96.0%");
-		expect(compact).toContain("8 / 12 active ▸");
+		expect(compact).toContain("Cache 100.0k · 96.0%");
+		expect(compact).toContainEqual(expect.stringMatching(/^8 \/ 12 active\s+▸$/));
 		expect(compact).toEqual(expect.not.arrayContaining([expect.stringMatching(/subs$/)]));
 
-		const regular = contentRows(renderSidebarLines(snapshot(), expandedConfig, theme, 40, 36, false));
-		expect(regular).toContain("◆ Working · gitifying  gpt-5.6-sol");
+		const regular = contentRows(renderSidebarLines(snapshot(), expandedConfig, theme, 44, 36, false));
+		expect(regular).toContainEqual(expect.stringMatching(/^◆ Working · gitifying\s+gpt-5\.6-sol$/));
 		expect(regular).toContain("openai-codex · medium · subscription");
 		expect(regular).toContain("pi-atelier · feature/sidebar ▲");
-		expect(regular).toContain("8 / 12 active ▾");
+		expect(regular).toContainEqual(expect.stringMatching(/^8 \/ 12 active\s+▾$/));
 	});
 
 	it("renders a compact segmented context meter that adapts to width", () => {
@@ -244,8 +254,9 @@ describe("sidebar snapshot and layout", () => {
 		for (const width of [40, 44, 72]) {
 			const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, width, 36, false));
 			const contextIndex = rows.indexOf("CONTEXT");
-			expect(rows[contextIndex + 1]).toMatch(/^32k \/ 400k \[■·+\] 8\.1%$/);
-			expect(visibleWidth(rows[contextIndex + 1] ?? "")).toBeLessThanOrEqual(width - 2);
+			expect(rows[contextIndex + 1]).toMatch(/^32k \/ 400k\s+8\.1%$/);
+			expect(rows[contextIndex + 2]).toMatch(/^\[■·+\]$/);
+			expect(visibleWidth(rows[contextIndex + 1] ?? "")).toBeLessThanOrEqual(width - 6);
 		}
 	});
 
@@ -298,7 +309,7 @@ describe("sidebar snapshot and layout", () => {
 		for (const label of ["In", "Out", "Cache", "Hit", "Cost"]) {
 			expect(fg).toHaveBeenCalledWith("muted", label);
 		}
-		for (const width of [40, 56, 72]) {
+		for (const width of [44, 56, 72]) {
 			const wideRows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, width, 36, false));
 			const wideUsage = wideRows.indexOf("USAGE");
 			expect(wideRows[wideUsage + 1]).toBe("In 50.0k  Out 1.9k");
@@ -672,7 +683,7 @@ describe("sidebar snapshot and layout", () => {
 			failedCount: 1,
 		});
 
-		const fullRows = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 29, false, 20_000));
+		const fullRows = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 43, false, 20_000));
 		expect(fullRows).toContain("TOOLS");
 		expect(fullRows).toContain("USAGE");
 		expect(fullRows).toContain("WORKSPACE");
@@ -681,20 +692,20 @@ describe("sidebar snapshot and layout", () => {
 		);
 
 		const withoutTools = contentRows(
-			renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 28, false, 20_000),
+			renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 36, false, 20_000),
 		);
 		expect(withoutTools).not.toContain("TOOLS");
 		expect(withoutTools).toContain("USAGE");
 		expect(withoutTools).toContain("WORKSPACE");
 
 		const withoutUsage = contentRows(
-			renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 26, false, 20_000),
+			renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 32, false, 20_000),
 		);
 		expect(withoutUsage).not.toContain("TOOLS");
 		expect(withoutUsage).not.toContain("USAGE");
 		expect(withoutUsage).toContain("WORKSPACE");
 
-		const coreOnly = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 21, false, 20_000));
+		const coreOnly = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 26, false, 20_000));
 		expect(coreOnly).not.toContain("TOOLS");
 		expect(coreOnly).not.toContain("USAGE");
 		expect(coreOnly).not.toContain("WORKSPACE");
@@ -716,18 +727,18 @@ describe("sidebar snapshot and layout", () => {
 
 		const collapsed = contentRows(renderSidebarLines(toolsSnapshot, DEFAULT_CONFIG, theme, 44, 36, false));
 		const collapsedIndex = collapsed.indexOf("TOOLS");
-		expect(collapsed[collapsedIndex + 1]).toBe("3 / 7 active ▸");
+		expect(collapsed[collapsedIndex + 1]).toMatch(/^3 \/ 7 active\s+▸$/);
 		expect(collapsed).not.toContain("bash  edit");
 
 		const expandedConfig = { ...DEFAULT_CONFIG, showSidebarToolNames: true };
 		const expanded = contentRows(renderSidebarLines(toolsSnapshot, expandedConfig, theme, 44, 36, false));
 		const expandedIndex = expanded.indexOf("TOOLS");
-		expect(expanded[expandedIndex + 1]).toBe("3 / 7 active ▾");
+		expect(expanded[expandedIndex + 1]).toMatch(/^3 \/ 7 active\s+▾$/);
 		expect(expanded[expandedIndex + 2]).toBe("bash  edit");
 		expect(expanded[expandedIndex + 3]).toBe("read");
 		expect(expanded.join("\n")).not.toContain("[31m");
 
-		for (const width of [40, 56, 72]) {
+		for (const width of [44, 56, 72]) {
 			const wide = contentRows(renderSidebarLines(toolsSnapshot, expandedConfig, theme, width, 36, false));
 			const wideIndex = wide.indexOf("TOOLS");
 			expect(wide[wideIndex + 2]).toBe("bash  edit");
@@ -737,7 +748,7 @@ describe("sidebar snapshot and layout", () => {
 		for (const width of [28, 39]) {
 			const narrow = contentRows(renderSidebarLines(toolsSnapshot, expandedConfig, theme, width, 36, false));
 			const narrowIndex = narrow.indexOf("TOOLS");
-			expect(narrow[narrowIndex + 1]).toBe("3 / 7 active ▸");
+			expect(narrow[narrowIndex + 1]).toMatch(/^3 \/ 7 active\s+▸$/);
 			expect(narrow).not.toContain("bash  edit");
 			expect(narrow).not.toContain("read");
 		}
@@ -756,11 +767,11 @@ describe("sidebar snapshot and layout", () => {
 		});
 		const expandedConfig = { ...DEFAULT_CONFIG, showSidebarToolNames: true };
 		const fullRows = contentRows(renderSidebarLines(toolsSnapshot, expandedConfig, theme, 44, 60, false));
-		const fullHeight = fullRows.findLastIndex((row) => row !== "") + 1;
+		const fullHeight = fullRows.findLastIndex((row) => row !== "") + 3;
 		const constrained = contentRows(
 			renderSidebarLines(toolsSnapshot, expandedConfig, theme, 44, fullHeight - 1, false),
 		);
-		expect(constrained).toContain("4 / 7 active ▾");
+		expect(constrained).toContainEqual(expect.stringMatching(/^4 \/ 7 active\s+▾$/));
 		expect(constrained).toContain("bash  edit");
 		expect(constrained).not.toContain("read  write");
 	});
@@ -777,7 +788,7 @@ describe("sidebar snapshot and layout", () => {
 		});
 		const rows = contentRows(renderSidebarLines(toolsSnapshot, DEFAULT_CONFIG, theme, 44, 36, false));
 		const toolsIndex = rows.indexOf("TOOLS");
-		expect(rows[toolsIndex + 1]).toBe("0 / 7 active ▸");
+		expect(rows[toolsIndex + 1]).toMatch(/^0 \/ 7 active\s+▸$/);
 		expect(rows[toolsIndex + 2]).toBe("");
 	});
 
@@ -793,7 +804,7 @@ describe("sidebar snapshot and layout", () => {
 		const rows = contentRows(renderSidebarLines(emptyStatuses, DEFAULT_CONFIG, theme, 44, 36, false));
 		const toolsIndex = rows.indexOf("TOOLS");
 		expect(toolsIndex).toBeGreaterThan(-1);
-		expect(rows[toolsIndex + 1]).toBe("8 / 12 active ▸");
+		expect(rows[toolsIndex + 1]).toMatch(/^8 \/ 12 active\s+▸$/);
 		expect(rows.slice(toolsIndex + 2)).not.toContain("—");
 		expect(rows).toEqual(expect.not.arrayContaining([expect.stringMatching(/^STATUS /)]));
 	});
@@ -818,7 +829,7 @@ describe("sidebar snapshot and layout", () => {
 
 	it("suppresses routine healthy extension statuses", () => {
 		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 28, false));
-		expect(rows).toContain("8 / 12 active ▸");
+		expect(rows).toContainEqual(expect.stringMatching(/^8 \/ 12 active\s+▸$/));
 		expect(rows).not.toContain("tests passing");
 		expect(rows).not.toContain("ALERTS");
 	});
