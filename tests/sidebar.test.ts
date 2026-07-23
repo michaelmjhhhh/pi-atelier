@@ -99,7 +99,7 @@ function activeActivity(): RunActivitySnapshot {
 function contentRows(lines: string[]) {
 	return lines.map((line) => {
 		const row = stripAnsi(line).slice(2).trimEnd();
-		const title = row.match(/^╭─ ([A-Z]+) ─*╮$/)?.[1];
+		const title = row.match(/^╭─ [✦✧] ([A-Z]+) ─*╮$/)?.[1];
 		if (title) return title;
 		if (/^╰─+╯$/.test(row)) return "";
 		if (row.startsWith("│ ") && row.endsWith(" │")) return row.slice(2, -2).trimEnd();
@@ -135,13 +135,13 @@ describe("sidebar snapshot and layout", () => {
 	});
 
 	it("renders a full-height dock with elegant terminal-native panels", () => {
-		const lines = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false);
+		const lines = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false, 0);
 		const text = lines.join("\n");
 		expect(lines).toHaveLength(36);
 		expect(lines.every((line) => visibleWidth(line) <= 44)).toBe(true);
 		expect(lines.every((line) => stripAnsi(line).startsWith("│ "))).toBe(true);
-		expect(text).toContain("╭─ AGENT ");
-		expect(text).toContain("╭─ CONTEXT ");
+		expect(text).toContain("╭─ ✦ AGENT ");
+		expect(text).toContain("╭─ ✦ CONTEXT ");
 		expect(text).toContain("╰────────────────");
 		expect(text).not.toContain("ATELIER");
 		expect(text).not.toMatch(/PI ATELIER|ATELIER|▛▀▜/);
@@ -150,6 +150,32 @@ describe("sidebar snapshot and layout", () => {
 		expect(contentRows(lines)).toContainEqual(
 			expect.stringMatching(/^◆ Working · gitifying\s+gpt-5\.6-sol$/),
 		);
+	});
+
+	it("pulses only the working Agent jewel while keeping other crowns stable", () => {
+		const bright = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false, 0).join("\n");
+		const soft = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false, 400).join("\n");
+		expect(bright).toContain("╭─ ✦ AGENT ");
+		expect(soft).toContain("╭─ ✧ AGENT ");
+		expect(bright).toContain("╭─ ✦ CONTEXT ");
+		expect(soft).toContain("╭─ ✦ CONTEXT ");
+	});
+
+	it("tints panel crowns with their semantic jewel roles", () => {
+		const fg = vi.fn((_color: string, text: string) => text);
+		renderSidebarLines(
+			snapshot(),
+			DEFAULT_CONFIG,
+			{ fg, bold: theme.bold, italic: theme.italic },
+			44,
+			36,
+			true,
+			0,
+		);
+		expect(fg).toHaveBeenCalledWith("mdHeading", "╭─ ✦ ");
+		expect(fg).toHaveBeenCalledWith("thinkingLow", "╭─ ✦ ");
+		expect(fg).toHaveBeenCalledWith("thinkingHigh", "╭─ ✦ ");
+		expect(fg).toHaveBeenCalledWith("syntaxType", "╭─ ✦ ");
 	});
 
 	it("matches the representative 44x36 no-color docked rail", () => {
@@ -167,7 +193,7 @@ describe("sidebar snapshot and layout", () => {
 			[
 			  "AGENT",
 			  "◆ Working · gitifying      gpt-5.6-sol",
-			  "openai-codex · medium · subscription",
+			  "OPENAI-CODEX · MEDIUM · SUBSCRIPTION",
 			  "",
 			  "",
 			  "CONTEXT",
@@ -226,8 +252,8 @@ describe("sidebar snapshot and layout", () => {
 		const compact = contentRows(renderSidebarLines(snapshot(), expandedConfig, theme, 28, 36, false));
 		expect(compact).toContain("◆ Working · gitifying");
 		expect(compact).toContain("gpt-5.6-sol");
-		expect(compact).toContain("openai-codex");
-		expect(compact).toContain("medium · subscription");
+		expect(compact).toContain("OPENAI-CODEX");
+		expect(compact).toContain("MEDIUM · SUBSCRIPTION");
 		const compactContext = compact.indexOf("CONTEXT");
 		expect(compact[compactContext + 1]).toMatch(/^32k \/ 400k\s+8\.1%$/);
 		expect(compact[compactContext + 2]).toMatch(/^\[■·+\]$/);
@@ -240,7 +266,7 @@ describe("sidebar snapshot and layout", () => {
 
 		const regular = contentRows(renderSidebarLines(snapshot(), expandedConfig, theme, 44, 36, false));
 		expect(regular).toContainEqual(expect.stringMatching(/^◆ Working · gitifying\s+gpt-5\.6-sol$/));
-		expect(regular).toContain("openai-codex · medium · subscription");
+		expect(regular).toContain("OPENAI-CODEX · MEDIUM · SUBSCRIPTION");
 		expect(regular).toContain("pi-atelier · feature/sidebar ▲");
 		expect(regular).toContainEqual(expect.stringMatching(/^8 \/ 12 active\s+▾$/));
 	});
@@ -332,7 +358,7 @@ describe("sidebar snapshot and layout", () => {
 		};
 		const rows = contentRows(renderSidebarLines(unavailable, DEFAULT_CONFIG, theme, 44, 36, false));
 		expect(rows).not.toContain("USAGE");
-		expect(rows).toContain("openai-codex · medium · subscription");
+		expect(rows).toContain("OPENAI-CODEX · MEDIUM · SUBSCRIPTION");
 	});
 
 	it("renders quiet section labels without ornamental rules", () => {

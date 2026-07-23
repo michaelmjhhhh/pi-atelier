@@ -107,16 +107,25 @@ function renderDock(
 	});
 }
 
-function panelRows(title: string, rows: readonly string[], width: number, palette: AtelierPalette): string[] {
+function panelRows(
+	title: string,
+	rows: readonly string[],
+	width: number,
+	palette: AtelierPalette,
+	theme: ThemeLike,
+	role: PaletteRole,
+	jewel: "✦" | "✧",
+): string[] {
 	const safeWidth = Math.max(4, Math.trunc(width));
 	const innerWidth = Math.max(0, safeWidth - 4);
 	const safeTitle = sanitize(title).toUpperCase();
-	const titleText = `─ ${safeTitle} `;
-	const topFill = "─".repeat(Math.max(0, safeWidth - visibleWidth(titleText) - 2));
-	const top = `${palette.paint("dim", "╭─")} ${palette.paint("muted", safeTitle)} ${palette.paint(
-		"dim",
-		`${topFill}╮`,
-	)}`;
+	const crownPrefix = `╭─ ${jewel} `;
+	const crownFill = "─".repeat(
+		Math.max(0, safeWidth - visibleWidth(crownPrefix) - visibleWidth(safeTitle) - 2),
+	);
+	const top = `${palette.paint(role, crownPrefix)}${theme.bold(
+		palette.paint(role, safeTitle),
+	)} ${palette.paint(role, `${crownFill}╮`)}`;
 	const body = rows.map((row) => {
 		const content = padToWidth(row, innerWidth);
 		return `${palette.paint("dim", "│")} ${content} ${palette.paint("dim", "│")}`;
@@ -178,13 +187,15 @@ function agentRows(
 		),
 	);
 	const model = valueRow(snapshot.modelId, palette, "primary");
-	const provider = snapshot.provider ? palette.paint("muted", display(snapshot.provider)) : "";
-	const thinking = snapshot.thinkingLevel ? palette.paint("primary", display(snapshot.thinkingLevel)) : "";
+	const provider = snapshot.provider ? palette.paint("muted", display(snapshot.provider).toUpperCase()) : "";
+	const thinking = snapshot.thinkingLevel
+		? palette.paint("primary", display(snapshot.thinkingLevel).toUpperCase())
+		: "";
 	const access =
 		snapshot.modelId || snapshot.provider
 			? palette.paint(
 					snapshot.metrics.subscription ? "ready" : "muted",
-					snapshot.metrics.subscription ? "subscription" : "metered",
+					snapshot.metrics.subscription ? "SUBSCRIPTION" : "METERED",
 				)
 			: "";
 	const separator = ` ${palette.paint("dim", "·")} `;
@@ -409,6 +420,14 @@ function activeToolNameRows(
 const exceptionStatusPattern =
 	/\b(error|failed?|failure|warn(?:ing)?|offline|unavailable|blocked|degraded)\b/i;
 
+function statusDetailPanelRole(snapshot: SidebarSnapshot): PaletteRole {
+	return snapshot.extensionStatuses.some((status) =>
+		/\b(error|failed?|failure|offline|unavailable)\b/i.test(sanitize(status)),
+	)
+		? "error"
+		: "warning";
+}
+
 function statusDetailRows(snapshot: SidebarSnapshot, palette: AtelierPalette): string[] {
 	const statuses = snapshot.extensionStatuses
 		.map(sanitize)
@@ -433,12 +452,19 @@ interface ActivityGroups {
 interface SidebarGroup {
 	name: string;
 	panel?: string;
+	panelRole?: PaletteRole;
+	panelJewel?: "✦" | "✧";
 	rows: string[];
 	required: boolean;
 	dropRank: number;
 }
 
-function renderGroups(groups: readonly SidebarGroup[], width: number, palette: AtelierPalette): string[] {
+function renderGroups(
+	groups: readonly SidebarGroup[],
+	width: number,
+	palette: AtelierPalette,
+	theme: ThemeLike,
+): string[] {
 	const rendered: string[] = [];
 	for (let index = 0; index < groups.length; ) {
 		const group = groups[index];
@@ -455,7 +481,19 @@ function renderGroups(groups: readonly SidebarGroup[], width: number, palette: A
 			rows.push(...(groups[next]?.rows ?? []));
 			next += 1;
 		}
-		if (rows.length > 0) rendered.push(...panelRows(group.panel, rows, width, palette));
+		if (rows.length > 0) {
+			rendered.push(
+				...panelRows(
+					group.panel,
+					rows,
+					width,
+					palette,
+					theme,
+					group.panelRole ?? "accent",
+					group.panelJewel ?? "✦",
+				),
+			);
+		}
 		index = next;
 	}
 	return rendered;
@@ -560,10 +598,17 @@ function activitySidebarGroups(
 	const groups = activityRows(snapshot.runActivity, contentWidth, palette, now);
 	if (!groups) return [];
 	const recentCount = groups.recent.length;
+	const panelRole: PaletteRole =
+		snapshot.runActivity.phase === "running"
+			? "working"
+			: snapshot.runActivity.failedCount > 0
+				? "error"
+				: "ready";
 	return [
 		{
 			name: "activityCore",
 			panel: "ACTIVITY",
+			panelRole,
 			rows: groups.core,
 			required: true,
 			dropRank: Number.POSITIVE_INFINITY,
@@ -571,6 +616,7 @@ function activitySidebarGroups(
 		...groups.recent.map((recent, index) => ({
 			name: `activityRecent:${recent.id}`,
 			panel: "ACTIVITY",
+			panelRole,
 			rows: [recent.row],
 			required: false,
 			dropRank: index === 0 ? 30 : 10 + (recentCount - index - 1),
@@ -578,6 +624,7 @@ function activitySidebarGroups(
 		{
 			name: "activityAggregate",
 			panel: "ACTIVITY",
+			panelRole,
 			rows: groups.aggregate,
 			required: false,
 			dropRank: 20,
@@ -590,9 +637,10 @@ function composeGroups(
 	height: number,
 	width: number,
 	palette: AtelierPalette,
+	theme: ThemeLike,
 ): SidebarGroup[] {
 	let candidate = groups.filter((group) => group.rows.length > 0);
-	while (renderGroups(candidate, width, palette).length > height) {
+	while (renderGroups(candidate, width, palette, theme).length > height) {
 		let dropIndex = -1;
 		let dropRank = Number.POSITIVE_INFINITY;
 		for (const [index, group] of candidate.entries()) {
@@ -638,6 +686,8 @@ export function renderSidebarLines(
 		{
 			name: "agent",
 			panel: "AGENT",
+			panelRole: activityRole(snapshot.activity),
+			panelJewel: snapshot.activity === "working" && Math.floor(now / 400) % 2 === 1 ? "✧" : "✦",
 			rows: agentRows(snapshot, layout, panelContentWidth, palette, theme),
 			required: true,
 			dropRank: Number.POSITIVE_INFINITY,
@@ -650,6 +700,7 @@ export function renderSidebarLines(
 		{
 			name: "statusDetails",
 			panel: "ALERTS",
+			panelRole: statusDetailPanelRole(snapshot),
 			rows: statusDetailRows(snapshot, palette),
 			required: false,
 			dropRank: 80,
@@ -657,6 +708,7 @@ export function renderSidebarLines(
 		{
 			name: "context",
 			panel: "CONTEXT",
+			panelRole: contextRole(snapshot, config),
 			rows: contextRows(snapshot, config, panelContentWidth, layout, palette),
 			required: true,
 			dropRank: Number.POSITIVE_INFINITY,
@@ -664,6 +716,7 @@ export function renderSidebarLines(
 		{
 			name: "workspace",
 			panel: "WORKSPACE",
+			panelRole: "accent",
 			rows: workspaceRows(snapshot, layout, palette),
 			required: false,
 			dropRank: 30,
@@ -671,6 +724,7 @@ export function renderSidebarLines(
 		{
 			name: "usage",
 			panel: "USAGE",
+			panelRole: "output",
 			rows: usageRows(snapshot, config, panelContentWidth, layout, palette),
 			required: false,
 			dropRank: 20,
@@ -678,6 +732,7 @@ export function renderSidebarLines(
 		{
 			name: "toolsStatus",
 			panel: "TOOLS",
+			panelRole: "cache",
 			rows: toolsStatusRows(snapshot, layout.showToolNames, panelContentWidth, palette),
 			required: false,
 			dropRank: 10,
@@ -685,13 +740,19 @@ export function renderSidebarLines(
 		...toolNameRows.map((row, index, rows) => ({
 			name: `activeToolNames:${index}`,
 			panel: "TOOLS",
+			panelRole: "cache" as const,
 			rows: [row],
 			required: false,
 			dropRank: (rows.length - index) / 100,
 		})),
 	];
 	return renderDock(
-		renderGroups(composeGroups(groups, safeHeight, contentWidth, palette), contentWidth, palette),
+		renderGroups(
+			composeGroups(groups, safeHeight, contentWidth, palette, theme),
+			contentWidth,
+			palette,
+			theme,
+		),
 		safeWidth,
 		safeHeight,
 		palette,
