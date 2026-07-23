@@ -7,7 +7,7 @@ const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url),
 describe("npm package contract", () => {
 	it("publishes a Pi extension with compatible peers", () => {
 		expect(pkg.name).toBe("pi-atelier");
-		expect(pkg.version).toBe("0.2.0");
+		expect(pkg.version).toBe("0.3.0");
 		expect(pkg.description).toBe("A responsive status rail and live activity sidebar for Pi");
 		expect(pkg.keywords).toContain("pi-package");
 		expect(pkg.pi.extensions).toEqual(["./extensions/index.ts"]);

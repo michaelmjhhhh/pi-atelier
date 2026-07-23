@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.3.0 — 2026-07-23
+
+- Redesign the sidebar as a responsive panel dashboard with terminal-native framed sections and clearer metric alignment.
+- Add the Midnight Jewel treatment with semantic sapphire, amethyst, cyan, amber, and red panel crowns.
+- Add a subtle pulsing Agent jewel during active runs while keeping all other panels visually stable.
+- Introduce mixed typographic hierarchy for provider, thinking, and access metadata without changing sidebar behavior.
+- Add repository-local engineering skills and agent conventions for issue tracking, triage labels, and domain documentation.
+- Remove the legacy Superpowers plans and specifications.
+
 ## 0.2.0 — 2026-07-22
 
 - Reorder the sidebar around agent status, a compact context meter, and a merged workspace summary for faster scanning.
