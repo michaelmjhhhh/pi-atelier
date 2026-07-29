@@ -56,6 +56,7 @@ function harness(mode: "tui" | "print" = "tui", notificationPlatform: NodeJS.Pla
 		getThinkingLevel: vi.fn().mockReturnValue("medium"),
 		getActiveTools: vi.fn().mockReturnValue(["read"]),
 		getAllTools: vi.fn().mockReturnValue([{ name: "read" }]),
+		getCommands: vi.fn().mockReturnValue([]),
 	};
 	const custom = vi.fn((factory: (...args: any[]) => any, options: any): Promise<any> => {
 		const requestRender = vi.fn();

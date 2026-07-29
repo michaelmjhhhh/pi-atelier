@@ -285,7 +285,13 @@ function applyNonDisplay(input: unknown, config: AtelierConfig, warnings: string
 			config.currencyDecimals = input.currencyDecimals;
 		else warnings.push("currencyDecimals must be an integer from 0 through 6");
 	}
-	for (const key of ["showSessionActions", "showSidebarToolNames", "completionNotifications"] as const) {
+	for (const key of [
+		"showExtensionStatuses",
+		"showSessionActions",
+		"showSidebarToolNames",
+		"showSidebarAgent",
+		"completionNotifications",
+	] as const) {
 		if (typeof input[key] === "boolean") config[key] = input[key];
 		else if (key in input) warnings.push(`${key} must be boolean`);
 	}

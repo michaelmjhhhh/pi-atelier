@@ -75,6 +75,7 @@ function snapshot() {
 		branchEntryCount: 38,
 		activeToolCount: 8,
 		availableToolCount: 12,
+		skillsCount: 0,
 		extensionStatuses: ["tests passing"],
 		runActivity: EMPTY_RUN_ACTIVITY,
 	});
@@ -148,6 +149,7 @@ describe("sidebar snapshot and layout", () => {
 			branchEntryCount: 38,
 			activeToolCount: 8,
 			availableToolCount: 12,
+			skillsCount: 0,
 		});
 	});
 
@@ -299,6 +301,7 @@ describe("sidebar snapshot and layout", () => {
 			branchEntryCount: 6,
 			activeToolCount: 8,
 			availableToolCount: 12,
+			skillsCount: 0,
 			extensionStatuses: [],
 		});
 		expect(
@@ -407,6 +410,7 @@ describe("sidebar snapshot and layout", () => {
 			branchEntryCount: 6,
 			activeToolCount: 8,
 			availableToolCount: 12,
+			skillsCount: 0,
 			extensionStatuses: [],
 		});
 		const rows = contentRows(renderSidebarLines(missingSession, DEFAULT_CONFIG, theme, 44, 36, false));
@@ -431,6 +435,7 @@ describe("sidebar snapshot and layout", () => {
 			branchEntryCount: 6,
 			activeToolCount: 8,
 			availableToolCount: 12,
+			skillsCount: 0,
 			extensionStatuses: [],
 		});
 		expect(contentRows(renderSidebarLines(persisted, DEFAULT_CONFIG, theme, 44, 36, false))).toContain(
@@ -955,6 +960,7 @@ describe("sidebar snapshot and layout", () => {
 			branchEntryCount: 6,
 			activeToolCount: 3,
 			availableToolCount: 7,
+			skillsCount: 0,
 			activeToolNames: ["read", "\u001b[31mbash", " edit\n", "read", "   "],
 			extensionStatuses: [],
 		});
@@ -997,6 +1003,7 @@ describe("sidebar snapshot and layout", () => {
 			branchEntryCount: 6,
 			activeToolCount: 4,
 			availableToolCount: 7,
+			skillsCount: 0,
 			activeToolNames: ["write", "read", "edit", "bash"],
 			extensionStatuses: [],
 		});
@@ -1018,6 +1025,7 @@ describe("sidebar snapshot and layout", () => {
 			branchEntryCount: 0,
 			activeToolCount: 0,
 			availableToolCount: 7,
+			skillsCount: 0,
 			activeToolNames: [],
 			extensionStatuses: [],
 		});
@@ -1034,6 +1042,7 @@ describe("sidebar snapshot and layout", () => {
 			branchEntryCount: 6,
 			activeToolCount: 8,
 			availableToolCount: 12,
+			skillsCount: 0,
 			extensionStatuses: [],
 		});
 		const rows = contentRows(renderSidebarLines(emptyStatuses, DEFAULT_CONFIG, theme, 44, 36, false));
@@ -1051,6 +1060,7 @@ describe("sidebar snapshot and layout", () => {
 			branchEntryCount: 6,
 			activeToolCount: 8,
 			availableToolCount: 12,
+			skillsCount: 0,
 			extensionStatuses: ["tests \u001b[31mpassing", "api\nready", "sync warning", "index failed", "   "],
 		});
 		const rows = contentRows(renderSidebarLines(statusSnapshot, DEFAULT_CONFIG, theme, 44, 36, false));
@@ -1067,6 +1077,27 @@ describe("sidebar snapshot and layout", () => {
 		expect(rows).toContainEqual(expect.stringMatching(/^8 \/ 12 active\s+▸$/));
 		expect(rows).not.toContain("tests passing");
 		expect(rows).not.toContain("ALERTS");
+	});
+
+	it("shows skills count under TOOLS when active", () => {
+		const withSkills = buildSidebarSnapshot({
+			state: { ...state, extensionStatuses: [] },
+			cwd: "/tmp/project",
+			branchEntryCount: 6,
+			activeToolCount: 3,
+			availableToolCount: 7,
+			skillsCount: 4,
+			extensionStatuses: [],
+		});
+		const rows = contentRows(renderSidebarLines(withSkills, DEFAULT_CONFIG, theme, 44, 36, false));
+		const toolsIndex = rows.indexOf("TOOLS");
+		expect(rows[toolsIndex + 1]).toMatch(/^3 \/ 7 active\s+▸$/);
+		expect(rows[toolsIndex + 2]).toMatch(/^4 skills$/);
+	});
+
+	it("hides skills line when count is zero", () => {
+		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false));
+		expect(rows).not.toContainEqual(expect.stringMatching(/skills$/));
 	});
 
 	it("keeps only the required hierarchy in a compact 12 row rail", () => {
@@ -1097,6 +1128,7 @@ describe("sidebar snapshot and layout", () => {
 			branchEntryCount: 0,
 			activeToolCount: 0,
 			availableToolCount: 0,
+			skillsCount: 0,
 			extensionStatuses: [],
 		});
 		const lines = renderSidebarLines(missing, DEFAULT_CONFIG, theme, 32, 36, false);

@@ -27,6 +27,7 @@ export interface SidebarControls {
 	toggle(): void;
 	isToolListExpanded(): boolean;
 	toggleToolList(): Promise<void>;
+	requestRender?(): void;
 }
 
 interface MenuTheme {
@@ -468,5 +469,146 @@ export async function openAtelierMenu(
 	_save: SaveConfig = saveUserConfig,
 	savePatch: SaveConfigPatch = saveUserConfigPatch,
 ): Promise<void> {
-	await openAtelierControlCenter(pi, ctx, runtime, userConfigPath, sidebar, () => undefined, savePatch);
+	if (ctx.mode !== "tui") {
+		ctx.ui.notify("Pi Atelier menu requires TUI mode", "warning");
+		return;
+	}
+	const actions = createMenuActions(pi, ctx, runtime, userConfigPath, save, savePatch);
+	for (;;) {
+		const sidebarVisible = sidebar.isVisible();
+		const toolListExpanded = sidebar.isToolListExpanded();
+		const agentPanelVisible = runtime.getConfig().showSidebarAgent;
+		const notificationsEnabled = runtime.getConfig().completionNotifications;
+		const section = await showSelection(ctx, "◆ Pi Atelier", [
+			{
+				value: "sidebar",
+				label: `Sidebar: ${sidebarVisible ? "On" : "Off"}`,
+				description: sidebarVisible ? "Hide the docked information rail" : "Show the docked information rail",
+			},
+			{
+				value: "sidebar-agent",
+				label: `Agent panel: ${agentPanelVisible ? "On" : "Off"}`,
+				description: agentPanelVisible
+					? "Hide the AGENT panel in sidebar"
+					: "Show the AGENT panel in sidebar",
+			},
+			{
+				value: "sidebar-tools",
+				label: `Tool list: ${toolListExpanded ? "Expanded" : "Collapsed"}`,
+				description: toolListExpanded
+					? "Collapse sidebar tool names"
+					: "Show active tool names in the sidebar",
+			},
+			{
+				value: "notifications",
+				label: `Completion notifications: ${notificationsEnabled ? "On" : "Off"}`,
+				description: "Notify when a turn settles or Pi requests input",
+			},
+			{ value: "model", label: "Model", description: "Model and thinking level" },
+			{ value: "tools", label: "Tools", description: "Search and toggle active tools" },
+			{ value: "display", label: "Display", description: "Preset and footer segments" },
+			{ value: "session", label: "Session", description: "Details, name, and compaction" },
+			{ value: "close", label: "Close" },
+		]);
+		if (!section || section === "close") return;
+
+		if (section === "sidebar") {
+			sidebar.toggle();
+			continue;
+		}
+		if (section === "sidebar-agent") {
+			runtime.setConfig({ ...runtime.getConfig(), showSidebarAgent: !agentPanelVisible });
+			try {
+				await savePatch(userConfigPath, { showSidebarAgent: !agentPanelVisible });
+				ctx.ui.notify(`Agent panel ${!agentPanelVisible ? "enabled" : "disabled"}`, "info");
+			} catch (error) {
+				ctx.ui.notify(
+					`Agent panel changed for this session but could not be saved: ${error instanceof Error ? error.message : String(error)}`,
+					"warning",
+				);
+			}
+			sidebar.requestRender?.();
+			continue;
+		}
+		if (section === "sidebar-tools") {
+			await sidebar.toggleToolList();
+			continue;
+		}
+		if (section === "notifications") {
+			await actions.setCompletionNotifications(!notificationsEnabled);
+			continue;
+		}
+
+		if (section === "model") {
+			const action = await ctx.ui.select("Model controls", ["Choose model", "Thinking level", "Back"]);
+			if (action === "Choose model") {
+				const models = ctx.modelRegistry.getAvailable();
+				const labels = models.map((model) => `${model.provider}/${model.id}`);
+				const selected = await ctx.ui.select("Choose model", labels);
+				const model = models[labels.indexOf(selected ?? "")];
+				if (model) await actions.selectModel(model);
+			} else if (action === "Thinking level") {
+				const selected = await ctx.ui.select("Thinking level", [
+					"off",
+					"minimal",
+					"low",
+					"medium",
+					"high",
+					"xhigh",
+					"max",
+				]);
+				if (selected) actions.setThinkingLevel(selected as Parameters<ExtensionAPI["setThinkingLevel"]>[0]);
+			}
+		} else if (section === "tools") {
+			await showToolSettings(ctx, pi, actions.setTools);
+		} else if (section === "display") {
+			const action = await ctx.ui.select("Display controls", [
+				"Editorial preset",
+				"Minimal preset",
+				"Classic preset",
+				"Toggle segments",
+				"Reorder segments",
+				"Density",
+				"Ornament",
+				"Save as user default",
+				"Back",
+			]);
+			if (action?.endsWith("preset")) actions.setPreset(action.split(" ")[0]?.toLowerCase() as PresetName);
+			else if (action === "Toggle segments") {
+				const current = runtime.getConfig().segments;
+				const optional: SegmentId[] = ["brand", "activity", "model", "git", "statuses", "menu"];
+				const labels = optional.map((id) => `${current.includes(id) ? "✓" : "○"} ${id}`);
+				const selected = await ctx.ui.select("Toggle footer segment", labels);
+				const id = optional[labels.indexOf(selected ?? "")];
+				if (id)
+					actions.setSegments(
+						current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+					);
+			} else if (action === "Reorder segments") {
+				const current = runtime.getConfig().segments;
+				const selected = await ctx.ui.select("Choose segment", current);
+				if (selected) {
+					const direction = await ctx.ui.select("Move segment", ["earlier", "later"]);
+					if (direction) actions.moveSegment(selected as SegmentId, direction as "earlier" | "later");
+				}
+			} else if (action === "Density") {
+				const density = await ctx.ui.select("Footer density", ["comfortable", "compact"]);
+				if (density) actions.setDensity(density as AtelierConfig["density"]);
+			} else if (action === "Ornament") {
+				const ornament = await ctx.ui.select("Footer ornament", ["restrained", "none"]);
+				if (ornament) actions.setOrnament(ornament as AtelierConfig["ornament"]);
+			} else if (action === "Save as user default") await actions.saveDisplayDefaults();
+		} else if (section === "session") {
+			const options = runtime.getConfig().showSessionActions
+				? ["Show details", "Rename session", "Compact session", "Back"]
+				: ["Show details", "Back"];
+			const action = await ctx.ui.select("Session controls", options);
+			if (action === "Show details") {
+				const file = ctx.sessionManager.getSessionFile();
+				ctx.ui.notify(file ? `Session: ${file}` : "Ephemeral session", "info");
+			} else if (action === "Rename session") await actions.renameSession();
+			else if (action === "Compact session") await actions.compactSession();
+		}
+	}
+	}
 }

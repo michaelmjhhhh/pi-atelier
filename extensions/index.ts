@@ -86,6 +86,7 @@ export default function atelierExtension(
 		const sessionName = ctx.sessionManager.getSessionName();
 		const sessionFile = ctx.sessionManager.getSessionFile();
 		const activeTools = pi.getActiveTools();
+		const skillsCount = pi.getCommands().filter((cmd) => cmd.source === "skill").length;
 		return buildSidebarSnapshot({
 			state: targetRuntime.getState(),
 			cwd: ctx.cwd,
@@ -95,6 +96,7 @@ export default function atelierExtension(
 			activeToolCount: activeTools.length,
 			availableToolCount: pi.getAllTools().length,
 			activeToolNames: activeTools,
+			skillsCount,
 			extensionStatuses,
 			...(targetRunActivity ? { runActivity: targetRunActivity.getSnapshot() } : {}),
 		});
@@ -178,6 +180,7 @@ export default function atelierExtension(
 				toggle: () => targetSidebar.toggle(),
 				isToolListExpanded: () => targetRuntime.getConfig().showSidebarToolNames,
 				toggleToolList: async () => setSidebarToolNames(ctx, undefined, targetRuntime, targetSidebar),
+				requestRender: () => targetSidebar.requestRender(),
 			},
 			requestAllRenders,
 			lifecycleGuardedSavePatch(targetRuntime),
@@ -291,6 +294,20 @@ export default function atelierExtension(
 						return;
 					}
 					await setSidebarToolNames(ctx, toolAction === undefined ? undefined : toolAction === "on");
+					return;
+				}
+				if (sidebarAction === "agent") {
+					const [agentAction, ...agentExtra] = extra;
+					if (
+						agentExtra.length > 0 ||
+						(agentAction !== undefined && agentAction !== "on" && agentAction !== "off")
+					) {
+						ctx.ui.notify("Usage: /atelier sidebar agent [on|off]", "warning");
+						return;
+					}
+					const next = agentAction === undefined ? undefined : agentAction === "on";
+					runtime.setConfig({ ...runtime.getConfig(), showSidebarAgent: next ?? !runtime.getConfig().showSidebarAgent });
+					sidebar.requestRender();
 					return;
 				}
 				if (

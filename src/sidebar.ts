@@ -24,6 +24,7 @@ export interface SidebarSnapshotInput {
 	branchEntryCount: number;
 	activeToolCount: number;
 	availableToolCount: number;
+	skillsCount: number;
 	activeToolNames?: readonly string[];
 	extensionStatuses: readonly string[];
 	runActivity?: RunActivitySnapshot;
@@ -38,6 +39,7 @@ export interface SidebarSnapshot extends AtelierState {
 	branchEntryCount: number;
 	activeToolCount: number;
 	availableToolCount: number;
+	skillsCount: number;
 	activeToolNames: readonly string[];
 	runActivity: RunActivitySnapshot;
 }
@@ -59,6 +61,7 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
 		branchEntryCount: input.branchEntryCount,
 		activeToolCount: input.activeToolCount,
 		availableToolCount: input.availableToolCount,
+		skillsCount: input.skillsCount,
 		activeToolNames: [...new Set((input.activeToolNames ?? []).map(sanitize).filter(Boolean))].sort((a, b) =>
 			a.localeCompare(b, "en"),
 		),
@@ -448,7 +451,7 @@ function usageRows(
 			),
 		);
 	}
-	if (metrics.costAvailable) {
+	if (metrics.costAvailable && metrics.cost > 0) {
 		const cost = `$${Math.max(0, Number.isFinite(metrics.cost) ? metrics.cost : 0).toFixed(
 			currencyDecimals(config.currencyDecimals),
 		)}`;
@@ -464,7 +467,7 @@ function toolsStatusRows(
 	palette: AtelierPalette,
 ): string[] {
 	const disclosure = showToolNames ? "▾" : "▸";
-	return [
+	const rows = [
 		spacedRow(
 			palette.paint(
 				"primary",
@@ -474,6 +477,10 @@ function toolsStatusRows(
 			contentWidth,
 		),
 	];
+	if (finiteCount(snapshot.skillsCount) > 0) {
+		rows.push(spacedRow(palette.paint("primary", `${finiteCount(snapshot.skillsCount)} skills`), "", contentWidth));
+	}
+	return rows;
 }
 
 function activeToolNameRows(
@@ -778,16 +785,20 @@ export function renderSidebarLines(
 						dropRank: Number.POSITIVE_INFINITY,
 					},
 				]
+		: []),
+		...(config.showSidebarAgent
+			? [
+					{
+						name: "agent",
+						panel: "AGENT",
+						panelRole: activityRole(snapshot.activity),
+						panelJewel: (snapshot.activity === "working" && Math.floor(now / 400) % 2 === 1 ? "✧" : "✦") as "✦" | "✧",
+						rows: agentRows(snapshot, layout, panelContentWidth, palette, theme),
+						required: true,
+						dropRank: Number.POSITIVE_INFINITY,
+					},
+				]
 			: []),
-		{
-			name: "agent",
-			panel: "AGENT",
-			panelRole: activityRole(snapshot.activity),
-			panelJewel: snapshot.activity === "working" && Math.floor(now / 400) % 2 === 1 ? "✧" : "✦",
-			rows: agentRows(snapshot, layout, panelContentWidth, palette, theme),
-			required: true,
-			dropRank: Number.POSITIVE_INFINITY,
-		},
 		...activitySidebarGroups(snapshot, panelContentWidth, palette, now).map((group) => ({
 			...group,
 			required: group.name === "activityCore",
