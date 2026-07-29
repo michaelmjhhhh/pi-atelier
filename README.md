@@ -113,7 +113,7 @@ Additional commands:
 
 ## Sidebar
 
-The sidebar starts shown whenever the extension initializes. An explicit `off` applies only to the current runtime; `/reload` restores the default shown state. Use these commands to control it explicitly:
+The sidebar starts closed by default. Use these commands or the `alt+a` settings menu to control it for the current session. Set `sidebarOpen` to `true` in user configuration to open it automatically in future sessions:
 
 ```text
 /atelier sidebar       # toggle between shown and hidden
@@ -186,6 +186,7 @@ Complete example:
   "currencyDecimals": 3,
   "showExtensionStatuses": true,
   "showSessionActions": true,
+  "sidebarOpen": false,
   "showSidebarToolNames": false,
   "completionNotifications": true
 }

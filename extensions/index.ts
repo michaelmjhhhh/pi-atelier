@@ -419,7 +419,7 @@ export default function atelierExtension(
 			}
 			if (enabled && isFresh()) {
 				installFooter(initializationContext, candidateRuntime, initializationGeneration);
-				localSidebar.show();
+				if (loaded.config.sidebarOpen) localSidebar.show();
 			}
 			void candidateRuntime.refreshWorkspacePulse();
 		} catch (error) {

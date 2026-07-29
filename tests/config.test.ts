@@ -18,8 +18,9 @@ beforeEach(async () => {
 });
 
 describe("configuration", () => {
-	it("defaults to no brand ornament, collapsed tool details, and completion notifications", () => {
+	it("defaults to no brand ornament, a closed sidebar, collapsed tool details, and completion notifications", () => {
 		expect(DEFAULT_CONFIG.ornament).toBe("none");
+		expect(DEFAULT_CONFIG.sidebarOpen).toBe(false);
 		expect(DEFAULT_CONFIG.showSidebarToolNames).toBe(false);
 		expect(DEFAULT_CONFIG.completionNotifications).toBe(true);
 	});
@@ -87,11 +88,21 @@ describe("configuration", () => {
 
 	it("validates boolean preferences", () => {
 		expect(
-			validateConfig({ showSidebarToolNames: true, completionNotifications: false }).config,
-		).toMatchObject({ showSidebarToolNames: true, completionNotifications: false });
-		const invalid = validateConfig({ showSidebarToolNames: "yes", completionNotifications: "yes" });
+			validateConfig({
+				sidebarOpen: true,
+				showSidebarToolNames: true,
+				completionNotifications: false,
+			}).config,
+		).toMatchObject({ sidebarOpen: true, showSidebarToolNames: true, completionNotifications: false });
+		const invalid = validateConfig({
+			sidebarOpen: "yes",
+			showSidebarToolNames: "yes",
+			completionNotifications: "yes",
+		});
+		expect(invalid.config.sidebarOpen).toBe(false);
 		expect(invalid.config.showSidebarToolNames).toBe(false);
 		expect(invalid.config.completionNotifications).toBe(true);
+		expect(invalid.warnings).toContain("sidebarOpen must be boolean");
 		expect(invalid.warnings).toContain("showSidebarToolNames must be boolean");
 		expect(invalid.warnings).toContain("completionNotifications must be boolean");
 	});

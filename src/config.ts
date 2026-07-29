@@ -103,6 +103,7 @@ export function validateConfig(input: unknown, base: AtelierConfig = DEFAULT_CON
 	for (const key of [
 		"showExtensionStatuses",
 		"showSessionActions",
+		"sidebarOpen",
 		"showSidebarToolNames",
 		"completionNotifications",
 	] as const) {

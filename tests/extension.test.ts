@@ -196,9 +196,11 @@ describe("extension registration", () => {
 		expect(h.setFooter).not.toHaveBeenCalled();
 	});
 
-	it("starts enabled and toggles the persistent sidebar on -> off -> on", async () => {
+	it("starts with the sidebar closed and toggles it on -> off -> on", async () => {
 		const h = harness();
 		await start(h);
+		expect(h.overlays).toHaveLength(0);
+		await command(h, "sidebar");
 		expect(h.overlays).toHaveLength(1);
 		expect(h.overlays[0]?.options).toMatchObject({
 			overlay: true,
@@ -251,7 +253,7 @@ describe("extension registration", () => {
 		await start(h);
 		await command(h, args);
 		expect(h.ctx.ui.notify).toHaveBeenCalledWith("Usage: /atelier sidebar [on|off]", "warning");
-		expect(h.custom).toHaveBeenCalledOnce();
+		expect(h.custom).not.toHaveBeenCalled();
 	});
 
 	it("warns for invalid sidebar tool-list syntax", async () => {
