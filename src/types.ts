@@ -98,6 +98,35 @@ export type WorkspacePulseState =
 	| { status: "clean" | "changed" | "conflict" | "stale"; data: WorkspacePulseData }
 	| { status: "not-repo" | "unavailable" };
 
+export interface CurrentGoal {
+	goalId: string;
+	text: string;
+	status: string;
+}
+
+/** Valid goal statuses emitted by pi-goal and consumed by pi-atelier. */
+export type PiGoalStatus =
+	| "active"
+	| "queued"
+	| "paused"
+	| "blocked"
+	| "usage_limited"
+	| "budget_limited"
+	| "complete"
+	| "cleared";
+
+/** Payload shape of `pi-goal:state` events. All fields optional per spec. */
+export interface PiGoalStatePayload {
+	goalId?: string;
+	text?: string;
+	status?: string;
+}
+
+/** Session custom entry data for goal-state persistence. */
+export interface GoalStateEntryData {
+	goal: { id?: string; text?: string; status?: string } | null;
+}
+
 export interface AtelierState {
 	activity: ActivityState;
 	workingLabel?: string;
@@ -109,6 +138,7 @@ export interface AtelierState {
 	workspacePulse: WorkspacePulseState;
 	metrics: AtelierMetrics;
 	extensionStatuses: readonly string[];
+	currentGoal?: CurrentGoal;
 }
 
 /** Footer render input: runtime state plus the live response metrics the runtime does not own. */

@@ -1,5 +1,5 @@
-import { matchesKey } from "@earendil-works/pi-tui";
 import type { OverlayOptions, TUI } from "@earendil-works/pi-tui";
+import { matchesKey } from "@earendil-works/pi-tui";
 
 const ENABLE_MOUSE = "\u001b[?1002h\u001b[?1006h";
 const DISABLE_MOUSE = "\u001b[?1006l\u001b[?1002l";

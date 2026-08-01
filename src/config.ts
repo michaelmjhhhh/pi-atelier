@@ -9,9 +9,9 @@ import {
 	PRODUCT_SEGMENT_ORDER,
 } from "./display.js";
 import {
-	DEFAULT_CONFIG,
 	type AtelierConfig,
 	type ConfigurationSource,
+	DEFAULT_CONFIG,
 	type DisplayLayerState,
 	type DisplayProvenance,
 	type DisplaySettings,

@@ -7,6 +7,7 @@ import type {
 	ActivityState,
 	AtelierConfig,
 	AtelierState,
+	CurrentGoal,
 	DisplayLayerState,
 	DisplayPatch,
 	DisplayProvenance,
@@ -185,6 +186,13 @@ export class AtelierRuntime {
 			activity === "working"
 				? { ...this.#state, activity, workingLabel: selectWorkingPhrase(this.#random()) }
 				: { ...this.#state, activity };
+		this.#invalidate();
+	}
+
+	setCurrentGoal(goal: CurrentGoal | undefined): void {
+		if (isDeepStrictEqual(this.#state.currentGoal, goal)) return;
+		const { currentGoal: _cg, ...rest } = this.#state;
+		this.#state = goal ? { ...rest, currentGoal: goal } : rest;
 		this.#invalidate();
 	}
 

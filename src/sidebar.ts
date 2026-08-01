@@ -13,7 +13,7 @@ import {
 	type ToolActivity,
 } from "./run-activity.js";
 import { createSplitPaneController, type SplitPaneController } from "./split-pane.js";
-import type { AtelierConfig, AtelierState, WorkspacePulseState } from "./types.js";
+import type { AtelierConfig, AtelierState, CurrentGoal, WorkspacePulseState } from "./types.js";
 import type { WorkspacePulseData } from "./workspace-pulse.js";
 
 export interface SidebarSnapshotInput {
@@ -504,6 +504,32 @@ function activeToolNameRows(
 	return rows;
 }
 
+function goalStatusSymbol(status: string): { symbol: string; role: PaletteRole } {
+	switch (status) {
+		case "active":
+			return { symbol: "▶", role: "working" };
+		case "queued":
+			return { symbol: "⏱", role: "muted" };
+		case "paused":
+			return { symbol: "⏸", role: "warning" };
+		case "blocked":
+			return { symbol: "✕", role: "error" };
+		case "usage_limited":
+			return { symbol: "▲", role: "warning" };
+		case "budget_limited":
+			return { symbol: "▲", role: "warning" };
+		default:
+			return { symbol: "●", role: "dim" };
+	}
+}
+
+function goalRows(goal: CurrentGoal, palette: AtelierPalette): string[] {
+	const { symbol, role } = goalStatusSymbol(goal.status);
+	const statusLabel = palette.paint(role, `${symbol} ${sanitize(goal.status).toUpperCase()}`);
+	const text = palette.paint("primary", sanitize(goal.text));
+	return [statusLabel, text];
+}
+
 const exceptionStatusPattern =
 	/\b(error|failed?|failure|warn(?:ing)?|offline|unavailable|blocked|degraded)\b/i;
 
@@ -800,6 +826,18 @@ export function renderSidebarLines(
 			rows: statusDetailRows(snapshot, palette),
 			required: false,
 			dropRank: 80,
+		},
+		{
+			name: "goal",
+			panel: "GOAL",
+			panelRole: snapshot.currentGoal
+				? snapshot.currentGoal.status === "active"
+					? "working"
+					: "accent"
+				: "accent",
+			rows: snapshot.currentGoal ? goalRows(snapshot.currentGoal, palette) : [],
+			required: false,
+			dropRank: 85,
 		},
 		{
 			name: "context",

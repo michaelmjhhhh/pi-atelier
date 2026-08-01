@@ -1,8 +1,8 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import {
-	EMPTY_RUN_ACTIVITY,
 	createRunActivityTracker,
+	EMPTY_RUN_ACTIVITY,
 	formatDuration,
 	summarizeTool,
 } from "../src/run-activity.js";

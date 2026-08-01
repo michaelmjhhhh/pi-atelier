@@ -25,7 +25,7 @@ import {
 	type SidebarSnapshot,
 } from "../src/sidebar.js";
 import { AtelierRuntime } from "../src/state.js";
-import type { FooterState } from "../src/types.js";
+import type { CurrentGoal, FooterState } from "../src/types.js";
 
 export interface AtelierExtensionDependencies {
 	saveConfig?: typeof saveUserConfig;
@@ -48,6 +48,7 @@ export default function atelierExtension(
 	let runActivity: RunActivityTracker | undefined;
 	let completionNotifier: CompletionNotifier | undefined;
 	let unsubscribeAskUserBlocked: (() => void) | undefined;
+	let unsubscribeGoalState: (() => void) | undefined;
 	let askUserBlocked = false;
 	let inputRequestSequence = 0;
 	let extensionStatuses: readonly string[] = [];
@@ -76,6 +77,31 @@ export default function atelierExtension(
 		}
 		extensionStatuses = [...next];
 		sidebar?.requestRender();
+	}
+
+	// ─── Goal state ──────────────────────────────────────────────────────────────
+
+	const GOAL_CUSTOM_ENTRY_TYPE = "goal-state";
+
+	interface GoalStateEntryData {
+		goal: { id?: string; text?: string; status?: string } | null;
+	}
+
+	/** Reconstruct the current goal from session custom entries (session start / branch switch). */
+	function reconstructCurrentGoal(ctx: ExtensionContext): CurrentGoal | undefined {
+		const entries = ctx.sessionManager.getBranch();
+		const goalEntries = entries.filter(
+			(entry) => entry.type === "custom" && entry.customType === GOAL_CUSTOM_ENTRY_TYPE,
+		);
+		const lastEntry = goalEntries.pop();
+		if (!lastEntry || lastEntry.type !== "custom") return undefined;
+		const data = lastEntry.data as GoalStateEntryData | undefined;
+		if (data === undefined) return undefined;
+		if (data.goal === undefined || data.goal === null) return undefined;
+		const g = data.goal;
+		if (!g.id || !g.text || !g.status) return undefined;
+		if (g.status === "complete") return undefined;
+		return { goalId: g.id, text: g.text, status: g.status };
 	}
 
 	function getSidebarSnapshot(
@@ -408,6 +434,7 @@ export default function atelierExtension(
 			const previousRunActivity = runActivity;
 			const previousCompletionNotifier = completionNotifier;
 			const previousUnsubscribeAskUserBlocked = unsubscribeAskUserBlocked;
+			const previousUnsubscribeGoalState = unsubscribeGoalState;
 			runtime = candidateRuntime;
 			sidebar = localSidebar;
 			runActivity = localRunActivity;
@@ -432,12 +459,50 @@ export default function atelierExtension(
 					completionNotification(initializationContext, "input-requested", localRunActivity.getSnapshot()),
 				);
 			});
+
+			// Subscribe to pi-goal state events for sidebar goal panel
+			unsubscribeGoalState = pi.events.on("pi-goal:state", (data) => {
+				if (runtime !== candidateRuntime) return;
+				if (typeof data !== "object" || data === null) return;
+				const payload = data as { goalId?: unknown; text?: unknown; status?: unknown };
+				const goalId = typeof payload.goalId === "string" ? payload.goalId : undefined;
+				const text = typeof payload.text === "string" ? payload.text : undefined;
+				const status = typeof payload.status === "string" ? payload.status : undefined;
+
+				if (status === "cleared") {
+					// Only clear if the event goalId matches current goal (prevents stale clears)
+					if (goalId && candidateRuntime.getState().currentGoal?.goalId !== goalId) return;
+					candidateRuntime.setCurrentGoal(undefined);
+					return;
+				}
+
+				if (goalId && status) {
+					// Update only if goalId matches current or we have no current goal
+					const existing = candidateRuntime.getState().currentGoal;
+					if (existing && existing.goalId !== goalId) return;
+					const goalText = text ?? existing?.text;
+					if (!goalText) return;
+					candidateRuntime.setCurrentGoal({ goalId, text: goalText, status });
+					return;
+				}
+
+				// Fallback: reconstruct from session entries if payload incomplete
+				if (!currentContext) return;
+				const currentGoal = reconstructCurrentGoal(currentContext);
+				candidateRuntime.setCurrentGoal(currentGoal);
+			});
+
+			// Set initial goal state from session entries
+			const initialGoal = reconstructCurrentGoal(initializationContext);
+			candidateRuntime.setCurrentGoal(initialGoal);
+
 			extensionStatuses = [];
 			previousSidebar?.dispose();
 			previousRuntime?.dispose();
 			previousRunActivity?.reset();
 			previousCompletionNotifier?.reset();
 			previousUnsubscribeAskUserBlocked?.();
+			previousUnsubscribeGoalState?.();
 
 			if (isFresh() && !shortcutRegistered) {
 				try {
@@ -495,6 +560,9 @@ export default function atelierExtension(
 			const unsubscribe = unsubscribeAskUserBlocked;
 			unsubscribeAskUserBlocked = undefined;
 			unsubscribe?.();
+			const unsubscribeGoal = unsubscribeGoalState;
+			unsubscribeGoalState = undefined;
+			unsubscribeGoal?.();
 			askUserBlocked = false;
 			currentContext = undefined;
 			currentSessionManager = undefined;
@@ -581,6 +649,9 @@ export default function atelierExtension(
 		const unsubscribe = unsubscribeAskUserBlocked;
 		unsubscribeAskUserBlocked = undefined;
 		unsubscribe?.();
+		const unsubscribeGoal = unsubscribeGoalState;
+		unsubscribeGoalState = undefined;
+		unsubscribeGoal?.();
 		askUserBlocked = false;
 		current?.ctx.ui.setFooter(undefined);
 		currentContext = undefined;

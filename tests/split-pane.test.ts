@@ -1,11 +1,11 @@
 import type { TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import {
+	createSplitPaneController,
 	DEFAULT_SIDEBAR_WIDTH,
 	MAX_SIDEBAR_WIDTH,
 	MIN_MAIN_WIDTH,
 	MIN_SIDEBAR_WIDTH,
-	createSplitPaneController,
 	parseSgrMouseEvent,
 } from "../src/split-pane.js";
 

@@ -38,6 +38,7 @@ Pi Atelier has one visual palette. Selecting a light, dark, or custom Pi theme d
 - Editorial, minimal, and classic display presets
 - Session details, renaming, and safe compaction controls
 - Default-on, session-scoped, non-capturing docked information rail with live run, turn, tool, response-performance, and Workspace Pulse activity
+- Persistent goal tracking from `pi-goal` extension events, displayed as a GOAL panel in the sidebar
 - Completion notifications when a turn settles or Pi explicitly requests user input
 - Fixed dark Midnight Spectrum across every selected theme, with a `NO_COLOR` fallback
 - User and trusted-project configuration
@@ -153,6 +154,41 @@ The sidebar uses a non-overlapping split presentation: Pi's workspace reflows in
 Press `Ctrl+Shift+R` to enter temporary Resize mode. The Pi workspace and sidebar resize together continuously. Drag from the divider or either adjacent column and release to accept; clicks elsewhere leave Resize mode active. Use Left/Right for one-column adjustments, Shift+Left/Shift+Right for four-column adjustments, Enter to accept, or Escape to restore the previous width. Mouse reporting is active only during Resize mode, so ordinary terminal text selection is unchanged at all other times.
 
 The split is implemented entirely inside Pi Atelier by wrapping the active TUI renderer at runtime; no Pi files are modified. This is a version-sensitive integration with Pi's current TUI structure and may require compatibility updates when Pi changes its renderer internals. A terminal character divider cannot display Ghostty's native hover resize cursor.
+
+## Goal tracking
+
+Pi Atelier listens to `pi-goal:state` events from the `pi-goal` extension and displays the current goal in a GOAL panel in the sidebar. The goal state is persisted across session reloads by reconstructing from session custom entries.
+
+### Sidebar GOAL panel
+
+When a goal is active, the sidebar shows a GOAL panel with:
+
+- Status symbol and label (e.g., `▶ ACTIVE`, `⏸ PAUSED`, `✕ BLOCKED`)
+- Goal text
+
+The panel role color reflects goal status: amber for `active`, accent for other states. The panel is omitted when no goal is set.
+
+### `pi-goal:state` event payload
+
+The extension subscribes to `pi-goal:state` events with the following payload shape:
+
+```typescript
+{
+  goalId: string;    // unique identifier for the goal
+  text?: string;     // goal description text
+  status: string;    // goal status: 'active' | 'paused' | 'blocked' | 'complete' | 'cleared' | ...
+}
+```
+
+**Event handling rules:**
+
+- `status: "cleared"` — clears the current goal. If `goalId` is present, only clears if it matches the currently displayed goal (prevents stale clear events from older goals).
+- `goalId` + `status` present — updates the goal. Only applies if `goalId` matches the current goal or no goal is currently set (prevents cross-goal contamination).
+- Incomplete payload — falls back to reconstructing goal state from session custom entries.
+
+### Session reconstruction
+
+At session start, Pi Atelier scans the session branch for custom entries of type `goal-state` and reconstructs the last active goal. This ensures goal state survives `/reload` and session restarts.
 
 ## Configuration
 
