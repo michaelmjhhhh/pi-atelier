@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Add a global, ordered Sidebar panel layout with draft editing, Save/Undo/default restore, unavailable-panel retention, and a namespaced structured contribution protocol.
+- Add `sidebarDisabled` user config option (default `false`) to suppress the sidebar on startup while preserving explicit `/atelier sidebar on` control.
 - Route built-in TODOS through the same ordered composition while preserving legacy parsing, hidden state, branch changes, and safe output collapse.
 - Add a global user Agent-panel visibility preference with persisted settings and independent Agent/TODOS rendering.
 - Add a TODOS sidebar panel for legacy Pi `todo` details and the optional `@juicesharp/rpiv-todo` task format, without installing or requiring that extension.

@@ -327,6 +327,24 @@ describe("configuration", () => {
 		expect(result.warnings).toContain("showSidebarAgent must be boolean");
 	});
 
+	it("loads persisted sidebarDisabled true from user config", async () => {
+		await writeJson(userPath, { sidebarDisabled: true });
+		const result = await loadConfig({ userPath, projectPath, projectTrusted: false });
+		expect(result.config.sidebarDisabled).toBe(true);
+	});
+
+	it("defaults sidebarDisabled to false", () => {
+		expect(DEFAULT_CONFIG.sidebarDisabled).toBe(false);
+		const result = validateConfig({});
+		expect(result.config.sidebarDisabled).toBe(false);
+	});
+
+	it("rejects non-boolean sidebarDisabled with warning", () => {
+		const result = validateConfig({ sidebarDisabled: "yes" });
+		expect(result.config.sidebarDisabled).toBe(false);
+		expect(result.warnings).toContain("sidebarDisabled must be boolean");
+	});
+
 	it("reports malformed JSON once and retains defaults", async () => {
 		await writeFile(userPath, "{broken", "utf8");
 		const result = await loadConfig({ userPath, projectPath, projectTrusted: false });

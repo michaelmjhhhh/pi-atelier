@@ -1604,4 +1604,57 @@ describe("sidebar todos integration", () => {
 			expect(result).toBeUndefined();
 		});
 	});
+
+	describe("sidebarDisabled config", () => {
+		it("does not show the sidebar on startup when sidebarDisabled is true", async () => {
+			await withPersistedUserConfig({ sidebarDisabled: true }, async () => {
+				const h = harness();
+				await start(h);
+				expect(h.overlays).toHaveLength(0);
+				expect(h.custom).not.toHaveBeenCalled();
+			});
+		});
+
+		it("still allows showing the sidebar via /atelier sidebar on when sidebarDisabled is true", async () => {
+			await withPersistedUserConfig({ sidebarDisabled: true }, async () => {
+				const h = harness();
+				await start(h);
+				await command(h, "sidebar on");
+				expect(h.overlays).toHaveLength(1);
+				expect(h.overlays[0]?.done).not.toHaveBeenCalled();
+			});
+		});
+
+		it("shows the sidebar on startup by default when sidebarDisabled is not set", async () => {
+			const h = harness();
+			await start(h);
+			expect(h.overlays).toHaveLength(1);
+			expect(h.overlays[0]?.done).not.toHaveBeenCalled();
+		});
+
+		it("does not show the sidebar on startup when sidebarDisabled is explicitly true", async () => {
+			await withPersistedUserConfig({ sidebarDisabled: true }, async () => {
+				const h = harness();
+				await start(h);
+				expect(h.overlays).toHaveLength(0);
+				expect(h.custom).not.toHaveBeenCalled();
+			});
+		});
+
+		it("shows the sidebar on session reload even when sidebarDisabled was true in the previous session", async () => {
+			await withPersistedUserConfig({ sidebarDisabled: true }, async () => {
+				const h = harness();
+				await start(h);
+				expect(h.overlays).toHaveLength(0);
+
+				// Reload without sidebarDisabled — should show
+				await withPersistedUserConfig({}, async () => {
+					await start(h, replacementContext(h.ctx, "Reloaded"));
+					expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
+					expect(h.overlays[1]).toBeDefined();
+					expect(h.overlays[1]?.done).not.toHaveBeenCalled();
+				});
+			});
+		});
+	});
 });

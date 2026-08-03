@@ -126,7 +126,7 @@ Additional commands:
 
 ## Sidebar
 
-The sidebar starts shown whenever the extension initializes. An explicit `off` applies only to the current runtime; `/reload` restores the default shown state. Use these commands to control it explicitly:
+The sidebar starts shown whenever the extension initializes. Set `sidebarDisabled` to `true` in user configuration to suppress it on startup. An explicit `off` applies only to the current runtime; `/reload` restores the default shown state (or the `sidebarDisabled` preference). Use these commands to control it explicitly:
 
 ```text
 /atelier sidebar       # toggle between shown and hidden
@@ -210,6 +210,7 @@ Complete example:
   "showSessionActions": true,
   "showSidebarToolNames": false,
   "showSidebarAgent": true,
+  "sidebarDisabled": false,
   "sidebarPanelLayout": [
     { "id": "agent", "visible": true },
     { "id": "activity", "visible": true },

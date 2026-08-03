@@ -363,6 +363,7 @@ function applyNonDisplay(input: unknown, config: AtelierConfig, warnings: string
 		"showSidebarToolNames",
 		"showSidebarAgent",
 		"showSidebarTodos",
+		"sidebarDisabled",
 		"completionNotifications",
 	] as const) {
 		if (typeof input[key] === "boolean") config[key] = input[key];
