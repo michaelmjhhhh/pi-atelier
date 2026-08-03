@@ -60,7 +60,7 @@ function createRuntime(
 		requestRender,
 		inspectWorkspace,
 	});
-	return { runtime, exec, requestRender, inspectWorkspace };
+	return { runtime, exec, requestRender, inspectWorkspace, ctx };
 }
 
 describe("AtelierRuntime", () => {
@@ -184,6 +184,37 @@ describe("AtelierRuntime", () => {
 		runtime.dispose();
 		await vi.runAllTimersAsync();
 		expect(inspectWorkspace).toHaveBeenCalledOnce();
+	});
+
+	it("reports context-free inert state once disposed without consulting the retired context", async () => {
+		const { runtime, ctx } = createRuntime();
+		runtime.setActivity("working");
+		await runtime.refreshWorkspacePulse();
+		expect(runtime.getState()).toMatchObject({
+			activity: "working",
+			branch: "main",
+			metrics: { contextTokens: 1_000, contextWindow: 10_000, contextPercent: 10 },
+		});
+		ctx.getContextUsage.mockImplementation(() => {
+			throw new Error("retired context is unavailable");
+		});
+
+		expect(() => runtime.dispose()).not.toThrow();
+
+		const state = runtime.getState();
+		expect(state.branch).toBeUndefined();
+		expect(state.workingLabel).toBeUndefined();
+		expect(state.activity).toBe("ready");
+		expect(state.dirty).toBe(false);
+		expect(state.extensionStatuses).toEqual([]);
+		expect(state.metrics).toMatchObject({
+			usageAvailable: false,
+			costAvailable: false,
+			contextTokens: null,
+			contextWindow: 0,
+			contextPercent: null,
+		});
+		expect(state.workspacePulse).toEqual({ status: "unavailable" });
 	});
 
 	it("selects one stable label when a work cycle starts", () => {
