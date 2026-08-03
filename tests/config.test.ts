@@ -39,6 +39,7 @@ describe("configuration", () => {
 		expect(DEFAULT_CONFIG.showSidebarToolNames).toBe(false);
 		expect(DEFAULT_CONFIG.completionNotifications).toBe(true);
 		expect(DEFAULT_CONFIG.showSidebarAgent).toBe(true);
+		expect(DEFAULT_CONFIG.colorScheme).toBe("atelier");
 		expect(DEFAULT_CONFIG.sidebarPanelLayout.map((entry) => entry.id)).toEqual([
 			"agent",
 			"activity",
@@ -307,6 +308,68 @@ describe("configuration", () => {
 		).toBe(true);
 	});
 
+	it("accepts valid color scheme forms", () => {
+		expect(validateConfig({ colorScheme: "inherit" }).config.colorScheme).toBe("inherit");
+		expect(validateConfig({ colorScheme: { primary: "", menu: "bashMode" } }).config.colorScheme).toEqual({
+			base: "atelier",
+			primary: "",
+			menu: "bashMode",
+		});
+		expect(
+			validateConfig({ colorScheme: { base: "inherit", output: "#cba6f7", cache: 45, working: "warning" } })
+				.config.colorScheme,
+		).toEqual({ base: "inherit", output: "#cba6f7", cache: 45, working: "warning" });
+	});
+
+	it("layers partial color schemes across config sources", async () => {
+		expect(
+			mergeConfig({ colorScheme: "inherit" }, { colorScheme: { output: "#ff00ff" } }).config.colorScheme,
+		).toEqual({
+			base: "inherit",
+			output: "#ff00ff",
+		});
+		expect(
+			mergeConfig(
+				{ colorScheme: { base: "inherit", output: "#ff00ff", cache: 45 } },
+				{ colorScheme: { base: "atelier", output: "#00ff00" } },
+			).config.colorScheme,
+		).toEqual({ base: "atelier", output: "#00ff00", cache: 45 });
+		await writeJson(userPath, { colorScheme: "inherit" });
+		await writeJson(projectPath, { colorScheme: { output: "#ff00ff" } });
+		expect((await loadConfig({ userPath, projectPath, projectTrusted: true })).config.colorScheme).toEqual({
+			base: "inherit",
+			output: "#ff00ff",
+		});
+		expect(
+			(await loadConfig({ userPath, projectPath, projectTrusted: true, session: { colorScheme: "atelier" } }))
+				.config.colorScheme,
+		).toBe("atelier");
+	});
+
+	it("warns about malformed color schemes and ignores invalid role overrides", () => {
+		const result = validateConfig({
+			colorScheme: {
+				base: "unknown",
+				output: "#bad",
+				cache: 300,
+				context: "selectedBg",
+				mystery: "accent",
+				working: "warning",
+			},
+		});
+		expect(result.config.colorScheme).toEqual({ base: "atelier", working: "warning" });
+		expect(result.warnings).toEqual(
+			expect.arrayContaining([
+				"colorScheme.base must be atelier or inherit",
+				"colorScheme.output must be a Pi theme token, #RRGGBB, integer 0-255, or empty string",
+				"colorScheme.cache must be a Pi theme token, #RRGGBB, integer 0-255, or empty string",
+				"colorScheme.context must be a Pi theme token, #RRGGBB, integer 0-255, or empty string",
+				"Unknown colorScheme role: mystery",
+			]),
+		);
+		expect(validateConfig({ colorScheme: "solarized" }).warnings).toContain("Unknown colorScheme: solarized");
+	});
+
 	it("rejects invalid thresholds and validates boolean preferences", () => {
 		const result = validateConfig({ contextWarning: 95, contextDanger: 80, showSidebarToolNames: "yes" });
 		expect(result.config.contextWarning).toBe(70);
@@ -348,5 +411,33 @@ describe("configuration", () => {
 			futureSetting: "keep",
 			completionNotifications: false,
 		});
+	});
+
+	it("patches a color scheme role without dropping the stored base and roles", async () => {
+		await writeJson(userPath, {
+			colorScheme: { base: "inherit", cache: 45, futureRole: "keep" },
+			futureSetting: "keep",
+		});
+		await saveUserConfigPatch(userPath, { colorScheme: { output: "#ff00ff" } });
+		expect(JSON.parse(await readFile(userPath, "utf8"))).toEqual({
+			colorScheme: { base: "inherit", cache: 45, futureRole: "keep", output: "#ff00ff" },
+			futureSetting: "keep",
+		});
+		await saveUserConfigPatch(userPath, { colorScheme: "atelier" });
+		expect(JSON.parse(await readFile(userPath, "utf8"))).toEqual({
+			colorScheme: "atelier",
+			futureSetting: "keep",
+		});
+		await saveUserConfigPatch(userPath, { colorScheme: { output: "#ff00ff" } });
+		expect(JSON.parse(await readFile(userPath, "utf8"))).toMatchObject({
+			colorScheme: { base: "atelier", output: "#ff00ff" },
+		});
+		for (const unusable of [42, "solarized"]) {
+			await writeJson(userPath, { colorScheme: unusable });
+			await saveUserConfigPatch(userPath, { colorScheme: { output: "#ff00ff" } });
+			expect(JSON.parse(await readFile(userPath, "utf8"))).toEqual({
+				colorScheme: { output: "#ff00ff" },
+			});
+		}
 	});
 });

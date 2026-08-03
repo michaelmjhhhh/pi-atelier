@@ -4,7 +4,7 @@ A responsive status rail and live activity sidebar for [Pi](https://pi.dev).
 
 Pi Atelier replaces Pi's default footer with a calm Status Rail and adds an optional docked sidebar for live agent, turn, tool, context, session, and project information.
 
-Wide terminals use two stable zones: agent state and workspace identity stay left, while readable telemetry is right-aligned. The extension always uses its fixed dark Midnight Spectrum—blue input/context, purple output/menu, cyan cache, amber cost/working, and red danger—regardless of the selected Pi theme.
+Wide terminals use two stable zones: agent state and workspace identity stay left, while readable telemetry is right-aligned. By default the extension uses its fixed dark Midnight Spectrum—blue input/context, purple output/menu, cyan cache, amber cost/working, and red danger—while configuration can switch Atelier to Pi theme inheritance or custom role colors.
 
 ## Demo
 
@@ -25,9 +25,11 @@ Wide terminals use two stable zones: agent state and workspace identity stay lef
   </tr>
 </table>
 
-### Fixed Dark Midnight Spectrum
+### Color schemes
 
-Pi Atelier has one visual palette. Selecting a light, dark, or custom Pi theme does not change the footer's colors: labels, workspace text, metric values, state anchors, warnings, and errors all retain the same dark-style treatment. With `NO_COLOR`, the footer emits no custom RGB and uses theme-native neutral and semantic roles.
+Pi Atelier defaults to its fixed dark Midnight Spectrum. Selecting a light, dark, or custom Pi theme does not change the Status Rail or sidebar colors unless `colorScheme` is configured. Set `colorScheme` to `"inherit"` to use Pi's active theme tokens, or provide a custom role map to override individual Atelier palette roles. With `NO_COLOR`, the Status Rail and sidebar emit no custom RGB and use theme-native neutral and semantic roles.
+
+![Animated Pi Atelier color scheme comparison showing the default Midnight Spectrum, inherited Pi Dark colors, and a custom role map](docs/color-schemes.gif)
 
 ## Features
 
@@ -41,7 +43,7 @@ Pi Atelier has one visual palette. Selecting a light, dark, or custom Pi theme d
 - Ordered, global-user Sidebar panel layout with draft editing, unavailable-panel retention, and a structured extension contribution contract
 - TODO tracking for compatible `todo` results, including legacy details and the optional `@juicesharp/rpiv-todo` task format
 - Completion notifications when a turn settles or Pi explicitly requests user input
-- Fixed dark Midnight Spectrum across every selected theme, with a `NO_COLOR` fallback
+- Fixed dark Midnight Spectrum by default, with Pi-theme inheritance, custom role colors, and a `NO_COLOR` fallback
 - User and trusted-project configuration
 - No telemetry or external network requests
 
@@ -184,7 +186,7 @@ Trusted project configuration:
 <project>/.pi/pi-atelier.json
 ```
 
-Project settings override user settings only after Pi trusts the project. Most menu changes apply to the current session; **Save as user default** writes display configuration atomically. Sidebar tool details and completion notifications are saved immediately so those preferences survive future sessions. Agent visibility and completion notifications are global user preferences, so project and session configuration cannot override them. Pi Atelier never modifies project configuration from the menu.
+Project settings override user settings only after Pi trusts the project. Session-scoped JSON configuration can be supplied by appending the latest `pi-atelier:config` custom session entry, for example `pi.appendEntry("pi-atelier:config", { "colorScheme": "inherit" })` from an extension or SDK session setup. Most menu changes apply to the current session; **Save as user default** writes display configuration atomically. Sidebar tool details and completion notifications are saved immediately so those preferences survive future sessions. Agent visibility and completion notifications are global user preferences, so project and session configuration cannot override them. Pi Atelier never modifies project configuration from the menu.
 
 Complete example:
 
@@ -221,7 +223,43 @@ Complete example:
     { "id": "tools", "visible": true }
   ],
   "showSidebarTodos": true,
-  "completionNotifications": true
+  "completionNotifications": true,
+  "colorScheme": "atelier"
+}
+```
+
+`colorScheme` controls the footer and sidebar palette:
+
+- `"atelier"` keeps the default fixed Midnight Spectrum.
+- `"inherit"` maps Atelier roles to Pi's active theme tokens.
+- A custom object may include `base: "atelier"` or `base: "inherit"` plus any Atelier role names: `accent`, `primary`, `muted`, `dim`, `ready`, `working`, `input`, `output`, `cache`, `cost`, `context`, `menu`, `warning`, and `error`.
+
+Custom role values accept documented Pi theme tokens such as `"accent"`, `"warning"`, or `"thinkingHigh"`, 6-digit hex RGB colors such as `"#cba6f7"`, xterm 0-255 color indices, or `""` for the terminal default foreground. In inherited mode, neutral text uses `text`/`muted`/`dim`, and Atelier keeps its highlight families while sourcing them from Pi: ready/input/context use a calm thinking color, output uses Pi's high-emphasis thinking color, cache uses a type/syntax color, cost uses heading emphasis, working/warning use Pi warning, and workspace/TODOS/menu use accent.
+
+`colorScheme` layers like the display settings above. A custom object merges role by role over the layer below it and keeps that layer's base unless it names its own, so a project that sets `{ "output": "#ff00ff" }` over a user `"inherit"` keeps inheriting every other role. Setting `"atelier"` or `"inherit"` replaces the scheme outright, which is the way to discard role overrides from a lower layer.
+
+Color scheme examples:
+
+```json
+{
+  "colorScheme": "atelier"
+}
+```
+
+```json
+{
+  "colorScheme": "inherit"
+}
+```
+
+```json
+{
+  "colorScheme": {
+    "base": "inherit",
+    "output": "#cba6f7",
+    "cache": 45,
+    "working": "warning"
+  }
 }
 ```
 

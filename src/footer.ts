@@ -136,7 +136,7 @@ function buildItems(
 	colorEnabled: boolean,
 	workingDots: string,
 ): FooterItem[] {
-	const palette = createPalette(theme, colorEnabled);
+	const palette = createPalette(theme, colorEnabled, config.colorScheme);
 	const items: FooterItem[] = [];
 	const itemIds = new Set<FooterItemId>();
 	const compactDensity = config.density === "compact";
@@ -441,7 +441,7 @@ export function createFooterComponent(options: FooterComponentOptions): Componen
 			const line = renderFooterLine(state, config, options.theme, width, colorEnabled, workingDots);
 			const fullActivity = activityText(
 				state,
-				createPalette(options.theme, colorEnabled),
+				createPalette(options.theme, colorEnabled, config.colorScheme),
 				options.theme,
 				workingDots,
 				false,

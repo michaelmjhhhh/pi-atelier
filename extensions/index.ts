@@ -51,6 +51,8 @@ export type {
 	SidebarPanelRow,
 	SidebarPanelUnregisterEvent,
 } from "../src/sidebar-panels.js";
+export const PI_ATELIER_SESSION_CONFIG_ENTRY_TYPE = "pi-atelier:config";
+
 export {
 	BUILTIN_SIDEBAR_PANEL_IDS,
 	createSidebarPanelRegistry,
@@ -126,6 +128,15 @@ export default function atelierExtension(
 			if (runtime !== targetRuntime) throw new Error("Pi Atelier is not active in this session");
 			await saveConfigPatch(path, patch);
 		};
+
+	function readSessionConfig(ctx: ExtensionContext): unknown {
+		let sessionConfig: unknown;
+		for (const entry of ctx.sessionManager.getBranch()) {
+			if (entry.type === "custom" && entry.customType === PI_ATELIER_SESSION_CONFIG_ENTRY_TYPE)
+				sessionConfig = entry.data;
+		}
+		return sessionConfig;
+	}
 
 	function updateExtensionStatuses(next: readonly string[]): void {
 		if (
@@ -501,6 +512,7 @@ export default function atelierExtension(
 				userPath,
 				projectPath,
 				projectTrusted: initializationContext.isProjectTrusted(),
+				session: readSessionConfig(initializationContext),
 			});
 			if (!isFresh()) return;
 			for (const warning of loaded.warnings) initializationContext.ui.notify(warning, "warning");

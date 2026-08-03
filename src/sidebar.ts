@@ -861,7 +861,7 @@ export function renderSidebarLines(
 	now = Date.now(),
 	resizing = false,
 ): string[] {
-	const palette = createPalette(theme, colorEnabled);
+	const palette = createPalette(theme, colorEnabled, config.colorScheme);
 	const safeWidth = Math.max(0, Math.trunc(width));
 	const safeHeight = Math.max(0, Math.trunc(height));
 	if (safeWidth <= 0 || safeHeight <= 0) return [];

@@ -8,13 +8,18 @@ import {
 	normalizeSegmentLayout,
 	PRODUCT_SEGMENT_ORDER,
 } from "./display.js";
+import { normalizePaletteColorSpec, PALETTE_ROLES } from "./palette.js";
 import {
 	DEFAULT_CONFIG,
+	type AtelierColorScheme,
 	type AtelierConfig,
+	type ColorSchemeBase,
 	type ConfigurationSource,
+	type CustomColorScheme,
 	type DisplayLayerState,
 	type DisplayProvenance,
 	type DisplaySettings,
+	type PaletteColorSpec,
 	type PresetName,
 	type SegmentId,
 	type SegmentLayout,
@@ -33,7 +38,7 @@ export interface LoadConfigOptions {
 	userPath: string;
 	projectPath: string;
 	projectTrusted: boolean;
-	session?: Record<string, unknown> | Partial<AtelierConfig>;
+	session?: unknown;
 }
 
 interface SidebarResolution {
@@ -110,13 +115,17 @@ function resolveSidebarLayout(
 const presets = new Set<PresetName>(["editorial", "minimal", "classic", "custom"]);
 const densities = new Set(["comfortable", "compact"]);
 const ornaments = new Set(["none", "restrained"]);
-
+const colorSchemeBases = new Set<ColorSchemeBase>(["atelier", "inherit"]);
+const paletteRoles = new Set<string>(PALETTE_ROLES);
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
 const record = (value: unknown): Record<string, unknown> | undefined => (isRecord(value) ? value : undefined);
+const cloneColorScheme = (colorScheme: AtelierColorScheme): AtelierColorScheme =>
+	typeof colorScheme === "string" ? colorScheme : { ...colorScheme };
 const cloneConfig = (config: AtelierConfig): AtelierConfig => ({
 	...config,
+	colorScheme: cloneColorScheme(config.colorScheme),
 	segmentLayout: config.segmentLayout.map((entry) => ({ ...entry })),
 	sidebarPanelLayout: cloneSidebarLayout(config.sidebarPanelLayout),
 });
@@ -329,6 +338,69 @@ export function resolveDisplayLayers(
 	return { display, provenance, warnings: [...new Set(warnings)] };
 }
 
+function parsePaletteColorSpec(
+	role: string,
+	value: unknown,
+	warnings: string[],
+): PaletteColorSpec | undefined {
+	const parsed = normalizePaletteColorSpec(value);
+	if (parsed !== undefined) return parsed;
+	warnings.push(`colorScheme.${role} must be a Pi theme token, #RRGGBB, integer 0-255, or empty string`);
+	return undefined;
+}
+
+function parseColorScheme(value: unknown, warnings: string[]): AtelierColorScheme | undefined {
+	if (typeof value === "string") {
+		if (colorSchemeBases.has(value as ColorSchemeBase)) return value as ColorSchemeBase;
+		warnings.push(`Unknown colorScheme: ${value}`);
+		return undefined;
+	}
+	if (!isRecord(value)) {
+		warnings.push("colorScheme must be atelier, inherit, or a custom object");
+		return undefined;
+	}
+	const result: CustomColorScheme = {};
+	let accepted = false;
+	for (const [key, item] of Object.entries(value)) {
+		if (key === "base") {
+			if (typeof item === "string" && colorSchemeBases.has(item as ColorSchemeBase)) {
+				result.base = item as ColorSchemeBase;
+				accepted = true;
+			} else warnings.push("colorScheme.base must be atelier or inherit");
+			continue;
+		}
+		if (!paletteRoles.has(key)) {
+			warnings.push(`Unknown colorScheme role: ${key}`);
+			continue;
+		}
+		const parsed = parsePaletteColorSpec(key, item, warnings);
+		if (parsed === undefined) continue;
+		(result as Record<string, string | number>)[key] = parsed;
+		accepted = true;
+	}
+	if (!accepted) {
+		warnings.push("colorScheme custom object must include base or at least one valid role color");
+		return undefined;
+	}
+	return result;
+}
+
+/**
+ * Layers `colorScheme` field by field, matching how display deviations layer over a template.
+ * A bare named scheme resets the value. A custom object merges role by role over the layer below
+ * and may replace the base without discarding lower role overrides. `previous` is `unknown` because
+ * it may be a value read straight from disk; anything unrecognized there is re-validated on the next load.
+ */
+function layerColorScheme(previous: unknown, next: AtelierColorScheme): AtelierColorScheme {
+	if (typeof next === "string") return next;
+	if (typeof previous === "string")
+		return colorSchemeBases.has(previous as ColorSchemeBase)
+			? { base: previous as ColorSchemeBase, ...next }
+			: next;
+	const previousRoles = record(previous);
+	return previousRoles ? ({ ...previousRoles, ...next } as CustomColorScheme) : next;
+}
+
 function applyNonDisplay(input: unknown, config: AtelierConfig, warnings: string[]): void {
 	if (!isRecord(input)) {
 		if (input !== undefined) warnings.push("Configuration must be a JSON object");
@@ -367,6 +439,10 @@ function applyNonDisplay(input: unknown, config: AtelierConfig, warnings: string
 	] as const) {
 		if (typeof input[key] === "boolean") config[key] = input[key];
 		else if (key in input) warnings.push(`${key} must be boolean`);
+	}
+	if ("colorScheme" in input) {
+		const parsed = parseColorScheme(input.colorScheme, warnings);
+		if (parsed !== undefined) config.colorScheme = layerColorScheme(config.colorScheme, parsed);
 	}
 }
 
@@ -497,7 +573,12 @@ export async function saveUserConfigPatch(path: string, patch: Partial<AtelierCo
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 	}
-	await writeJsonAtomic(path, { ...current, ...patch });
+	const merged: Record<string, unknown> = { ...current, ...patch };
+	// A shallow spread would drop the base and roles already on disk, so a patched `colorScheme`
+	// layers through the same rule configuration layering uses.
+	if (patch.colorScheme !== undefined)
+		merged.colorScheme = layerColorScheme(current.colorScheme, patch.colorScheme);
+	await writeJsonAtomic(path, merged);
 }
 async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
 	await mkdir(dirname(path), { recursive: true });

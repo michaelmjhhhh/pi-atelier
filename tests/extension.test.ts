@@ -2,7 +2,10 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import atelierExtension, { SIDEBAR_PANEL_EVENT_CHANNEL } from "../extensions/index.js";
+import atelierExtension, {
+	PI_ATELIER_SESSION_CONFIG_ENTRY_TYPE,
+	SIDEBAR_PANEL_EVENT_CHANNEL,
+} from "../extensions/index.js";
 import { saveUserConfigPatch as persistConfigPatch } from "../src/config.js";
 
 function deferred<T>() {
@@ -249,6 +252,35 @@ describe("extension registration", () => {
 		expect(h.setFooter).toHaveBeenCalledTimes(1);
 		expect(h.shortcuts).toContain("alt+a");
 		expect(h.shortcuts).toContain("ctrl+shift+r");
+	});
+
+	it("applies session-scoped Atelier configuration from the active branch", async () => {
+		const h = harness();
+		h.ctx.sessionManager.getBranch.mockReturnValue([
+			{
+				type: "custom",
+				customType: PI_ATELIER_SESSION_CONFIG_ENTRY_TYPE,
+				data: { colorScheme: "inherit" },
+			},
+		]);
+		await start(h);
+
+		const footer = h.setFooter.mock.calls[0]?.[0](
+			{ requestRender: vi.fn() },
+			{
+				name: "dark",
+				fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
+				bold: (text: string) => text,
+				italic: (text: string) => text,
+			},
+			{
+				getGitBranch: () => undefined,
+				getExtensionStatuses: () => new Map(),
+				onBranchChange: () => () => undefined,
+			},
+		);
+
+		expect(footer.render(120).join("\n")).toContain("<thinkingLow>● READY</thinkingLow>");
 	});
 
 	it("routes alt+a to the Control Center", async () => {

@@ -314,6 +314,20 @@ describe("footer", () => {
 		expect(light).toContain(`${darkRgb.purple}⌥A\u001b[39m`);
 	});
 
+	it("passes the configured color scheme through to footer values", () => {
+		expect(
+			renderFooterLine(state, { ...DEFAULT_CONFIG, colorScheme: "inherit" }, namedTheme("nord"), 4000),
+		).toContain("<nord:thinkingLow>324k</nord:thinkingLow>");
+		expect(
+			renderFooterLine(
+				state,
+				{ ...DEFAULT_CONFIG, colorScheme: { base: "inherit", output: "#cba6f7" } },
+				namedTheme("nord"),
+				4000,
+			),
+		).toContain("\u001b[38;2;203;166;247m15k\u001b[39m");
+	});
+
 	it("uses state-specific activity colors", () => {
 		const ready = renderFooterLine(state, DEFAULT_CONFIG, namedTheme("dark"), 180);
 		const working = renderFooterLine(

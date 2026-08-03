@@ -1100,6 +1100,20 @@ describe("sidebar snapshot and layout", () => {
 		expect(fg).toHaveBeenCalledWith("syntaxType", "╭─ ✦ ");
 	});
 
+	it("can inherit the selected Pi theme for sidebar values", () => {
+		const fg = vi.fn((color: string, text: string) => `<${color}>${text}</${color}>`);
+		renderSidebarLines(
+			snapshot(),
+			{ ...DEFAULT_CONFIG, colorScheme: "inherit" },
+			{ name: "nord", fg, bold: theme.bold, italic: theme.italic },
+			44,
+			36,
+			true,
+			0,
+		);
+		expect(fg).toHaveBeenCalledWith("warning", "◆ Working · gitifying");
+	});
+
 	it("matches the representative 44x36 no-color docked rail", () => {
 		const noSession = buildSidebarSnapshot({
 			state: { ...state, extensionStatuses: [] },

@@ -1,3 +1,5 @@
+import type { ThemeColor } from "@earendil-works/pi-coding-agent";
+import type { PaletteRole } from "./palette.js";
 import type { WorkspacePulseData } from "./workspace-pulse.js";
 
 export type TemplateName = "editorial" | "minimal" | "classic";
@@ -32,6 +34,19 @@ export interface SidebarPanelLayoutEntry {
 	visible: boolean;
 }
 export type SidebarPanelLayout = SidebarPanelLayoutEntry[];
+export type ColorSchemeBase = "atelier" | "inherit";
+/**
+ * A palette role override.
+ *
+ * Runtime-valid values are Pi theme color tokens, an empty string for the
+ * terminal default foreground, #RRGGBB, or integer xterm indices 0..255.
+ * Invalid direct-call specs intentionally resolve to the terminal default.
+ */
+export type PaletteColorSpec = ThemeColor | "" | `#${string}` | number;
+export type CustomColorScheme = {
+	base?: ColorSchemeBase;
+} & Partial<Record<PaletteRole, PaletteColorSpec>>;
+export type AtelierColorScheme = ColorSchemeBase | CustomColorScheme;
 /** Legacy menu vocabulary. Ornament is translated to Brand visibility. */
 export type Ornament = "none" | "restrained";
 export type ConfigurationSource = "product" | "user" | "project" | "session";
@@ -112,6 +127,7 @@ export interface AtelierConfig extends DisplaySettings {
 	showSidebarTodos: boolean;
 	sidebarPanelLayout: SidebarPanelLayout;
 	completionNotifications: boolean;
+	colorScheme: AtelierColorScheme;
 }
 
 export interface AtelierMetrics {
@@ -186,4 +202,5 @@ export const DEFAULT_CONFIG: AtelierConfig = {
 		{ id: "tools", visible: true },
 	],
 	completionNotifications: true,
+	colorScheme: "atelier",
 };
