@@ -72,7 +72,7 @@ function harness() {
 	};
 	const ctx = {
 		model: { id: "old", provider: "provider" },
-		ui: { notify: vi.fn(), input: vi.fn(), confirm: vi.fn() },
+		ui: { notify: vi.fn(), input: vi.fn(), confirm: vi.fn(), custom: vi.fn() },
 		compact: vi.fn(),
 	};
 	const save = vi.fn().mockResolvedValue(undefined);
@@ -413,7 +413,19 @@ describe("menu actions", () => {
 
 	it("renames a session only after non-empty input", async () => {
 		const h = harness();
-		h.ctx.ui.input.mockResolvedValue("  Release prep  ");
+		h.ctx.ui.custom.mockImplementationOnce((factory: (...args: any[]) => any) => {
+			let result: string | undefined;
+			const component = factory(
+				{ requestRender: vi.fn(), terminal: { rows: 36 } },
+				{ fg: (_color: string, text: string) => text, bold: (text: string) => text },
+				{},
+				(value: string | undefined) => {
+					result = value;
+				},
+			);
+			component.handleInput("\r");
+			return Promise.resolve(result);
+		});
 		await h.actions.renameSession();
 		expect(h.pi.setSessionName).toHaveBeenCalledWith("Release prep");
 	});

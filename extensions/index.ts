@@ -18,6 +18,7 @@ import { loadConfig, type saveUserConfig, saveUserConfigPatch } from "../src/con
 import { createFooterComponent, type ThemeLike } from "../src/footer.js";
 import {
 	type DisplaySettingsRuntime,
+	type OverlayLifetime,
 	openAtelierControlCenter,
 	openDisplaySettingsWorkspace,
 } from "../src/menu.js";
@@ -101,6 +102,7 @@ interface ActiveSession {
 	readonly panelRegistry: SidebarPanelRegistry;
 	readonly runActivity: RunActivityTracker;
 	readonly completionNotifier: CompletionNotifier;
+	readonly overlayCancellations: Set<() => void>;
 	unsubscribeAskUserBlocked: (() => void) | undefined;
 	askUserBlocked: boolean;
 	inputRequestSequence: number;
@@ -148,7 +150,26 @@ export default function atelierExtension(
 		async (path, patch) => {
 			if (activeSession !== targetSession) throw new Error("Pi Atelier is not active in this session");
 			await saveConfigPatch(path, patch);
+			if (activeSession !== targetSession) throw new Error("Pi Atelier is not active in this session");
 		};
+
+	function createOverlayLifetime(targetSession: ActiveSession): OverlayLifetime {
+		return {
+			isActive: () => activeSession === targetSession,
+			register(cancel) {
+				if (activeSession !== targetSession) {
+					try {
+						cancel();
+					} catch {
+						// Overlay cancellation is best-effort during lifecycle teardown.
+					}
+					return () => undefined;
+				}
+				targetSession.overlayCancellations.add(cancel);
+				return () => targetSession.overlayCancellations.delete(cancel);
+			},
+		};
+	}
 
 	function updateExtensionStatuses(targetSession: ActiveSession, next: readonly string[]): void {
 		if (activeSession !== targetSession) return;
@@ -226,6 +247,19 @@ export default function atelierExtension(
 	}
 	function getSidebarSnapshot(targetSession: ActiveSession): SidebarSnapshot {
 		const { ctx, panelRegistry, runActivity, runtime } = targetSession;
+		if (activeSession !== targetSession) {
+			return buildSidebarSnapshot({
+				state: runtime.getState(),
+				cwd: ctx.cwd,
+				branchEntryCount: 0,
+				activeToolCount: 0,
+				availableToolCount: 0,
+				activeToolNames: [],
+				extensionStatuses: [],
+				todos: [],
+				sidebarPanels: [],
+			});
+		}
 		const sessionName = ctx.sessionManager.getSessionName();
 		const sessionFile = ctx.sessionManager.getSessionFile();
 		const activeTools = pi.getActiveTools();
@@ -263,30 +297,41 @@ export default function atelierExtension(
 	}
 
 	/**
-	 * Retirement is decided by session identity, so a retired session's own fields are never read
-	 * again; only the resources it owns outside this module need releasing.
+	 * Retirement is decided by session identity, so cleanup is best-effort: every owned
+	 * resource gets a release attempt even if another disposer throws.
 	 */
 	function disposeSession(session: ActiveSession, options: { clearFooter?: boolean } = {}): void {
-		try {
-			if (options.clearFooter) session.ctx.ui.setFooter(undefined);
-		} catch {
-			// Footer cleanup must not interrupt the rest of lifecycle disposal.
-		}
-		session.sidebar.dispose();
-		session.panelRegistry.dispose();
-		session.runtime.dispose();
-		session.runActivity.reset();
-		session.completionNotifier.reset();
+		const cleanup = (action: () => void): void => {
+			try {
+				action();
+			} catch {
+				// Teardown must not leak later resources or replace the original failure.
+			}
+		};
+		if (options.clearFooter) cleanup(() => session.ctx.ui.setFooter(undefined));
+		for (const cancel of Array.from(session.overlayCancellations)) cleanup(cancel);
+		session.overlayCancellations.clear();
+		cleanup(() => session.sidebar.dispose());
+		cleanup(() => session.panelRegistry.dispose());
+		cleanup(() => session.runtime.dispose());
+		cleanup(() => session.runActivity.reset());
+		cleanup(() => session.completionNotifier.reset());
 		const unsubscribe = session.unsubscribeAskUserBlocked;
 		session.unsubscribeAskUserBlocked = undefined;
-		unsubscribe?.();
+		if (unsubscribe) cleanup(unsubscribe);
 	}
 
 	function teardownActiveSession(ctx?: ExtensionContext): void {
 		const retiredSession = activeSession;
 		activeSession = undefined;
 		if (retiredSession) disposeSession(retiredSession, { clearFooter: true });
-		else ctx?.ui.setFooter(undefined);
+		else {
+			try {
+				ctx?.ui.setFooter(undefined);
+			} catch {
+				// No-active cleanup must not mask the original lifecycle failure.
+			}
+		}
 	}
 
 	async function setSidebarToolNames(
@@ -303,8 +348,10 @@ export default function atelierExtension(
 			await lifecycleGuardedSavePatch(targetSession)(join(getAgentDir(), "pi-atelier.json"), {
 				showSidebarToolNames: next,
 			});
+			if (activeSession !== targetSession) return;
 			ctx.ui.notify(`Sidebar tool list ${next ? "expanded" : "collapsed"}`, "info");
 		} catch (error) {
+			if (activeSession !== targetSession) return;
 			ctx.ui.notify(
 				`Sidebar tool list changed for this session but could not be saved: ${
 					error instanceof Error ? error.message : String(error)
@@ -369,14 +416,18 @@ export default function atelierExtension(
 			targetRuntime,
 			join(getAgentDir(), "pi-atelier.json"),
 			{
-				isVisible: () => targetSidebar.isVisible(),
-				toggle: () => targetSidebar.toggle(),
-				isToolListExpanded: () => targetRuntime.getConfig().showSidebarToolNames,
-				toggleToolList: async () => setSidebarToolNames(ctx, undefined, current),
-				getSidebarPanelSettings: () => getSidebarPanelSettings(current),
+				isVisible: () => activeSession === current && targetSidebar.isVisible(),
+				toggle: () => {
+					if (activeSession === current) targetSidebar.toggle();
+				},
+				isToolListExpanded: () => activeSession === current && targetRuntime.getConfig().showSidebarToolNames,
+				toggleToolList: async () => {
+					if (activeSession === current) await setSidebarToolNames(ctx, undefined, current);
+				},
+				getSidebarPanelSettings: () => (activeSession === current ? getSidebarPanelSettings(current) : []),
 			},
-			() => requestAllRenders(current),
 			lifecycleGuardedSavePatch(current),
+			{ requestAllRenders: () => requestAllRenders(current), lifetime: createOverlayLifetime(current) },
 		);
 	}
 
@@ -411,8 +462,8 @@ export default function atelierExtension(
 			ctx,
 			displayRuntime,
 			join(getAgentDir(), "pi-atelier.json"),
-			() => requestAllRenders(current),
 			lifecycleGuardedSavePatch(current),
+			{ requestAllRenders: () => requestAllRenders(current), lifetime: createOverlayLifetime(current) },
 		);
 	}
 
@@ -638,6 +689,7 @@ export default function atelierExtension(
 				panelRegistry: localPanelRegistry,
 				runActivity: localRunActivity,
 				completionNotifier: candidateCompletionNotifier,
+				overlayCancellations: new Set(),
 				unsubscribeAskUserBlocked: undefined,
 				askUserBlocked: false,
 				inputRequestSequence: 0,
@@ -709,20 +761,36 @@ export default function atelierExtension(
 			}
 			void candidateRuntime.refreshWorkspacePulse();
 		} catch (error) {
+			const cleanup = (action: () => void): void => {
+				try {
+					action();
+				} catch {
+					// Preserve the initialization failure and keep attempting candidate cleanup.
+				}
+			};
 			if (!publishedSession) {
 				// Candidate-local cleanup: this session never became active, so no active-session teardown applies.
 				if (candidateSession) disposeSession(candidateSession);
 				else {
-					localSidebar?.dispose();
-					localPanelRegistry?.dispose();
-					localRunActivity.reset();
-					localCompletionNotifier?.reset();
-					localRuntime?.dispose();
+					const sidebar = localSidebar;
+					const panelRegistry = localPanelRegistry;
+					const completionNotifier = localCompletionNotifier;
+					const runtime = localRuntime;
+					if (sidebar) cleanup(() => sidebar.dispose());
+					if (panelRegistry) cleanup(() => panelRegistry.dispose());
+					cleanup(() => localRunActivity.reset());
+					if (completionNotifier) cleanup(() => completionNotifier.reset());
+					if (runtime) cleanup(() => runtime.dispose());
 				}
+				if (!isFresh()) return;
+				initializationContext.ui.notify(
+					`Pi Atelier could not start: ${error instanceof Error ? error.message : String(error)}`,
+					"error",
+				);
+				return;
 			}
 			if (!isFresh()) return;
-			if (publishedSession && activeSession !== publishedSession) return;
-			// Pi has already replaced the previous session, so a pre-publish failure retires it too.
+			if (activeSession !== publishedSession) return;
 			teardownActiveSession(initializationContext);
 			initializationContext.ui.notify(
 				`Pi Atelier could not start: ${error instanceof Error ? error.message : String(error)}`,
