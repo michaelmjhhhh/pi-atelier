@@ -105,7 +105,7 @@ Open Pi Atelier with:
 
 The default shortcut is `alt+a`. Both entry points open the partitioned **Atelier Control Center**:
 
-- **Settings** — the Display Settings Workspace, completion notifications, and sidebar tool-list expansion
+- **Settings** — the Display Settings Workspace, global Sidebar startup preference, completion notifications, and sidebar tool-list expansion
 - **Controls** — session-scoped Sidebar visibility, model/thinking selection, and active tools
 - **Actions** — session details, rename, and safe compaction
 
@@ -126,7 +126,7 @@ Additional commands:
 
 ## Sidebar
 
-The sidebar starts shown whenever the extension initializes. An explicit `off` applies only to the current runtime; `/reload` restores the default shown state. Use these commands to control it explicitly:
+The sidebar starts shown by default whenever the extension initializes. Use **Settings → Sidebar on startup** to change this global user preference; it is saved immediately and applies from the next session or reload. An explicit `on` or `off` still applies only to the current runtime. Use these commands to control it explicitly:
 
 ```text
 /atelier sidebar       # toggle between shown and hidden
@@ -184,7 +184,7 @@ Trusted project configuration:
 <project>/.pi/pi-atelier.json
 ```
 
-Project settings override user settings only after Pi trusts the project. Most menu changes apply to the current session; **Save as user default** writes display configuration atomically. Sidebar tool details and completion notifications are saved immediately so those preferences survive future sessions. Agent visibility and completion notifications are global user preferences, so project and session configuration cannot override them. Pi Atelier never modifies project configuration from the menu.
+Project settings override user settings only after Pi trusts the project. Most menu changes apply to the current session; **Save as user default** writes display configuration atomically. Sidebar startup visibility, Sidebar tool details, and completion notifications are saved immediately so those preferences survive future sessions. Sidebar startup visibility, Agent visibility, and completion notifications are global user preferences, so project and session configuration cannot override them. Pi Atelier never modifies project configuration from the menu.
 
 Complete example:
 
@@ -210,6 +210,7 @@ Complete example:
   "showSessionActions": true,
   "showSidebarToolNames": false,
   "showSidebarAgent": true,
+  "showSidebarOnStartup": true,
   "sidebarPanelLayout": [
     { "id": "agent", "visible": true },
     { "id": "activity", "visible": true },
@@ -232,6 +233,8 @@ Product defaults are layered with **User default**, trusted **Project override**
 Legacy `segments`, `ornament`, and `showExtensionStatuses` keys remain load-compatible and are translated into a complete normalized layout. A usable `segmentLayout` is authoritative over those keys in the same layer. Legacy omitted segments remain present but hidden; legacy Brand and Statuses combinations retain their prior visible result. Brand and Statuses have no overlapping runtime gates: normalized `segmentLayout` is the sole visibility source. New configuration should use `segmentLayout`.
 
 During streaming, TPS is prefixed with `~` while it is estimated, then replaced with final throughput when the response ends. Each value is dimmed to `~` until it is measured. Visibility toggles retain an entry's position, and reordering includes hidden entries.
+
+`showSidebarOnStartup` (default `true`) controls whether a new session opens the Sidebar automatically. It is a global user-only preference; trusted project and session values are ignored. Change it from **Settings → Sidebar on startup**. The `/atelier sidebar on|off` commands remain available for the current runtime regardless of this preference.
 
 `showSidebarAgent` controls whether the Agent panel renders inside the sidebar. It is a global user-only compatibility input; trusted project and session values are ignored. When set to `false`, the sidebar still shows but omits the agent state and model metadata section while leaving Activity, TODOS, Context, Workspace, Usage, and Tools unaffected. Use **Settings → Display** to edit the ordered Sidebar layout.
 

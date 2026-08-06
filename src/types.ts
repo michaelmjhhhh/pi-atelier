@@ -110,6 +110,7 @@ export interface AtelierConfig extends DisplaySettings {
 	showSidebarToolNames: boolean;
 	showSidebarAgent: boolean;
 	showSidebarTodos: boolean;
+	showSidebarOnStartup: boolean;
 	sidebarPanelLayout: SidebarPanelLayout;
 	completionNotifications: boolean;
 }
@@ -175,6 +176,7 @@ export const DEFAULT_CONFIG: AtelierConfig = {
 	showSidebarToolNames: false,
 	showSidebarAgent: true,
 	showSidebarTodos: true,
+	showSidebarOnStartup: true,
 	sidebarPanelLayout: [
 		{ id: "agent", visible: true },
 		{ id: "activity", visible: true },

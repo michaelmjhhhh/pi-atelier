@@ -315,6 +315,34 @@ describe("configuration", () => {
 		);
 	});
 
+	it("loads the global Sidebar startup preference only from user config", async () => {
+		await writeJson(userPath, { showSidebarOnStartup: false });
+		await writeJson(projectPath, { showSidebarOnStartup: true });
+
+		const result = await loadConfig({
+			userPath,
+			projectPath,
+			projectTrusted: true,
+			session: { showSidebarOnStartup: true },
+		});
+
+		expect(result.config.showSidebarOnStartup).toBe(false);
+	});
+
+	it("keeps the Sidebar startup preference global when merging config layers", () => {
+		expect(
+			mergeConfig(
+				{ showSidebarOnStartup: false },
+				{ showSidebarOnStartup: true },
+				{ showSidebarOnStartup: true },
+			).config.showSidebarOnStartup,
+		).toBe(false);
+		expect(validateConfig({ showSidebarOnStartup: "yes" }).warnings).toContain(
+			"showSidebarOnStartup must be boolean",
+		);
+		expect(DEFAULT_CONFIG.showSidebarOnStartup).toBe(true);
+	});
+
 	it("loads persisted showSidebarAgent false from user config", async () => {
 		await writeJson(userPath, { showSidebarAgent: false });
 		const result = await loadConfig({ userPath, projectPath, projectTrusted: false });

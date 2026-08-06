@@ -144,7 +144,13 @@ describe("Control Center presentation", () => {
 	it.each([
 		[
 			"settings",
-			["Display: editorial", "Completion notifications: On", "Sidebar tool list: Collapsed", "Back"],
+			[
+				"Display: editorial",
+				"Sidebar on startup: On",
+				"Completion notifications: On",
+				"Sidebar tool list: Collapsed",
+				"Back",
+			],
 		],
 		["actions", ["Session details", "Rename session", "Compact session", "Back"]],
 	] as const)("routes the %s root category to its destination", async (category, expectedLabels) => {
@@ -163,6 +169,30 @@ describe("Control Center presentation", () => {
 			sidebar,
 		);
 		expect(rootMenuItems[1]?.map((item) => item.label)).toEqual(expectedLabels);
+	});
+
+	it("toggles and persists Sidebar startup from Settings", async () => {
+		rootMenuItems.length = 0;
+		const h = harness();
+		const sidebar: SidebarControls = {
+			isVisible: vi.fn(() => true),
+			toggle: vi.fn(),
+			isToolListExpanded: vi.fn(() => false),
+			toggleToolList: vi.fn().mockResolvedValue(undefined),
+		};
+
+		await openAtelierControlCenter(
+			h.pi as never,
+			contextWithSelections(["settings", "sidebar-startup", "back", "close"]) as never,
+			h.runtime as never,
+			"/tmp/user.json",
+			sidebar,
+			undefined,
+			h.savePatch,
+		);
+
+		expect(h.runtime.getConfig().showSidebarOnStartup).toBe(false);
+		expect(h.savePatch).toHaveBeenCalledWith("/tmp/user.json", { showSidebarOnStartup: false });
 	});
 
 	it("routes Control Center Settings → Display to the workspace", async () => {
@@ -319,6 +349,16 @@ describe("menu actions", () => {
 		const h = harness();
 		h.actions.setTools(["read", "missing"]);
 		expect(h.pi.setActiveTools).toHaveBeenCalledWith(["read"]);
+	});
+
+	it("persists the global Sidebar startup preference", async () => {
+		const h = harness();
+
+		await h.actions.setShowSidebarOnStartup(false);
+
+		expect(h.runtime.getConfig().showSidebarOnStartup).toBe(false);
+		expect(h.savePatch).toHaveBeenCalledWith("/tmp/user.json", { showSidebarOnStartup: false });
+		expect(h.ctx.ui.notify).toHaveBeenCalledWith("Sidebar will start hidden", "info");
 	});
 
 	it("persists only completion notifications while display changes remain session-scoped", async () => {

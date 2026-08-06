@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a global **Sidebar on startup** setting that is saved to user configuration while preserving session-scoped Sidebar on/off controls.
+
 ## 0.7.2 — 2026-08-06
 
 - Restore the non-overlapping Sidebar split in both Pi 0.84 renderer modes while retaining the non-capturing overlay as the content and safe fallback seam.

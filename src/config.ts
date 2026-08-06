@@ -363,6 +363,7 @@ function applyNonDisplay(input: unknown, config: AtelierConfig, warnings: string
 		"showSidebarToolNames",
 		"showSidebarAgent",
 		"showSidebarTodos",
+		"showSidebarOnStartup",
 		"completionNotifications",
 	] as const) {
 		if (typeof input[key] === "boolean") config[key] = input[key];
@@ -418,6 +419,9 @@ export function mergeConfig(...inputs: unknown[]): ConfigLoadResult {
 	const resolved = resolveDisplayLayers(displayLayers);
 	const sidebar = resolveSidebarLayout(displayLayers);
 	Object.assign(config, resolved.display, { sidebarPanelLayout: cloneSidebarLayout(sidebar.layout) });
+	const global = cloneConfig(DEFAULT_CONFIG);
+	applyNonDisplay(inputs[0], global, []);
+	config.showSidebarOnStartup = global.showSidebarOnStartup;
 	if (sidebar.authoritative) {
 		config.showSidebarAgent =
 			sidebar.layout.find((entry) => entry.id === "agent")?.visible ?? config.showSidebarAgent;
@@ -466,9 +470,10 @@ export async function loadConfig(options: LoadConfigOptions): Promise<ConfigLoad
 		config.showSidebarTodos =
 			sidebar.layout.find((entry) => entry.id === "todos")?.visible ?? config.showSidebarTodos;
 	}
-	// Completion notifications and legacy Sidebar visibility are global-user-only.
+	// Startup visibility, completion notifications, and legacy Sidebar visibility are global-user-only.
 	const global = cloneConfig(DEFAULT_CONFIG);
 	applyNonDisplay(user.value, global, []);
+	config.showSidebarOnStartup = global.showSidebarOnStartup;
 	config.completionNotifications = global.completionNotifications;
 	if (!sidebar.authoritative) applyGlobalSidebarCompatibility(config, user.value);
 	return {

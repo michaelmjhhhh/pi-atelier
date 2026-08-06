@@ -276,6 +276,19 @@ describe("extension registration", () => {
 		expect(h.setFooter).not.toHaveBeenCalled();
 	});
 
+	it("starts with the Sidebar hidden when the global preference is off", async () => {
+		await withPersistedUserConfig({ showSidebarOnStartup: false }, async () => {
+			const h = harness();
+
+			await start(h);
+
+			expect(h.overlays).toHaveLength(0);
+			expect(h.setFooter).toHaveBeenCalledOnce();
+			await command(h, "sidebar on");
+			expect(h.overlays).toHaveLength(1);
+		});
+	});
+
 	it("starts enabled and toggles the persistent sidebar on -> off -> on", async () => {
 		const h = harness();
 		await start(h);

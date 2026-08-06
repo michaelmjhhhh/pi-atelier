@@ -643,7 +643,7 @@ export default function atelierExtension(
 			}
 			if (enabled && isFresh()) {
 				installFooter(initializationContext, candidateRuntime, localRunActivity, initializationGeneration);
-				localSidebar.show();
+				if (loaded.config.showSidebarOnStartup) localSidebar.show();
 			}
 			void candidateRuntime.refreshWorkspacePulse();
 		} catch (error) {

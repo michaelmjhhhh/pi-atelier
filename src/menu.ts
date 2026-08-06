@@ -134,6 +134,22 @@ export function createMenuActions(
 				),
 			});
 		},
+		async setShowSidebarOnStartup(enabled: boolean): Promise<void> {
+			const previous = runtime.getConfig();
+			runtime.setConfig({ ...previous, showSidebarOnStartup: enabled });
+			try {
+				await savePatch(userConfigPath, { showSidebarOnStartup: enabled });
+				ctx.ui.notify(`Sidebar will start ${enabled ? "shown" : "hidden"}`, "info");
+			} catch (error) {
+				runtime.setConfig(previous);
+				ctx.ui.notify(
+					`Sidebar startup preference could not be saved: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+					"warning",
+				);
+			}
+		},
 		async setCompletionNotifications(enabled: boolean): Promise<void> {
 			runtime.setConfig({ ...runtime.getConfig(), completionNotifications: enabled });
 			try {
@@ -382,6 +398,11 @@ export async function openAtelierControlCenter(
 						description: "Session overrides, preview, Undo, Revert, and Save",
 					},
 					{
+						value: "sidebar-startup",
+						label: `Sidebar on startup: ${runtime.getConfig().showSidebarOnStartup ? "On" : "Off"}`,
+						description: "Global user preference",
+					},
+					{
 						value: "notifications",
 						label: `Completion notifications: ${runtime.getConfig().completionNotifications ? "On" : "Off"}`,
 						description: "User preference",
@@ -421,6 +442,8 @@ export async function openAtelierControlCenter(
 						requestAllRenders,
 						savePatch,
 					);
+				else if (choice === "sidebar-startup")
+					await actions.setShowSidebarOnStartup(!runtime.getConfig().showSidebarOnStartup);
 				else if (choice === "notifications")
 					await actions.setCompletionNotifications(!runtime.getConfig().completionNotifications);
 				else await sidebar.toggleToolList();
