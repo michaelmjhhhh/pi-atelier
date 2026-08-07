@@ -20,12 +20,21 @@ import {
 	createMenuActions,
 	openAtelierControlCenter,
 	openAtelierMenu,
+	openDisplaySettingsWorkspace,
 	renderMenuBorder,
 	renderMenuFrame,
 	type SidebarControls,
 } from "../src/menu.js";
 import { DEFAULT_CONFIG, type DisplayPatch } from "../src/types.js";
 import { getDisplaySettingsViewportHeight } from "../src/settings-workspace.js";
+
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((done) => {
+		resolve = done;
+	});
+	return { promise, resolve };
+}
 
 function harness() {
 	let config = {
@@ -169,6 +178,112 @@ describe("Control Center presentation", () => {
 			sidebar,
 		);
 		expect(rootMenuItems[1]?.map((item) => item.label)).toEqual(expectedLabels);
+	});
+
+	it("releases a normally closed Display workspace from its lifetime", async () => {
+		const registrations = new Set<() => void>();
+		const callbacks: Array<() => void> = [];
+		const components: any[] = [];
+		const pending = deferred<void>();
+		const h = harness();
+		(h.ctx as any).mode = "tui";
+		(h.ctx.ui.custom as any).mockImplementation((factory: (...args: any[]) => any) => {
+			const done = vi.fn(() => pending.resolve(undefined));
+			components.push(
+				factory(
+					{ requestRender: vi.fn(), terminal: { columns: 140, rows: 42 } },
+					{ fg: (_color: string, text: string) => text, bold: (text: string) => text },
+					{},
+					done,
+				),
+			);
+			return pending.promise;
+		});
+		const lifetime = {
+			isActive: () => true,
+			register: (cancel: () => void) => {
+				registrations.add(cancel);
+				callbacks.push(cancel);
+				return () => registrations.delete(cancel);
+			},
+		};
+		const opening = openDisplaySettingsWorkspace(
+			h.ctx as never,
+			h.runtime as never,
+			"/tmp/user.json",
+			() => undefined,
+			h.savePatch,
+			{ lifetime },
+		);
+		await vi.waitFor(() => expect(components).toHaveLength(1));
+		components[0].handleInput("\u001b");
+		await opening;
+
+		expect(registrations).toHaveLength(0);
+		const getDisplaySettings = h.runtime.getDisplaySettings;
+		getDisplaySettings.mockClear();
+		for (const callback of callbacks) callback();
+		expect(components[0].render(80)).toEqual([]);
+		expect(getDisplaySettings).not.toHaveBeenCalled();
+	});
+
+	it("preserves legacy positional Display workspace callbacks", async () => {
+		const h = harness();
+		const components: any[] = [];
+		const ctx = contextWithSelections([], { columns: 140, rows: 42 }, components);
+		const requestAllRenders = vi.fn();
+		await openDisplaySettingsWorkspace(
+			ctx as never,
+			h.runtime as never,
+			"/tmp/user.json",
+			requestAllRenders,
+			h.savePatch,
+		);
+
+		const workspace = components[0] as { handleInput(data: string): void };
+		workspace.handleInput(" ");
+		workspace.handleInput("s");
+		await vi.waitFor(() => expect(h.savePatch).toHaveBeenCalledOnce());
+		expect(requestAllRenders).toHaveBeenCalled();
+		expect(h.savePatch).toHaveBeenCalledWith(
+			"/tmp/user.json",
+			expect.objectContaining({ preset: expect.any(String) }),
+		);
+	});
+
+	it("preserves legacy positional Control Center callbacks", async () => {
+		rootMenuItems.length = 0;
+		const h = harness();
+		const components: any[] = [];
+		const ctx = contextWithSelections(
+			["settings", "display", "workspace-close", "back", "close"],
+			{
+				columns: 140,
+				rows: 42,
+			},
+			components,
+		);
+		const requestAllRenders = vi.fn();
+		const sidebar: SidebarControls = {
+			isVisible: vi.fn(() => true),
+			toggle: vi.fn(),
+			isToolListExpanded: vi.fn(() => false),
+			toggleToolList: vi.fn().mockResolvedValue(undefined),
+		};
+		await openAtelierControlCenter(
+			h.pi as never,
+			ctx as never,
+			h.runtime as never,
+			"/tmp/user.json",
+			sidebar,
+			requestAllRenders,
+			h.savePatch,
+		);
+		const workspace = components[2] as { handleInput(data: string): void };
+		workspace.handleInput(" ");
+		workspace.handleInput("s");
+		await vi.waitFor(() => expect(h.savePatch).toHaveBeenCalledOnce());
+		expect(requestAllRenders).toHaveBeenCalled();
 	});
 
 	it("toggles and persists Sidebar startup from Settings", async () => {
@@ -332,6 +447,33 @@ describe("menu actions", () => {
 		await h.actions.selectModel({ id: "new", provider: "provider" } as never);
 		expect(h.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("authentication"), "error");
 		expect(h.runtime.refreshUsage).not.toHaveBeenCalled();
+	});
+
+	it("does not refresh or notify after a stale model selection completes", async () => {
+		const h = harness();
+		const pending = deferred<boolean>();
+		let active = true;
+		h.pi.setModel.mockReturnValue(pending.promise);
+		const actions = createMenuActions(
+			h.pi as never,
+			h.ctx as never,
+			h.runtime as never,
+			"/tmp/user.json",
+			h.save,
+			h.savePatch,
+			{
+				lifetime: {
+					isActive: () => active,
+					register: () => () => undefined,
+				},
+			},
+		);
+		const selection = actions.selectModel({ id: "new", provider: "provider" } as never);
+		active = false;
+		pending.resolve(true);
+		await selection;
+		expect(h.runtime.refreshUsage).not.toHaveBeenCalled();
+		expect(h.ctx.ui.notify).not.toHaveBeenCalled();
 	});
 
 	it("restores model and thinking level when refresh fails after mutation", async () => {

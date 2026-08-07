@@ -41,6 +41,16 @@ export interface RuntimeDependencies {
 	inspectWorkspace?(): Promise<WorkspacePulseInspection>;
 }
 
+export function createInertAtelierState(autoCompact: boolean | null = null): AtelierState {
+	return {
+		activity: "ready",
+		dirty: false,
+		workspacePulse: { status: "unavailable" },
+		metrics: aggregateMetrics([], { subscription: false, autoCompact }),
+		extensionStatuses: [],
+	};
+}
+
 export class AtelierRuntime {
 	readonly #pi: ExtensionAPI;
 	readonly #ctx: ExtensionContext;
@@ -77,15 +87,13 @@ export class AtelierRuntime {
 	/** State with no branch, workspace data, or usage history; context is included only when explicit. */
 	#inertState(context: ReturnType<ExtensionContext["getContextUsage"]> = undefined): AtelierState {
 		return {
-			activity: "ready",
-			dirty: false,
+			...createInertAtelierState(this.#autoCompact),
 			workspacePulse: { status: "inspecting" },
 			metrics: aggregateMetrics([], {
 				subscription: false,
 				autoCompact: this.#autoCompact,
 				...(context ? { context } : {}),
 			}),
-			extensionStatuses: [],
 		};
 	}
 

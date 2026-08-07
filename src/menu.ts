@@ -23,59 +23,82 @@ import {
 	type SidebarPanelSetting,
 } from "./settings-workspace.js";
 import { applyDisplayTemplate, reorderSegment, toggleSegmentVisibility } from "./display.js";
+import {
+	createLifecycleOverlayComponent,
+	createOverlaySettlement,
+	type OverlayLifetime,
+	type OverlaySettlement,
+	type RetirableLifecycleOverlayComponent,
+} from "./overlay-lifecycle.js";
 import type { AtelierRuntime } from "./state.js";
 import type { AtelierConfig, Ornament, SegmentId, TemplateName } from "./types.js";
 
+export type { OverlayLifetime } from "./overlay-lifecycle.js";
 export type SaveConfig = typeof saveUserConfig;
 export type SaveConfigPatch = typeof saveUserConfigPatch;
 
-export interface OverlayLifetime {
-	isActive(): boolean;
-	register(cancel: () => void): () => void;
-}
-
 export interface DisplaySettingsWorkspaceOptions {
-	requestAllRenders?: () => void;
+	/** Lifecycle options are intentionally trailing so the legacy callback positions stay unambiguous. */
 	lifetime?: OverlayLifetime;
 }
 
 export interface ControlCenterOptions extends DisplaySettingsWorkspaceOptions {}
-
-type SavePatchOrDisplayOptions = SaveConfigPatch | DisplaySettingsWorkspaceOptions;
-type SavePatchOrControlOptions = SaveConfigPatch | ControlCenterOptions;
-
-function resolveDisplayOptions(
-	savePatchOrOptions?: SavePatchOrDisplayOptions,
-	optionsOrSavePatch?: SavePatchOrDisplayOptions,
-): { savePatch: SaveConfigPatch; options: DisplaySettingsWorkspaceOptions } {
-	let savePatch = saveUserConfigPatch;
-	let options: DisplaySettingsWorkspaceOptions = {};
-	if (typeof savePatchOrOptions === "function") savePatch = savePatchOrOptions;
-	else if (savePatchOrOptions) options = savePatchOrOptions;
-	if (typeof optionsOrSavePatch === "function") savePatch = optionsOrSavePatch;
-	else if (optionsOrSavePatch) options = optionsOrSavePatch;
-	return { savePatch, options };
-}
+/** Lifecycle options are trailing so legacy action callback positions remain source-compatible. */
+export interface MenuActionsOptions extends DisplaySettingsWorkspaceOptions {}
 
 function isOverlayLifetimeActive(lifetime: OverlayLifetime | undefined): boolean {
 	return lifetime?.isActive() ?? true;
 }
 
-function cancelOverlaySafely(cancel: () => void): void {
-	try {
-		cancel();
-	} catch {
-		// Overlay cancellation is best-effort during lifecycle teardown.
-	}
+function awaitOverlaySettlement<T>(
+	hostPromise: PromiseLike<T>,
+	settlement: OverlaySettlement<T>,
+): Promise<T> {
+	return Promise.race([hostPromise, settlement.promise]);
 }
 
-function registerOverlayLifetime(lifetime: OverlayLifetime | undefined, cancel: () => void): () => void {
-	if (!lifetime) return () => undefined;
-	if (!lifetime.isActive()) {
-		cancelOverlaySafely(cancel);
-		return () => undefined;
-	}
-	return lifetime.register(cancel);
+interface OverlayCompletion<T> {
+	bind(component: RetirableLifecycleOverlayComponent): void;
+	finish(value: T): void;
+	retire(): void;
+	release(): void;
+}
+
+/** Couples one host overlay completion to one centrally-owned lifecycle binding. */
+function createOverlayCompletion<T>(
+	settlement: OverlaySettlement<T>,
+	done: (value: T) => void,
+	retiredValue: T,
+): OverlayCompletion<T> {
+	let component: RetirableLifecycleOverlayComponent | undefined;
+	let completed = false;
+	const complete = (value: T): void => {
+		if (completed) return;
+		completed = true;
+		// Extension-side callers must settle even if Pi cannot remove the host overlay.
+		settlement.settle(value);
+		try {
+			done(value);
+		} catch {
+			// Host overlay removal is best-effort; the extension promise is already settled.
+		}
+	};
+	return {
+		bind(next) {
+			component = next;
+		},
+		finish(value) {
+			if (completed) return;
+			component?.release();
+			complete(value);
+		},
+		retire() {
+			complete(retiredValue);
+		},
+		release() {
+			component?.release();
+		},
+	};
 }
 
 export interface SidebarControls {
@@ -117,8 +140,9 @@ export function createMenuActions(
 	userConfigPath: string,
 	_save: SaveConfig = saveUserConfig,
 	savePatch: SaveConfigPatch = saveUserConfigPatch,
-	lifetime?: OverlayLifetime,
+	options: MenuActionsOptions = {},
 ) {
+	const lifetime = options.lifetime;
 	const isActive = (): boolean => isOverlayLifetimeActive(lifetime);
 	const notify = (message: string, kind: "info" | "warning" | "error"): void => {
 		if (isActive()) ctx.ui.notify(message, kind);
@@ -310,54 +334,55 @@ async function showTextInput(
 	lifetime?: OverlayLifetime,
 ): Promise<string | undefined> {
 	if (!isOverlayLifetimeActive(lifetime)) return undefined;
-	let unregister: (() => void) | undefined;
 	let value = initialValue;
+	const settlement = createOverlaySettlement<string | undefined>();
+	let completion: OverlayCompletion<string | undefined> | undefined;
 	try {
-		const result = await ctx.ui.custom<string | undefined>(
+		const hostPromise = ctx.ui.custom<string | undefined>(
 			(tui, theme, _keybindings, done) => {
-				let finished = false;
-				const finish = (next?: string): void => {
-					if (finished) return;
-					finished = true;
-					unregister?.();
-					unregister = undefined;
-					done(next);
-				};
-				unregister = registerOverlayLifetime(lifetime, () => finish(undefined));
+				completion = createOverlayCompletion(settlement, done, undefined);
+				const finish = (next?: string): void => completion?.finish(next);
 				if (!isOverlayLifetimeActive(lifetime)) finish(undefined);
-				return {
-					render: (width) =>
-						renderMenuFrame(
-							theme,
-							[
-								theme.fg("accent", theme.bold(title)),
-								` ${value || theme.fg("dim", "—")}`,
-								theme.fg("dim", "Type name • enter save • esc cancel"),
-							],
-							width,
-						),
-					invalidate: () => undefined,
-					handleInput: (data) => {
-						if (!isOverlayLifetimeActive(lifetime)) {
-							finish(undefined);
-							return;
-						}
-						if (matchesKey(data, "escape")) finish(undefined);
-						else if (matchesKey(data, "enter")) finish(value);
-						else if (matchesKey(data, "backspace")) value = value.slice(0, -1);
-						else if (!data.includes("\u001b")) value += data.replace(/[\u0000-\u001f\u007f]/g, "");
-						tui.requestRender();
+				const component = createLifecycleOverlayComponent(
+					lifetime,
+					{
+						render: (width) =>
+							renderMenuFrame(
+								theme,
+								[
+									theme.fg("accent", theme.bold(title)),
+									` ${value || theme.fg("dim", "—")}`,
+									theme.fg("dim", "Type name • enter save • esc cancel"),
+								],
+								width,
+							),
+						invalidate: () => undefined,
+						handleInput: (data) => {
+							if (!isOverlayLifetimeActive(lifetime)) {
+								finish(undefined);
+								return;
+							}
+							if (matchesKey(data, "escape")) finish(undefined);
+							else if (matchesKey(data, "enter")) finish(value);
+							else if (matchesKey(data, "backspace")) value = value.slice(0, -1);
+							else if (!data.includes("\u001b")) value += data.replace(/[\u0000-\u001f\u007f]/g, "");
+							tui.requestRender();
+						},
 					},
-				};
+					() => completion?.retire(),
+				);
+				completion.bind(component);
+				return component;
 			},
 			{
 				overlay: true,
 				overlayOptions: { anchor: "center", width: "70%", minWidth: 32, maxHeight: "80%", margin: 1 },
 			},
 		);
+		const result = await awaitOverlaySettlement(hostPromise, settlement);
 		return isOverlayLifetimeActive(lifetime) ? result : undefined;
 	} finally {
-		unregister?.();
+		if (lifetime) completion?.release();
 	}
 }
 
@@ -368,19 +393,13 @@ async function showSelection(
 	lifetime?: OverlayLifetime,
 ): Promise<string | undefined> {
 	if (!isOverlayLifetimeActive(lifetime)) return undefined;
-	let unregister: (() => void) | undefined;
+	const settlement = createOverlaySettlement<string | undefined>();
+	let completion: OverlayCompletion<string | undefined> | undefined;
 	try {
-		const result = await ctx.ui.custom<string | undefined>(
+		const hostPromise = ctx.ui.custom<string | undefined>(
 			(tui, theme, _keybindings, done) => {
-				let finished = false;
-				const finish = (value?: string): void => {
-					if (finished) return;
-					finished = true;
-					unregister?.();
-					unregister = undefined;
-					done(value);
-				};
-				unregister = registerOverlayLifetime(lifetime, () => finish(undefined));
+				completion = createOverlayCompletion(settlement, done, undefined);
+				const finish = (value?: string): void => completion?.finish(value);
 				if (!isOverlayLifetimeActive(lifetime)) finish(undefined);
 				const container = new Container();
 				container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
@@ -395,27 +414,34 @@ async function showSelection(
 				list.onCancel = () => finish(undefined);
 				container.addChild(list);
 				container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc back"), 1, 0));
-				return {
-					render: (width) => renderMenuFrame(theme, container.render(Math.max(1, width - 2)), width),
-					invalidate: () => container.invalidate(),
-					handleInput: (data) => {
-						if (!isOverlayLifetimeActive(lifetime)) {
-							finish(undefined);
-							return;
-						}
-						list.handleInput(data);
-						tui.requestRender();
+				const component = createLifecycleOverlayComponent(
+					lifetime,
+					{
+						render: (width) => renderMenuFrame(theme, container.render(Math.max(1, width - 2)), width),
+						invalidate: () => container.invalidate(),
+						handleInput: (data) => {
+							if (!isOverlayLifetimeActive(lifetime)) {
+								finish(undefined);
+								return;
+							}
+							list.handleInput(data);
+							tui.requestRender();
+						},
 					},
-				};
+					() => completion?.retire(),
+				);
+				completion.bind(component);
+				return component;
 			},
 			{
 				overlay: true,
 				overlayOptions: { anchor: "center", width: "70%", minWidth: 32, maxHeight: "80%", margin: 1 },
 			},
 		);
+		const result = await awaitOverlaySettlement(hostPromise, settlement);
 		return isOverlayLifetimeActive(lifetime) ? result : undefined;
 	} finally {
-		unregister?.();
+		if (lifetime) completion?.release();
 	}
 }
 
@@ -428,19 +454,13 @@ async function showToolSettings(
 	if (!isOverlayLifetimeActive(lifetime)) return;
 	const tools = pi.getAllTools();
 	const enabled = new Set(pi.getActiveTools());
-	let unregister: (() => void) | undefined;
+	const settlement = createOverlaySettlement<void>();
+	let completion: OverlayCompletion<void> | undefined;
 	try {
-		await ctx.ui.custom<void>(
+		const hostPromise = ctx.ui.custom<void>(
 			(tui, _theme, _keys, done) => {
-				let finished = false;
-				const finish = (): void => {
-					if (finished) return;
-					finished = true;
-					unregister?.();
-					unregister = undefined;
-					done(undefined);
-				};
-				unregister = registerOverlayLifetime(lifetime, finish);
+				completion = createOverlayCompletion(settlement, done, undefined);
+				const finish = (): void => completion?.finish(undefined);
 				if (!isOverlayLifetimeActive(lifetime)) finish();
 				const items: SettingItem[] = tools.map((tool) => ({
 					id: tool.name,
@@ -465,26 +485,33 @@ async function showToolSettings(
 					finish,
 					{ enableSearch: true },
 				);
-				return {
-					render: (width) => list.render(width),
-					invalidate: () => list.invalidate(),
-					handleInput: (data) => {
-						if (!isOverlayLifetimeActive(lifetime)) {
-							finish();
-							return;
-						}
-						list.handleInput(data);
-						tui.requestRender();
+				const component = createLifecycleOverlayComponent(
+					lifetime,
+					{
+						render: (width) => list.render(width),
+						invalidate: () => list.invalidate(),
+						handleInput: (data) => {
+							if (!isOverlayLifetimeActive(lifetime)) {
+								finish();
+								return;
+							}
+							list.handleInput(data);
+							tui.requestRender();
+						},
 					},
-				};
+					() => completion?.retire(),
+				);
+				completion.bind(component);
+				return component;
 			},
 			{
 				overlay: true,
 				overlayOptions: { anchor: "center", width: "70%", minWidth: 32, maxHeight: "80%", margin: 1 },
 			},
 		);
+		await awaitOverlaySettlement(hostPromise, settlement);
 	} finally {
-		unregister?.();
+		if (lifetime) completion?.release();
 	}
 }
 
@@ -503,68 +530,67 @@ export async function openDisplaySettingsWorkspace(
 	ctx: ExtensionContext,
 	runtime: DisplaySettingsRuntime,
 	userConfigPath: string,
-	savePatchOrOptions?: SavePatchOrDisplayOptions,
-	optionsOrSavePatch?: SavePatchOrDisplayOptions,
+	requestAllRenders: () => void = () => undefined,
+	savePatch: SaveConfigPatch = saveUserConfigPatch,
+	options: DisplaySettingsWorkspaceOptions = {},
 ): Promise<void> {
-	const { savePatch, options } = resolveDisplayOptions(savePatchOrOptions, optionsOrSavePatch);
-	const requestAllRenders = options.requestAllRenders ?? (() => undefined);
 	const lifetime = options.lifetime;
 	if (ctx.mode !== "tui") {
 		ctx.ui.notify("Pi Atelier Display settings require TUI mode", "warning");
 		return;
 	}
 	if (!isOverlayLifetimeActive(lifetime)) return;
-	let unregister: (() => void) | undefined;
+	const settlement = createOverlaySettlement<void>();
+	let completion: OverlayCompletion<void> | undefined;
 	try {
-		await ctx.ui.custom<void>(
+		const hostPromise = ctx.ui.custom<void>(
 			(tui, theme, _keys, done) => {
-				let finished = false;
-				const finish = (): void => {
-					if (finished) return;
-					finished = true;
-					unregister?.();
-					unregister = undefined;
-					done(undefined);
-				};
+				completion = createOverlayCompletion(settlement, done, undefined);
+				const finish = (): void => completion?.finish(undefined);
 				const ensureActive = (): void => {
 					if (!isOverlayLifetimeActive(lifetime)) throw new Error("Pi Atelier is not active in this session");
 				};
-				unregister = registerOverlayLifetime(lifetime, finish);
 				if (!isOverlayLifetimeActive(lifetime)) finish();
-				return createSettingsWorkspace({
-					getDisplaySettings: () => runtime.getDisplaySettings(),
-					getSidebarPanelLayout: runtime.getSidebarPanelSettings,
-					getDisplayProvenance: () => runtime.getDisplayProvenance(),
-					getSessionDisplayOverride: () => runtime.getSessionDisplayOverride(),
-					replaceSessionDisplayOverride: (value) => {
-						if (isOverlayLifetimeActive(lifetime)) runtime.replaceSessionDisplayOverride(value);
-					},
-					clearSessionDisplayOverride: () => {
-						if (isOverlayLifetimeActive(lifetime)) runtime.clearSessionDisplayOverride();
-					},
-					persistUserDisplayPatch: async (patch) => {
-						ensureActive();
-						await savePatch(userConfigPath, patch);
-						ensureActive();
-					},
-					applySavedUserDisplayPatch: (patch) => {
-						if (isOverlayLifetimeActive(lifetime)) runtime.applySavedUserDisplayPatch(patch);
-					},
-					getRenderConfig: () => runtime.getConfig(),
-					getViewportHeight: () => getDisplaySettingsViewportHeight(tui.terminal.rows),
-					theme,
-					colorEnabled: !("NO_COLOR" in process.env),
-					requestWorkspaceRender: () => {
-						if (isOverlayLifetimeActive(lifetime)) tui.requestRender();
-					},
-					requestLiveRender: () => {
-						if (isOverlayLifetimeActive(lifetime)) requestAllRenders();
-					},
-					close: finish,
-					report: (message, kind) => {
-						if (kind === "error" && isOverlayLifetimeActive(lifetime)) ctx.ui.notify(message, "error");
-					},
-				});
+				const component = createLifecycleOverlayComponent(
+					lifetime,
+					createSettingsWorkspace({
+						getDisplaySettings: () => runtime.getDisplaySettings(),
+						getSidebarPanelLayout: runtime.getSidebarPanelSettings,
+						getDisplayProvenance: () => runtime.getDisplayProvenance(),
+						getSessionDisplayOverride: () => runtime.getSessionDisplayOverride(),
+						replaceSessionDisplayOverride: (value) => {
+							if (isOverlayLifetimeActive(lifetime)) runtime.replaceSessionDisplayOverride(value);
+						},
+						clearSessionDisplayOverride: () => {
+							if (isOverlayLifetimeActive(lifetime)) runtime.clearSessionDisplayOverride();
+						},
+						persistUserDisplayPatch: async (patch) => {
+							ensureActive();
+							await savePatch(userConfigPath, patch);
+							ensureActive();
+						},
+						applySavedUserDisplayPatch: (patch) => {
+							if (isOverlayLifetimeActive(lifetime)) runtime.applySavedUserDisplayPatch(patch);
+						},
+						getRenderConfig: () => runtime.getConfig(),
+						getViewportHeight: () => getDisplaySettingsViewportHeight(tui.terminal.rows),
+						theme,
+						colorEnabled: !("NO_COLOR" in process.env),
+						requestWorkspaceRender: () => {
+							if (isOverlayLifetimeActive(lifetime)) tui.requestRender();
+						},
+						requestLiveRender: () => {
+							if (isOverlayLifetimeActive(lifetime)) requestAllRenders();
+						},
+						close: finish,
+						report: (message, kind) => {
+							if (kind === "error" && isOverlayLifetimeActive(lifetime)) ctx.ui.notify(message, "error");
+						},
+					}),
+					() => completion?.retire(),
+				);
+				completion.bind(component);
+				return component;
 			},
 			{
 				overlay: true,
@@ -577,8 +603,9 @@ export async function openDisplaySettingsWorkspace(
 				},
 			},
 		);
+		await awaitOverlaySettlement(hostPromise, settlement);
 	} finally {
-		unregister?.();
+		if (lifetime) completion?.release();
 	}
 }
 
@@ -588,18 +615,25 @@ export async function openAtelierControlCenter(
 	runtime: AtelierRuntime,
 	userConfigPath: string,
 	sidebar: SidebarControls,
-	savePatchOrOptions?: SavePatchOrControlOptions,
-	optionsOrSavePatch?: SavePatchOrControlOptions,
+	requestAllRenders: () => void = () => undefined,
+	savePatch: SaveConfigPatch = saveUserConfigPatch,
+	options: ControlCenterOptions = {},
 ): Promise<void> {
-	const { savePatch, options } = resolveDisplayOptions(savePatchOrOptions, optionsOrSavePatch);
-	const requestAllRenders = options.requestAllRenders ?? (() => undefined);
 	const lifetime = options.lifetime;
 	if (ctx.mode !== "tui") {
 		ctx.ui.notify("Pi Atelier Control Center requires TUI mode", "warning");
 		return;
 	}
 	if (!isOverlayLifetimeActive(lifetime)) return;
-	const actions = createMenuActions(pi, ctx, runtime, userConfigPath, saveUserConfig, savePatch, lifetime);
+	const actions = createMenuActions(
+		pi,
+		ctx,
+		runtime,
+		userConfigPath,
+		saveUserConfig,
+		savePatch,
+		lifetime ? { lifetime } : {},
+	);
 	for (;;) {
 		if (!isOverlayLifetimeActive(lifetime)) return;
 		const category = await showSelection(
@@ -675,8 +709,9 @@ export async function openAtelierControlCenter(
 							applySavedUserDisplayPatch: (patch) => runtime.applySavedUserDisplayPatch(patch),
 						},
 						userConfigPath,
+						requestAllRenders,
 						savePatch,
-						{ requestAllRenders, ...(lifetime ? { lifetime } : {}) },
+						lifetime ? { lifetime } : {},
 					);
 				else if (choice === "sidebar-startup")
 					await actions.setShowSidebarOnStartup(!runtime.getConfig().showSidebarOnStartup);
@@ -803,5 +838,5 @@ export async function openAtelierMenu(
 	_save: SaveConfig = saveUserConfig,
 	savePatch: SaveConfigPatch = saveUserConfigPatch,
 ): Promise<void> {
-	await openAtelierControlCenter(pi, ctx, runtime, userConfigPath, sidebar, savePatch);
+	await openAtelierControlCenter(pi, ctx, runtime, userConfigPath, sidebar, () => undefined, savePatch);
 }

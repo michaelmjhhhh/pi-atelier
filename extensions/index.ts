@@ -36,8 +36,15 @@ import {
 	isSidebarPanelContributionId,
 	type SidebarPanelRegistry,
 } from "../src/sidebar-panels.js";
-import { AtelierRuntime } from "../src/state.js";
-import type { AtelierState, FooterState, NormalizedTodo, RpivTask, TodoItem } from "../src/types.js";
+import { AtelierRuntime, createInertAtelierState } from "../src/state.js";
+import type {
+	AtelierConfig,
+	AtelierState,
+	FooterState,
+	NormalizedTodo,
+	RpivTask,
+	TodoItem,
+} from "../src/types.js";
 
 export type {
 	SidebarPanelContribution,
@@ -97,12 +104,19 @@ export interface AtelierExtensionDependencies {
 interface ActiveSession {
 	readonly ctx: ExtensionContext;
 	readonly sessionManager: ExtensionContext["sessionManager"];
+	readonly token: LifecycleToken;
 	readonly runtime: AtelierRuntime;
 	readonly sidebar: SidebarController;
 	readonly panelRegistry: SidebarPanelRegistry;
 	readonly runActivity: RunActivityTracker;
 	readonly completionNotifier: CompletionNotifier;
+	readonly retiredState: AtelierState;
+	readonly retiredConfig: AtelierConfig;
+	readonly retiredCwd: string;
 	readonly overlayCancellations: Set<() => void>;
+	footerDisposer: (() => void) | undefined;
+	footerGeneration: number;
+	retired: boolean;
 	unsubscribeAskUserBlocked: (() => void) | undefined;
 	askUserBlocked: boolean;
 	inputRequestSequence: number;
@@ -113,7 +127,6 @@ interface ActiveSession {
 
 interface LifecycleToken {
 	readonly id: number;
-	initializingSessionManager: ExtensionContext["sessionManager"] | undefined;
 }
 
 export default function atelierExtension(
@@ -127,16 +140,15 @@ export default function atelierExtension(
 	let enabled = true;
 	let shortcutRegistered = false;
 	let resizeShortcutRegistered = false;
-	let lifecycleToken: LifecycleToken = { id: 0, initializingSessionManager: undefined };
+	let lifecycleToken: LifecycleToken = { id: 0 };
+	let initializingSessionManager: ExtensionContext["sessionManager"] | undefined;
 
 	/** Retires the current lifecycle and records which initialization, if any, is now in flight. */
 	function startLifecycleGeneration(
 		sessionManagerClaim: ExtensionContext["sessionManager"] | undefined,
 	): LifecycleToken {
-		lifecycleToken = {
-			id: lifecycleToken.id + 1,
-			initializingSessionManager: sessionManagerClaim,
-		};
+		lifecycleToken = { id: lifecycleToken.id + 1 };
+		initializingSessionManager = sessionManagerClaim;
 		return lifecycleToken;
 	}
 
@@ -153,11 +165,11 @@ export default function atelierExtension(
 			if (activeSession !== targetSession) throw new Error("Pi Atelier is not active in this session");
 		};
 
-	function createOverlayLifetime(targetSession: ActiveSession): OverlayLifetime {
+	function createOverlayLifetime(token: LifecycleToken, cancellations: Set<() => void>): OverlayLifetime {
 		return {
-			isActive: () => activeSession === targetSession,
+			isActive: () => activeSession?.token === token,
 			register(cancel) {
-				if (activeSession !== targetSession) {
+				if (activeSession?.token !== token) {
 					try {
 						cancel();
 					} catch {
@@ -165,8 +177,8 @@ export default function atelierExtension(
 					}
 					return () => undefined;
 				}
-				targetSession.overlayCancellations.add(cancel);
-				return () => targetSession.overlayCancellations.delete(cancel);
+				cancellations.add(cancel);
+				return () => cancellations.delete(cancel);
 			},
 		};
 	}
@@ -246,11 +258,10 @@ export default function atelierExtension(
 		return allItems.map(normalizeTodo).filter((item): item is NormalizedTodo => item !== undefined);
 	}
 	function getSidebarSnapshot(targetSession: ActiveSession): SidebarSnapshot {
-		const { ctx, panelRegistry, runActivity, runtime } = targetSession;
-		if (activeSession !== targetSession) {
+		if (targetSession.retired || activeSession !== targetSession) {
 			return buildSidebarSnapshot({
-				state: runtime.getState(),
-				cwd: ctx.cwd,
+				state: targetSession.retiredState,
+				cwd: targetSession.retiredCwd,
 				branchEntryCount: 0,
 				activeToolCount: 0,
 				availableToolCount: 0,
@@ -260,6 +271,7 @@ export default function atelierExtension(
 				sidebarPanels: [],
 			});
 		}
+		const { ctx, panelRegistry, runActivity, runtime } = targetSession;
 		const sessionName = ctx.sessionManager.getSessionName();
 		const sessionFile = ctx.sessionManager.getSessionFile();
 		const activeTools = pi.getActiveTools();
@@ -296,11 +308,36 @@ export default function atelierExtension(
 		return current && contextUsesSessionManager(ctx, current.sessionManager) ? current : undefined;
 	}
 
+	function clearFooter(session: ActiveSession, shouldClear: boolean): void {
+		// Invalidate callbacks before touching Pi so a failed removal cannot leave a live footer.
+		session.footerGeneration += 1;
+		const footerDisposer = session.footerDisposer;
+		session.footerDisposer = undefined;
+		if (shouldClear) {
+			try {
+				session.ctx.ui.setFooter(undefined);
+			} catch {
+				// Pi may retain the old footer when removal fails; dispose it below regardless.
+			}
+		}
+		try {
+			footerDisposer?.();
+		} catch {
+			// Footer disposal is best-effort and must not mask session teardown.
+		}
+	}
+
 	/**
 	 * Retirement is decided by session identity, so cleanup is best-effort: every owned
 	 * resource gets a release attempt even if another disposer throws.
 	 */
 	function disposeSession(session: ActiveSession, options: { clearFooter?: boolean } = {}): void {
+		session.retired = true;
+		session.todos = [];
+		session.extensionStatuses = [];
+		session.askUserBlocked = false;
+		session.inputRequestSequence = 0;
+		session.requestFooterRender = noopRender;
 		const cleanup = (action: () => void): void => {
 			try {
 				action();
@@ -308,7 +345,7 @@ export default function atelierExtension(
 				// Teardown must not leak later resources or replace the original failure.
 			}
 		};
-		if (options.clearFooter) cleanup(() => session.ctx.ui.setFooter(undefined));
+		clearFooter(session, options.clearFooter === true);
 		for (const cancel of Array.from(session.overlayCancellations)) cleanup(cancel);
 		session.overlayCancellations.clear();
 		cleanup(() => session.sidebar.dispose());
@@ -426,8 +463,9 @@ export default function atelierExtension(
 				},
 				getSidebarPanelSettings: () => (activeSession === current ? getSidebarPanelSettings(current) : []),
 			},
+			() => requestAllRenders(current),
 			lifecycleGuardedSavePatch(current),
-			{ requestAllRenders: () => requestAllRenders(current), lifetime: createOverlayLifetime(current) },
+			{ lifetime: createOverlayLifetime(current.token, current.overlayCancellations) },
 		);
 	}
 
@@ -462,44 +500,62 @@ export default function atelierExtension(
 			ctx,
 			displayRuntime,
 			join(getAgentDir(), "pi-atelier.json"),
+			() => requestAllRenders(current),
 			lifecycleGuardedSavePatch(current),
-			{ requestAllRenders: () => requestAllRenders(current), lifetime: createOverlayLifetime(current) },
+			{ lifetime: createOverlayLifetime(current.token, current.overlayCancellations) },
 		);
 	}
 
 	function installFooter(targetSession: ActiveSession): void {
-		const { ctx, runActivity, runtime: targetRuntime } = targetSession;
+		const { ctx } = targetSession;
+		const token = targetSession.token;
+		const generation = ++targetSession.footerGeneration;
+		const retiredState = targetSession.retiredState;
+		const retiredConfig = targetSession.retiredConfig;
 		if (ctx.mode !== "tui") return;
 		ctx.ui.setFooter((tui, theme, footerData) => {
-			const isCurrentFooter = (): boolean => activeSession === targetSession;
-			const footerRequestRender = (): void => {
-				if (isCurrentFooter()) tui.requestRender();
+			const getCurrentSession = (): ActiveSession | undefined => {
+				const current = activeSession;
+				return enabled && current?.token === token && current.footerGeneration === generation
+					? current
+					: undefined;
 			};
-			if (isCurrentFooter()) targetSession.requestFooterRender = footerRequestRender;
-			return createFooterComponent({
+			const footerRequestRender = (): void => {
+				if (getCurrentSession()) tui.requestRender();
+			};
+			const current = getCurrentSession();
+			if (current) current.requestFooterRender = footerRequestRender;
+			const component = createFooterComponent({
 				getState: (): FooterState => {
-					// A footer outliving its `setFooter(undefined)` reports the disposed runtime's inert state.
-					if (!isCurrentFooter()) return targetRuntime.getState();
+					// A footer outliving its `setFooter(undefined)` reports detached inert state.
+					const currentSession = getCurrentSession();
+					if (!currentSession) return retiredState;
 					const branch = footerData.getGitBranch();
-					updateExtensionStatuses(targetSession, Array.from(footerData.getExtensionStatuses().values()));
-					const performance = runActivity.getSnapshot().performance;
+					updateExtensionStatuses(currentSession, Array.from(footerData.getExtensionStatuses().values()));
+					const performance = currentSession.runActivity.getSnapshot().performance;
 					return {
-						...targetRuntime.getState(),
+						...currentSession.runtime.getState(),
 						...(branch ? { branch } : {}),
 						...(performance ? { performance } : {}),
-						extensionStatuses: targetSession.extensionStatuses,
+						extensionStatuses: currentSession.extensionStatuses,
 					};
 				},
-				getConfig: () => targetRuntime.getConfig(),
+				getConfig: () => getCurrentSession()?.runtime.getConfig() ?? retiredConfig,
 				colorEnabled: !("NO_COLOR" in process.env),
 				requestRender: footerRequestRender,
 				onBranchChange: (callback) =>
 					footerData.onBranchChange(() => {
-						void targetRuntime.refreshGitState();
+						const currentSession = getCurrentSession();
+						if (!currentSession) return;
+						void currentSession.runtime.refreshGitState();
 						callback();
 					}),
 				theme: theme as unknown as ThemeLike,
 			});
+			const mounted = getCurrentSession();
+			if (mounted) mounted.footerDisposer = component.dispose;
+			else component.dispose();
+			return component;
 		});
 	}
 
@@ -559,8 +615,7 @@ export default function atelierExtension(
 				enabled = false;
 				current.sidebar.hide();
 				updateExtensionStatuses(current, []);
-				// The footer is installed on the session's own context, so it must be cleared there.
-				current.ctx.ui.setFooter(undefined);
+				clearFooter(current, true);
 				ctx.ui.notify("Pi Atelier disabled", "info");
 				return;
 			}
@@ -597,7 +652,8 @@ export default function atelierExtension(
 		let publishedSession: ActiveSession | undefined;
 		const isFresh = (): boolean => initializationToken === lifecycleToken;
 		const requestCandidateRenders = (): void => {
-			if (candidateSession && activeSession === candidateSession) requestAllRenders(candidateSession);
+			const current = activeSession;
+			if (current?.token === initializationToken) requestAllRenders(current);
 		};
 		const localRunActivity = createRunActivityTracker({
 			cwd: initializationContext.cwd,
@@ -642,8 +698,7 @@ export default function atelierExtension(
 			const candidateCompletionNotifier = createCompletionNotifier({
 				isEnabled: () =>
 					enabled &&
-					candidateSession !== undefined &&
-					activeSession === candidateSession &&
+					activeSession?.token === initializationToken &&
 					candidateRuntime.getConfig().completionNotifications,
 				...(dependencies.notificationPlatform === undefined
 					? {}
@@ -656,15 +711,15 @@ export default function atelierExtension(
 			localSidebar = createSidebarController({
 				ctx: initializationContext,
 				getSnapshot: () => {
-					if (!candidateSession) throw new Error("Pi Atelier session is not published");
-					return getSidebarSnapshot(candidateSession);
+					const current = activeSession;
+					if (!current || current.token !== initializationToken)
+						throw new Error("Pi Atelier session is not published");
+					return getSidebarSnapshot(current);
 				},
-				getConfig: () => candidateRuntime.getConfig(),
+				getConfig: () =>
+					activeSession?.token === initializationToken ? candidateRuntime.getConfig() : loaded.config,
 				colorEnabled: !("NO_COLOR" in process.env),
-				shouldAnimate: () =>
-					candidateSession !== undefined &&
-					activeSession === candidateSession &&
-					localRunActivity.isRunning(),
+				shouldAnimate: () => activeSession?.token === initializationToken && localRunActivity.isRunning(),
 				onWarning: (message) => initializationContext.ui.notify(message, "warning"),
 				onError: (error) =>
 					initializationContext.ui.notify(
@@ -684,12 +739,19 @@ export default function atelierExtension(
 			const nextSession: ActiveSession = {
 				ctx: initializationContext,
 				sessionManager: initializationContext.sessionManager,
+				token: initializationToken,
 				runtime: candidateRuntime,
 				sidebar: localSidebar,
 				panelRegistry: localPanelRegistry,
 				runActivity: localRunActivity,
 				completionNotifier: candidateCompletionNotifier,
+				retiredState: createInertAtelierState(autoCompact),
+				retiredConfig: structuredClone(loaded.config),
+				retiredCwd: initializationContext.cwd,
 				overlayCancellations: new Set(),
+				footerDisposer: undefined,
+				footerGeneration: 0,
+				retired: false,
 				unsubscribeAskUserBlocked: undefined,
 				askUserBlocked: false,
 				inputRequestSequence: 0,
@@ -698,20 +760,22 @@ export default function atelierExtension(
 				extensionStatuses: [],
 			};
 			candidateSession = nextSession;
+			const askUserToken = nextSession.token;
 			nextSession.unsubscribeAskUserBlocked = pi.events.on("rpiv:ask-user:blocked", (data) => {
-				if (activeSession !== nextSession) return;
+				const current = activeSession;
+				if (!current || current.token !== askUserToken) return;
 				if (typeof data !== "object" || data === null || !("active" in data)) return;
 				const active = (data as { active?: unknown }).active;
 				if (active === false) {
-					nextSession.askUserBlocked = false;
+					current.askUserBlocked = false;
 					return;
 				}
-				if (active !== true || nextSession.askUserBlocked) return;
-				nextSession.askUserBlocked = true;
-				nextSession.inputRequestSequence += 1;
-				nextSession.completionNotifier.inputRequested(
-					`blocked-${nextSession.inputRequestSequence}`,
-					completionNotification(nextSession.ctx, "input-requested", nextSession.runActivity.getSnapshot()),
+				if (active !== true || current.askUserBlocked) return;
+				current.askUserBlocked = true;
+				current.inputRequestSequence += 1;
+				current.completionNotifier.inputRequested(
+					`blocked-${current.inputRequestSequence}`,
+					completionNotification(current.ctx, "input-requested", current.runActivity.getSnapshot()),
 				);
 			});
 			if (!isFresh()) {
@@ -797,7 +861,7 @@ export default function atelierExtension(
 				"error",
 			);
 		} finally {
-			if (lifecycleToken === initializationToken) lifecycleToken.initializingSessionManager = undefined;
+			if (lifecycleToken === initializationToken) initializingSessionManager = undefined;
 		}
 	});
 
@@ -900,7 +964,7 @@ export default function atelierExtension(
 	pi.on("session_info_changed", (_event, ctx) => getActiveSession(ctx)?.runtime.refreshUsage());
 	pi.on("session_shutdown", (_event, ctx) => {
 		const current = getActiveSession(ctx);
-		const initializing = lifecycleToken.initializingSessionManager;
+		const initializing = initializingSessionManager;
 		const cancelsInitialization = initializing !== undefined && contextUsesSessionManager(ctx, initializing);
 		if (initializing && !cancelsInitialization) {
 			// An unrelated session is shutting down; retire it but leave the newer initializer authoritative.
