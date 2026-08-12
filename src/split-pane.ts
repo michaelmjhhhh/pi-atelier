@@ -1,5 +1,5 @@
-import { HStack, matchesKey } from "@earendil-works/pi-tui";
 import type { Component, OverlayOptions, TUI } from "@earendil-works/pi-tui";
+import { HStack, matchesKey } from "@earendil-works/pi-tui";
 
 const ENABLE_MOUSE = "\u001b[?1002h\u001b[?1006h";
 const DISABLE_MOUSE = "\u001b[?1006l\u001b[?1002l";
@@ -105,7 +105,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 	let resizeStartWidth = sidebarWidth;
 	let dragging = false;
 	let unsubscribeInput: (() => void) | undefined;
-	let mouseReportingEnabled = false;
+	let resizeMouseTerminal: TUI["terminal"] | undefined;
 	let controller: SplitPaneController;
 	const adapterOwner = {};
 
@@ -199,12 +199,16 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		adaptedTui[PI_084_FULLSCREEN_LAYOUT_ADAPTER] = undefined;
 	};
 
+	const isPiFullscreenRenderer = (): boolean => {
+		if (!tui || tui.mode !== "fullscreen") return false;
+		const prototype = Object.getPrototypeOf(tui) as { constructor?: { name?: string } } | null;
+		return prototype?.constructor?.name === "TuiAltScreen";
+	};
+
 	const prioritizeFullscreenResizeInput = (
 		handler: (data: string) => { consume?: boolean; data?: string } | undefined,
 	) => {
-		if (!tui || tui.mode !== "fullscreen") return;
-		const prototype = Object.getPrototypeOf(tui) as { constructor?: { name?: string } } | null;
-		if (prototype?.constructor?.name !== "TuiAltScreen") return;
+		if (!isPiFullscreenRenderer()) return;
 		const listeners = (tui as unknown as { inputListeners?: Set<typeof handler> }).inputListeners;
 		if (!(listeners instanceof Set) || !listeners.delete(handler)) return;
 		// Pi 0.84's viewport listener consumes every mouse event for text selection.
@@ -256,17 +260,17 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 	const requestRender = () => tui?.requestRender();
 
 	const stopResize = (restore: boolean) => {
-		if (!resizing && !mouseReportingEnabled && !unsubscribeInput) return;
+		if (!resizing && !resizeMouseTerminal && !unsubscribeInput) return;
 		if (restore) sidebarWidth = resizeStartWidth;
 		syncOverlayWidth();
 		syncFullscreenLayoutAdapter();
-		const shouldDisableMouse = mouseReportingEnabled;
+		const mouseTerminal = resizeMouseTerminal;
 		const unsubscribe = unsubscribeInput;
 		dragging = false;
 		resizing = false;
-		mouseReportingEnabled = false;
+		resizeMouseTerminal = undefined;
 		unsubscribeInput = undefined;
-		if (shouldDisableMouse) safely(() => tui?.terminal.write(DISABLE_MOUSE));
+		if (mouseTerminal) safely(() => mouseTerminal.write(DISABLE_MOUSE));
 		if (unsubscribe) safely(unsubscribe);
 		safely(() => options.onResizeChange?.(false));
 		safely(requestRender);
@@ -391,8 +395,8 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			try {
 				unsubscribeInput = options.subscribeInput(handleResizeInput);
 				prioritizeFullscreenResizeInput(handleResizeInput);
-				mouseReportingEnabled = true;
-				tui.terminal.write(ENABLE_MOUSE);
+				resizeMouseTerminal = isPiFullscreenRenderer() ? undefined : tui.terminal;
+				resizeMouseTerminal?.write(ENABLE_MOUSE);
 				options.onResizeChange?.(true);
 				requestRender();
 				return true;
