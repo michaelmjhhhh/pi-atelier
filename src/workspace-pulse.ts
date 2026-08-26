@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import nodePath from "node:path";
+import { toDisplayPath } from "./display-path.js";
 
 export interface WorkspacePulseSnapshot {
 	trackedFiles: number;
@@ -295,7 +296,7 @@ async function inspectWorkspacePulseUnchecked(
 	return {
 		kind: "available",
 		root,
-		relativeCwd: nodePath.relative(root, options.cwd),
+		relativeCwd: toDisplayPath(nodePath.relative(root, options.cwd), nodePath.sep),
 		...(parsedStatus.branch ? { branch: parsedStatus.branch } : {}),
 		snapshot: {
 			...EMPTY_SNAPSHOT,
