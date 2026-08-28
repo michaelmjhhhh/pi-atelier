@@ -7,6 +7,7 @@ import atelierExtension, {
 	SIDEBAR_PANEL_EVENT_CHANNEL,
 	type AtelierExtensionDependencies,
 } from "../extensions/index.js";
+import { AtelierEditor } from "../src/editor.js";
 import {
 	loadConfig as loadAtelierConfig,
 	saveUserConfig as persistConfig,
@@ -50,6 +51,7 @@ function harness(
 	const shortcuts: string[] = [];
 	const shortcutHandlers = new Map<string, (ctx: any) => Promise<void> | void>();
 	const setFooter = vi.fn();
+	const setEditorComponent = vi.fn();
 	let terminalInput: ((data: string) => unknown) | undefined;
 	let terminalInputUnsubscribe = vi.fn();
 	const terminalWrite = vi.fn();
@@ -146,6 +148,7 @@ function harness(
 		},
 		ui: {
 			setFooter,
+			setEditorComponent,
 			notify: vi.fn(),
 			theme: {},
 			select: vi.fn(),
@@ -178,6 +181,7 @@ function harness(
 		shortcuts,
 		shortcutHandlers,
 		setFooter,
+		setEditorComponent,
 		ctx,
 		pi,
 		overlays,
@@ -354,6 +358,16 @@ describe("extension registration", () => {
 		expect(h.commands.has("atelier")).toBe(true);
 		await start(h);
 		expect(h.setFooter).toHaveBeenCalledTimes(1);
+		expect(h.setEditorComponent).toHaveBeenCalledTimes(1);
+		const editorFactory = h.setEditorComponent.mock.calls[0]?.[0];
+		expect(editorFactory).toEqual(expect.any(Function));
+		const editor = editorFactory(
+			{ requestRender: vi.fn(), terminal: { rows: 24, columns: 80 } },
+			{ borderColor: (text: string) => text, selectList: {} },
+			{ matches: () => false },
+		);
+		expect(editor).toBeInstanceOf(AtelierEditor);
+		expect(editor.render(32)[0]).toMatch(/^╭─+╮$/);
 		expect(h.shortcuts).toContain("alt+a");
 		expect(h.shortcuts).toContain("ctrl+shift+r");
 	});
@@ -384,6 +398,7 @@ describe("extension registration", () => {
 		const h = harness("print");
 		await start(h);
 		expect(h.setFooter).not.toHaveBeenCalled();
+		expect(h.setEditorComponent).not.toHaveBeenCalled();
 	});
 
 	it("starts with the Sidebar hidden when the global preference is off", async () => {
@@ -415,6 +430,7 @@ describe("extension registration", () => {
 		expect(h.notificationProcess.kill).toHaveBeenCalledOnce();
 		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
 		expect(h.setFooter).toHaveBeenLastCalledWith(undefined);
+		expect(h.setEditorComponent).toHaveBeenLastCalledWith(undefined);
 		h.pi.events.emit("rpiv:ask-user:blocked", { active: false });
 		h.pi.events.emit("rpiv:ask-user:blocked", { active: true });
 		expect(h.spawnNotificationProcess).toHaveBeenCalledOnce();
@@ -982,19 +998,26 @@ describe("extension registration", () => {
 		expect(h.terminalWrite).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
 		expect(h.overlays[0]?.tui.render(120)).toEqual(["main:120"]);
 		expect(h.setFooter).toHaveBeenLastCalledWith(undefined);
+		expect(h.setEditorComponent).toHaveBeenLastCalledWith(undefined);
 	});
 
 	it("disable clears the session's own footer, not the invoking context's", async () => {
 		const h = harness();
 		await start(h);
 		h.setFooter.mockClear();
+		h.setEditorComponent.mockClear();
 		// Pi hands commands a context object that shares the session manager but not the UI.
-		const distinctUi = { ...h.ctx, ui: { ...h.ctx.ui, setFooter: vi.fn(), notify: vi.fn() } };
+		const distinctUi = {
+			...h.ctx,
+			ui: { ...h.ctx.ui, setFooter: vi.fn(), setEditorComponent: vi.fn(), notify: vi.fn() },
+		};
 
 		await command(h, "disable", distinctUi);
 
 		expect(h.setFooter).toHaveBeenCalledWith(undefined);
+		expect(h.setEditorComponent).toHaveBeenCalledWith(undefined);
 		expect(distinctUi.ui.setFooter).not.toHaveBeenCalled();
+		expect(distinctUi.ui.setEditorComponent).not.toHaveBeenCalled();
 	});
 
 	it("closes an enabled sidebar and resize input during shutdown", async () => {
@@ -1009,6 +1032,7 @@ describe("extension registration", () => {
 
 		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
 		expect(h.setFooter).toHaveBeenLastCalledWith(undefined);
+		expect(h.setEditorComponent).toHaveBeenLastCalledWith(undefined);
 		expect(h.terminalWrite).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
 		expect(h.terminalInputUnsubscribe).toHaveBeenCalledOnce();
 		expect(h.terminalInput).toBeUndefined();

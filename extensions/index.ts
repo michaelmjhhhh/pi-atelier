@@ -15,6 +15,7 @@ import {
 	type SpawnNotificationProcess,
 } from "../src/completion-notifier.js";
 import { loadConfig, type saveUserConfig, saveUserConfigPatch } from "../src/config.js";
+import { AtelierEditor } from "../src/editor.js";
 import { createFooterComponent, type ThemeLike } from "../src/footer.js";
 import {
 	type DisplaySettingsRuntime,
@@ -319,6 +320,11 @@ export default function atelierExtension(
 			} catch {
 				// Pi may retain the old footer when removal fails; dispose it below regardless.
 			}
+			try {
+				session.ctx.ui.setEditorComponent(undefined);
+			} catch {
+				// Composer restoration is best-effort and must not mask footer teardown.
+			}
 		}
 		try {
 			footerDisposer?.();
@@ -367,6 +373,11 @@ export default function atelierExtension(
 				ctx?.ui.setFooter(undefined);
 			} catch {
 				// No-active cleanup must not mask the original lifecycle failure.
+			}
+			try {
+				ctx?.ui.setEditorComponent(undefined);
+			} catch {
+				// Composer restoration is best-effort during no-active cleanup.
 			}
 		}
 	}
@@ -557,6 +568,11 @@ export default function atelierExtension(
 			else component.dispose();
 			return component;
 		});
+		try {
+			ctx.ui.setEditorComponent((tui, theme, keybindings) => new AtelierEditor(tui, theme, keybindings));
+		} catch {
+			// Composer framing is optional; the Status Rail should still install.
+		}
 	}
 
 	pi.registerCommand("atelier", {

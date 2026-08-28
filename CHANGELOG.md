@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Frame the composer with a rounded box and inner padding while keeping Pi's thinking-level and bash-mode border colors.
+- Dim Status Rail identity separators so model, thinking, and git recede against the activity jewel.
 - Render the fullscreen Sidebar inside Pi's split layout instead of as a visible overlay so transcript selection and copy exclude Sidebar content; this now requires Pi 0.84.0 or newer.
 - Wait to run Workspace Pulse Git inspections until Pi considers the project trusted.
 

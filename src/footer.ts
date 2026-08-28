@@ -347,14 +347,14 @@ function renderItems(items: FooterItem[], compactIds: Set<FooterItemId>, separat
 		.join(separator);
 }
 
-function compose(items: FooterItem[], width: number): string {
+function compose(items: FooterItem[], width: number, leftSeparator: string): string {
 	const active = [...items];
 	const compactIds = new Set<FooterItemId>();
 	const left = () =>
 		renderItems(
 			active.filter((item) => item.zone === "left"),
 			compactIds,
-			" · ",
+			leftSeparator,
 		);
 	const right = () =>
 		renderItems(
@@ -392,7 +392,12 @@ export function renderFooterLine(
 	workingDots = "...",
 ): string {
 	if (width <= 0) return "";
-	const line = compose(buildItems(state, config, theme, colorEnabled, workingDots), width);
+	const palette = createPalette(theme, colorEnabled);
+	const line = compose(
+		buildItems(state, config, theme, colorEnabled, workingDots),
+		width,
+		palette.paint("dim", " · "),
+	);
 	return truncateToWidth(line, width, "");
 }
 

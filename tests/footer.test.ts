@@ -186,6 +186,12 @@ describe("footer", () => {
 		expect(line.indexOf("in 324k")).toBeGreaterThan(line.indexOf("main*"));
 	});
 
+	it("dims identity separators without a zone rule", () => {
+		const line = renderFooterLine(state, DEFAULT_CONFIG, namedTheme("dark"), 400);
+		expect(line).toContain(`${darkRgb.dim} · \u001b[39m`);
+		expect(stripAnsi(line)).not.toContain("│");
+	});
+
 	it("removes optional information in the approved order", () => {
 		const gitAndThinkingGone = Math.min(firstWidthWithout("main*"), firstWidthWithout("medium"));
 		const costGone = firstWidthWithout("$5.041");

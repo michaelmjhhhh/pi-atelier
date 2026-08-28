@@ -40,6 +40,7 @@ describe("npm package contract", () => {
 		expect(readme).toContain("/atelier sidebar");
 		expect(readme).toContain("Ctrl+Shift+R");
 		expect(readme).toContain("hides when the terminal is too narrow");
+		expect(readme).toContain("rounded frame");
 	});
 
 	it("exports the deliberate structured contribution contract from the package entrypoint", () => {

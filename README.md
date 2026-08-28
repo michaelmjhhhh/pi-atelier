@@ -70,7 +70,9 @@ Status rail presets:
 - **minimal**: compact layout
 - **classic**: detailed telemetry
 
-Pi supports one custom footer at a time. Extension load order determines which footer is visible.
+The composer uses a rounded frame with inner padding. Thinking-level and bash-mode still color that frame through Pi.
+
+Pi supports one custom footer and one custom editor at a time. Extension load order determines which chrome is visible.
 
 ## Configuration
 
