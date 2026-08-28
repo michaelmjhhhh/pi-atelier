@@ -1306,19 +1306,15 @@ describe("sidebar snapshot and layout", () => {
 		expect(rows).toEqual(expect.not.arrayContaining([expect.stringMatching(/^[A-Z &]+ ─/)]));
 	});
 
-	it("renders deterministic live run activity", () => {
+	it("keeps a live Turn's ACTIVITY to current work without tool history", () => {
 		const rows = contentRows(
 			renderSidebarLines(withActivity(activeActivity()), DEFAULT_CONFIG, theme, 44, 36, false, 20_000),
 		);
 		expect(rows).toContain("ACTIVITY");
 		expect(rows).toContain("Turn 3 · running 19s");
-		expect(rows).toEqual(
-			expect.arrayContaining([
-				expect.stringMatching(/^read\s+src\/state\.ts\s+18s$/),
-				expect.stringMatching(/^bash\s+npm test\s+done 4s$/),
-			]),
-		);
-		expect(rows).toContain("tools 2 done · 1 failed");
+		expect(rows).toEqual(expect.arrayContaining([expect.stringMatching(/^read\s+src\/state\.ts\s+18s$/)]));
+		expect(rows).not.toEqual(expect.arrayContaining([expect.stringMatching(/^bash\s+npm test\s+done 4s$/)]));
+		expect(rows).not.toContain("tools 2 done · 1 failed");
 	});
 
 	it.each([
@@ -1556,7 +1552,7 @@ describe("sidebar snapshot and layout", () => {
 		expect(idleWithCounts).toContain("tools 0 done · 2 failed");
 	});
 
-	it("keeps active tools before recent tools and preserves parallel start order", () => {
+	it("folds extra live tools into the current work row during a Turn", () => {
 		const rows = contentRows(
 			renderSidebarLines(
 				withActivity({
@@ -1589,21 +1585,17 @@ describe("sidebar snapshot and layout", () => {
 				20_000,
 			),
 		);
-		const first = rows.findIndex((row) => /^read\s+same-a/.test(row));
-		const third = rows.findIndex((row) => /^bash\s+same-b/.test(row));
-		const second = rows.findIndex((row) => /^grep\s+later/.test(row));
-		const recent = rows.findIndex((row) => /^write\s+recent/.test(row));
-		expect([first, third, second, recent].every((index) => index > -1)).toBe(true);
-		expect(first).toBeLessThan(third);
-		expect(third).toBeLessThan(second);
-		expect(second).toBeLessThan(recent);
+		expect(rows).toEqual(expect.arrayContaining([expect.stringMatching(/^grep\s+later\s+7s · \+2$/)]));
+		expect(rows).not.toEqual(expect.arrayContaining([expect.stringMatching(/^read\s+same-a/)]));
+		expect(rows).not.toEqual(expect.arrayContaining([expect.stringMatching(/^bash\s+same-b/)]));
+		expect(rows.findIndex((row) => /^write\s+recent/.test(row))).toBe(-1);
 	});
 
 	it("caps recent tools, deduplicates active IDs, and bounds long summaries", () => {
 		const rows = contentRows(
 			renderSidebarLines(
 				withActivity({
-					phase: "running",
+					phase: "settled",
 					startedAt: 0,
 					activeTools: [{ id: "dupe", name: "read", summary: "active", status: "running", startedAt: 1_000 }],
 					recentTools: [
@@ -1670,7 +1662,7 @@ describe("sidebar snapshot and layout", () => {
 	});
 
 	it("uses success, error, and working palette roles for activity status", () => {
-		const fg = vi.fn((_color: string, text: string) => text);
+		const liveFg = vi.fn((_color: string, text: string) => text);
 		renderSidebarLines(
 			withActivity({
 				phase: "running",
@@ -1678,6 +1670,26 @@ describe("sidebar snapshot and layout", () => {
 				activeTools: [
 					{ id: "active", name: "read", summary: "src/a.ts", status: "running", startedAt: 10_000 },
 				],
+				recentTools: [],
+				completedCount: 0,
+				failedCount: 0,
+			}),
+			DEFAULT_CONFIG,
+			{ fg: liveFg, bold: theme.bold, italic: theme.italic },
+			44,
+			36,
+			true,
+			20_000,
+		);
+		expect(liveFg).toHaveBeenCalledWith("mdHeading", "10s");
+
+		const settledFg = vi.fn((_color: string, text: string) => text);
+		renderSidebarLines(
+			withActivity({
+				phase: "settled",
+				startedAt: 10_000,
+				durationMs: 10_000,
+				activeTools: [],
 				recentTools: [
 					{ id: "ok", name: "bash", summary: "ok", status: "done", startedAt: 9_000, durationMs: 1_000 },
 					{ id: "bad", name: "edit", summary: "bad", status: "failed", startedAt: 8_000, durationMs: 1_000 },
@@ -1686,15 +1698,14 @@ describe("sidebar snapshot and layout", () => {
 				failedCount: 1,
 			}),
 			DEFAULT_CONFIG,
-			{ fg, bold: theme.bold, italic: theme.italic },
+			{ fg: settledFg, bold: theme.bold, italic: theme.italic },
 			44,
 			36,
 			true,
 			20_000,
 		);
-		expect(fg).toHaveBeenCalledWith("mdHeading", "10s");
-		expect(fg).toHaveBeenCalledWith("thinkingLow", "done 1s");
-		expect(fg).toHaveBeenCalledWith("error", "failed 1s");
+		expect(settledFg).toHaveBeenCalledWith("thinkingLow", "done 1s");
+		expect(settledFg).toHaveBeenCalledWith("error", "failed 1s");
 	});
 
 	it("drops workspace details, tools, then usage as height contracts", () => {
@@ -1736,16 +1747,16 @@ describe("sidebar snapshot and layout", () => {
 			failedCount: 1,
 		});
 
-		const fullRows = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 43, false, 20_000));
+		const fullRows = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 40, false, 20_000));
 		expect(fullRows).toContain("TOOLS");
 		expect(fullRows).toContain("USAGE");
 		expect(fullRows).toContain("WORKSPACE");
-		expect(fullRows.findIndex((row) => /^read\s+active-a/.test(row))).toBeLessThan(
+		expect(fullRows.findIndex((row) => /^bash\s+active-b/.test(row))).toBeLessThan(
 			fullRows.indexOf("CONTEXT"),
 		);
 
 		const withoutSession = contentRows(
-			renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 36, false, 20_000),
+			renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 32, false, 20_000),
 		);
 		expect(withoutSession).toContain("TOOLS");
 		expect(withoutSession).toContain("USAGE");
@@ -1754,13 +1765,13 @@ describe("sidebar snapshot and layout", () => {
 		expect(withoutSession).not.toContain("38 entries · persisted");
 
 		const withoutTools = contentRows(
-			renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 32, false, 20_000),
+			renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 28, false, 20_000),
 		);
 		expect(withoutTools).not.toContain("TOOLS");
 		expect(withoutTools).toContain("USAGE");
 		expect(withoutTools).toContain("WORKSPACE");
 
-		const coreOnly = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 26, false, 20_000));
+		const coreOnly = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 22, false, 20_000));
 		expect(coreOnly).not.toContain("TOOLS");
 		expect(coreOnly).not.toContain("USAGE");
 		expect(coreOnly).toContain("WORKSPACE");
@@ -2439,6 +2450,31 @@ describe("todos panel", () => {
 	it("omits todos panel when list is empty", () => {
 		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false));
 		expect(rows).not.toContain("TODOS");
+	});
+
+	it("keeps only the in-progress todo during a live Turn", () => {
+		const snapWithTodos = buildSidebarSnapshot({
+			state,
+			cwd: "/Users/example/projects/pi-atelier",
+			sessionName: "Sidebar implementation",
+			sessionFile: "/tmp/session.jsonl",
+			branchEntryCount: 38,
+			activeToolCount: 8,
+			availableToolCount: 12,
+			extensionStatuses: ["tests passing"],
+			runActivity: activeActivity(),
+			todos: [
+				{ id: 1, text: "Review diff", status: "completed" },
+				{ id: 2, text: "Write tests", status: "in_progress" },
+				{ id: 3, text: "Commit changes", status: "pending" },
+			],
+		});
+		const rows = contentRows(renderSidebarLines(snapWithTodos, DEFAULT_CONFIG, theme, 44, 48, false, 20_000));
+		expect(rows).toContain("TODOS");
+		expect(rows).toContain("1/3");
+		expect(rows).toContain("◐ #2 Write tests");
+		expect(rows).not.toContain("✓ #1 Review diff");
+		expect(rows).not.toContain("○ #3 Commit changes");
 	});
 
 	it("renders todos with all 3 status states", () => {

@@ -567,8 +567,12 @@ function todosRows(snapshot: SidebarSnapshot, palette: AtelierPalette): string[]
 	const done = todoList.filter((t) => t.status === "completed").length;
 	const total = todoList.length;
 	const rows = [palette.paint("muted", `${done}/${total}`)];
+	const visible =
+		snapshot.runActivity.phase === "running"
+			? todoList.filter((todo) => todo.status === "in_progress")
+			: todoList;
 
-	for (const todo of todoList) {
+	for (const todo of visible) {
 		let check: string;
 		if (todo.status === "completed") check = palette.paint("ready", "✓");
 		else if (todo.status === "in_progress") check = palette.paint("warning", "◐");
@@ -713,10 +717,14 @@ function toolActivityRow(
 	contentWidth: number,
 	palette: AtelierPalette,
 	now: number,
+	extraLive = 0,
 ): string {
 	const safeName = sanitize(tool.name) || "tool";
 	const safeSummary = sanitize(tool.summary);
-	const status = toolStatusLabel(tool, now);
+	const status =
+		extraLive > 0 && tool.status === "running"
+			? `${durationForTool(tool, now)} · +${finiteCount(extraLive)}`
+			: toolStatusLabel(tool, now);
 	const statusWidth = visibleWidth(status);
 	const nameWidth = Math.min(Math.max(visibleWidth(safeName), 4), 10, Math.max(0, contentWidth));
 	const summaryWidth = Math.max(0, contentWidth - nameWidth - statusWidth - 2);
@@ -752,16 +760,25 @@ function activityRows(
 	palette: AtelierPalette,
 	now: number,
 ): ActivityGroups {
+	const liveTurn = activity.phase === "running";
 	const activeIds = new Set(activity.activeTools.map((tool) => tool.id));
-	const active = activity.activeTools
+	const sortedActive = activity.activeTools
 		.map((tool, index) => ({ index, tool }))
 		.sort((left, right) => left.tool.startedAt - right.tool.startedAt || left.index - right.index)
-		.map(({ tool }) => ({ id: tool.id, row: toolActivityRow(tool, contentWidth, palette, now) }));
-	const recent = activity.recentTools
-		.filter((tool) => !activeIds.has(tool.id))
-		.slice(0, 3)
-		.map((tool) => ({ id: tool.id, row: toolActivityRow(tool, contentWidth, palette, now) }));
-	const aggregateText = aggregateActivityText(activity);
+		.map(({ tool }) => tool);
+	const visibleActive = liveTurn ? sortedActive.slice(-1) : sortedActive;
+	const extraLive = liveTurn ? Math.max(0, sortedActive.length - visibleActive.length) : 0;
+	const active = visibleActive.map((tool) => ({
+		id: tool.id,
+		row: toolActivityRow(tool, contentWidth, palette, now, extraLive),
+	}));
+	const recent = liveTurn
+		? []
+		: activity.recentTools
+				.filter((tool) => !activeIds.has(tool.id))
+				.slice(0, 3)
+				.map((tool) => ({ id: tool.id, row: toolActivityRow(tool, contentWidth, palette, now) }));
+	const aggregateText = liveTurn ? "" : aggregateActivityText(activity);
 	return {
 		core: [runSummaryRow(activity, palette, now), responsePerformanceRow(activity, palette)],
 		active,

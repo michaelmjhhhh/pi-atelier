@@ -1041,7 +1041,10 @@ describe("extension registration", () => {
 	it("clears session-owned sidebar state during shutdown", async () => {
 		const h = harness();
 		h.ctx.sessionManager.getBranch.mockReturnValue([
-			todoBranchEntry({ todos: [{ id: 1, text: "Shutdown stale TODO", done: false }], nextId: 2 }),
+			todoBranchEntry({
+				tasks: [{ id: 1, subject: "Shutdown stale TODO", status: "in_progress" }],
+				nextId: 2,
+			}),
 		]);
 		await start(h);
 		await h.handlers.get("agent_start")?.({ type: "agent_start" }, h.ctx);
@@ -2040,10 +2043,10 @@ describe("extension registration", () => {
 			);
 
 			const withResult = h.overlays[0]?.component.render(44).join("\n") ?? "";
-			expect(withResult).toContain("read");
-			expect(withResult).toContain("src/run-activity.ts");
-			expect(withResult).toContain("done 1s");
-			expect(withResult).toContain("tools 1 done · 0 failed");
+			expect(withResult).toContain("Run · running");
+			expect(withResult).not.toContain("src/run-activity.ts");
+			expect(withResult).not.toContain("done 1s");
+			expect(withResult).not.toContain("tools 1 done · 0 failed");
 
 			const rendersBeforeTick = h.overlays[0]?.requestRender.mock.calls.length ?? 0;
 			vi.advanceTimersByTime(1_000);
@@ -2056,12 +2059,60 @@ describe("extension registration", () => {
 			expect(settledText).toContain("Last run · 3s");
 			expect(settledText).not.toContain("settled 3s");
 			expect(settledText).toContain("Ready");
+			expect(settledText).toContain("read");
+			expect(settledText).toContain("src/run-activity.ts");
+			expect(settledText).toContain("done 1s");
 
 			vi.advanceTimersByTime(3_000);
 			expect(h.overlays[0]?.requestRender.mock.calls.length).toBe(settledRenderCount);
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+
+	it("keeps a live Turn overlay to current work without history", async () => {
+		const h = harness();
+		h.ctx.sessionManager.getBranch.mockReturnValue([
+			todoBranchEntry({
+				tasks: [
+					{ id: 1, subject: "Done live TODO", status: "completed" },
+					{ id: 2, subject: "Current live TODO", status: "in_progress" },
+					{ id: 3, subject: "Queued live TODO", status: "pending" },
+				],
+				nextId: 4,
+			}),
+		]);
+		await start(h);
+		await command(h, "sidebar on");
+		await h.handlers.get("agent_start")?.({ type: "agent_start" }, h.ctx);
+		await h.handlers.get("turn_start")?.({ type: "turn_start", turnIndex: 1, timestamp: 1_000 }, h.ctx);
+		await h.handlers.get("tool_execution_start")?.(
+			{
+				type: "tool_execution_start",
+				toolCallId: "older",
+				toolName: "read",
+				args: { path: "/tmp/project/older.ts" },
+			},
+			h.ctx,
+		);
+		await h.handlers.get("tool_execution_start")?.(
+			{
+				type: "tool_execution_start",
+				toolCallId: "newer",
+				toolName: "write",
+				args: { path: "/tmp/project/newer.ts" },
+			},
+			h.ctx,
+		);
+
+		const live = renderOverlayText(h);
+		expect(live).toContain("Turn 2 · running");
+		expect(live).toContain("newer.ts");
+		expect(live).toContain("+1");
+		expect(live).not.toContain("older.ts");
+		expect(live).toContain("Current live TODO");
+		expect(live).not.toContain("Done live TODO");
+		expect(live).not.toContain("Queued live TODO");
 	});
 
 	it("clears run activity across session reload and shutdown", async () => {

@@ -9,7 +9,7 @@ A responsive status rail and activity sidebar for [Pi](https://pi.dev).
 ## Features
 
 - Responsive one-line status rail
-- Live agent, tool, context, workspace, usage, and TODO information
+- Live agent, tool, context, workspace, usage, and TODO information, kept compact while a Turn is running
 - Model, thinking-level, and tool controls
 - Configurable display presets, segments, and sidebar panels
 - Session details, rename, and compaction actions

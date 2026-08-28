@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep the Sidebar calm during an active Turn: Activity shows current work instead of a tool log, extra live tools fold into one row, and TODOS lists only the in-progress task.
+
 ## 0.9.0 — 2026-08-28
 
 - Frame the composer with a rounded box and inner padding while preserving Pi's thinking-level and bash-mode border colors, and dim Status Rail identity separators to emphasize activity.
