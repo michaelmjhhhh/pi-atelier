@@ -57,6 +57,7 @@ const DROP = {
 
 const sanitize = (text: string): string =>
 	text
+		.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
 		.replace(/[\u0000-\u001f\u007f]/g, " ")
 		.replace(/\s+/g, " ")
 		.trim();
