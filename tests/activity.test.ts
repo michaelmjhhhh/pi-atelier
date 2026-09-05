@@ -43,7 +43,6 @@ const expectedPhrases = [
 describe("working phrases", () => {
 	it("contains exactly the approved reference-image phrases", () => {
 		expect(WORKING_PHRASES).toEqual(expectedPhrases);
-		expect(new Set(WORKING_PHRASES).size).toBe(36);
 	});
 
 	it.each([

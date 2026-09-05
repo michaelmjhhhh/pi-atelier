@@ -114,12 +114,16 @@ interface MenuTheme {
 	bold(text: string): string;
 }
 
+/** @deprecated Kept for direct source consumers; renderMenuFrame handles its narrow border inline. */
 export function renderMenuBorder(theme: MenuTheme, width: number): string {
 	return theme.bold(theme.fg("borderAccent", "━".repeat(Math.max(1, width))));
 }
 
 export function renderMenuFrame(theme: MenuTheme, lines: string[], width: number): string[] {
-	if (width <= 1) return [truncateToWidth(renderMenuBorder(theme, 1), Math.max(0, width), "")];
+	if (width <= 1) {
+		const border = theme.bold(theme.fg("borderAccent", "━"));
+		return [truncateToWidth(border, Math.max(0, width), "")];
+	}
 	const innerWidth = width - 2;
 	const border = (text: string) => theme.bold(theme.fg("borderAccent", text));
 	const framed = lines.map((line) => {
@@ -138,6 +142,7 @@ export function createMenuActions(
 		"getConfig" | "setConfig" | "getDisplaySettings" | "setSessionDisplayPatch" | "refreshUsage"
 	>,
 	userConfigPath: string,
+	/** @deprecated Retained as an unused positional slot for direct source compatibility. */
 	_save: SaveConfig = saveUserConfig,
 	savePatch: SaveConfigPatch = saveUserConfigPatch,
 	options: MenuActionsOptions = {},
@@ -630,7 +635,7 @@ export async function openAtelierControlCenter(
 		ctx,
 		runtime,
 		userConfigPath,
-		saveUserConfig,
+		undefined,
 		savePatch,
 		lifetime ? { lifetime } : {},
 	);

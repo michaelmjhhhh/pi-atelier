@@ -56,8 +56,10 @@ export interface SettingsWorkspaceOptions {
 	persistUserDisplayPatch(patch: DisplayPatch): Promise<void>;
 	applySavedUserDisplayPatch(patch: DisplayPatch): void;
 	getRenderConfig(): AtelierConfig;
+	/** @deprecated Retained for direct source consumers; production callers use representative previews. */
 	getPreviewState?(): FooterState;
 	getSidebarPanelLayout?(): readonly SidebarPanelSetting[];
+	/** @deprecated Retained for direct source consumers; production callers use the draft layout preview. */
 	getSidebarPreview?(): readonly string[];
 	/** Live overlay viewport height in rows; omitted direct callers keep full rendering. */
 	getViewportHeight?(): number;

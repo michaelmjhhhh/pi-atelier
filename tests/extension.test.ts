@@ -8,11 +8,7 @@ import atelierExtension, {
 	type AtelierExtensionDependencies,
 } from "../extensions/index.js";
 import { AtelierEditor } from "../src/editor.js";
-import {
-	loadConfig as loadAtelierConfig,
-	saveUserConfig as persistConfig,
-	saveUserConfigPatch as persistConfigPatch,
-} from "../src/config.js";
+import { loadConfig as loadAtelierConfig, saveUserConfigPatch as persistConfigPatch } from "../src/config.js";
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -303,13 +299,6 @@ async function withPersistedUserConfig(
 }
 
 describe("extension registration", () => {
-	it("keeps the legacy saveConfig dependency source-compatible", () => {
-		const saveConfig = vi.fn<typeof persistConfig>().mockResolvedValue(undefined);
-		const dependencies: AtelierExtensionDependencies = { saveConfig };
-
-		expect(dependencies.saveConfig).toBe(saveConfig);
-	});
-
 	it("discovers and renders a structured contributed panel through pi.events", async () => {
 		const h = harness();
 		await withPersistedUserConfig(

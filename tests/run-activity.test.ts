@@ -37,11 +37,20 @@ describe("run activity tracker transitions", () => {
 		tracker.startRun(0);
 		tracker.startResponse(1_000);
 
-		tracker.recordFirstToken(1_820);
+		tracker.updateResponseEstimate(1, 1_820);
 		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 820 });
 
 		tracker.finishResponse(120, 4_320);
 		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 820, tokensPerSecond: 48 });
+	});
+
+	it("retains the legacy first-token alias for direct source consumers", () => {
+		const tracker = createRunActivityTracker({ cwd: "/repo" });
+		tracker.startResponse(1_000);
+
+		tracker.recordFirstToken(1_500);
+
+		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 500 });
 	});
 
 	it("updates estimated TPS during streaming and replaces it with final throughput", () => {
@@ -65,7 +74,7 @@ describe("run activity tracker transitions", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
 		tracker.startRun(0);
 		tracker.startResponse(1_000);
-		tracker.recordFirstToken(1_500);
+		tracker.updateResponseEstimate(1, 1_500);
 		tracker.finishResponse(20, 2_500);
 
 		tracker.startResponse(3_000);
@@ -76,19 +85,19 @@ describe("run activity tracker transitions", () => {
 	it("keeps TTFT without inventing TPS when final usage or generation duration is invalid", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
 		tracker.startResponse(1_000);
-		tracker.recordFirstToken(1_500);
+		tracker.updateResponseEstimate(1, 1_500);
 		tracker.finishResponse(Number.NaN, 2_000);
 		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 500 });
 
 		tracker.startResponse(3_000);
-		tracker.recordFirstToken(3_500);
+		tracker.updateResponseEstimate(1, 3_500);
 		tracker.finishResponse(10, 3_500);
 		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 500 });
 	});
 
 	it("ignores first-token observations when no provider request is active", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
-		tracker.recordFirstToken(1_000);
+		tracker.updateResponseEstimate(1, 1_000);
 		tracker.finishResponse(10, 2_000);
 		expect(tracker.getSnapshot()).not.toHaveProperty("performance");
 	});
@@ -251,7 +260,7 @@ describe("run activity tracker transitions", () => {
 			2_000,
 		);
 		tracker.startResponse(2_500);
-		tracker.recordFirstToken(2_750);
+		tracker.updateResponseEstimate(1, 2_750);
 		tracker.finishResponse(20, 3_750);
 		tracker.reset();
 
@@ -271,7 +280,7 @@ describe("run activity tracker transitions", () => {
 			3_000,
 		);
 		tracker.startResponse(3_500);
-		tracker.recordFirstToken(4_000);
+		tracker.updateResponseEstimate(1, 4_000);
 		tracker.finishResponse(20, 5_000);
 
 		tracker.startRun(10_000);

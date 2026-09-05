@@ -70,14 +70,6 @@ describe("npm package contract", () => {
 		];
 		// @ts-expect-error Built-ins are valid config IDs but not contributed IDs.
 		const invalidContribution: SidebarPanelContribution = { id: "agent", title: "Agent", rows: [] };
-		expect(row).toEqual({ text: "Ready", role: "ready" });
-		expect(role).toBe("ready");
-		expect(register.panel).toBe(contribution);
-		expect(unregister.id).toBe(contributedId);
-		expect(discovery.requestId).toBe("vendor-1");
-		expect(event.type).toBe("register");
-		expect(layout).toHaveLength(2);
-		expect(invalidContribution.id).toBe("agent");
 		expect(BUILTIN_SIDEBAR_PANEL_IDS).toContain("agent");
 		expect(isSidebarPanelContributionId(contributedId)).toBe(true);
 		expect(isSidebarPanelContributionId("agent")).toBe(false);

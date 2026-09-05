@@ -406,6 +406,10 @@ export function validateConfig(input: unknown, base: AtelierConfig = DEFAULT_CON
 	};
 }
 
+/**
+ * @deprecated The file-backed loadConfig pipeline is the supported configuration seam.
+ * Retained for source compatibility with older direct imports.
+ */
 export function mergeConfig(...inputs: unknown[]): ConfigLoadResult {
 	const config = cloneConfig(DEFAULT_CONFIG);
 	const warnings: string[] = [];

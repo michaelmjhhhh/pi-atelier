@@ -182,24 +182,29 @@ describe("configuration", () => {
 		expect(result.config.showSidebarAgent).toBe(false);
 	});
 
-	it("keeps legacy Agent and TODOS visibility global-user-only in mergeConfig", () => {
-		expect(
-			mergeConfig(
-				{ showSidebarAgent: false, showSidebarTodos: false },
-				{ showSidebarAgent: true, showSidebarTodos: true },
-				{ showSidebarAgent: true, showSidebarTodos: true },
-			).config,
-		).toMatchObject({ showSidebarAgent: false, showSidebarTodos: false });
+	it("retains legacy mergeConfig precedence for direct source consumers", () => {
+		const result = mergeConfig(
+			{ showSidebarAgent: false, showSidebarTodos: false, showSidebarOnStartup: false },
+			{ showSidebarAgent: true, showSidebarTodos: true, showSidebarOnStartup: true },
+			{ showSidebarAgent: true, showSidebarTodos: true, showSidebarOnStartup: true },
+		);
+
+		expect(result.config).toMatchObject({
+			showSidebarAgent: false,
+			showSidebarTodos: false,
+			showSidebarOnStartup: false,
+		});
 		expect(
 			mergeConfig(
 				{},
-				{ showSidebarAgent: false, showSidebarTodos: false },
-				{
-					showSidebarAgent: false,
-					showSidebarTodos: false,
-				},
+				{ showSidebarAgent: false, showSidebarTodos: false, showSidebarOnStartup: false },
+				{ showSidebarAgent: false, showSidebarTodos: false, showSidebarOnStartup: false },
 			).config,
-		).toMatchObject({ showSidebarAgent: true, showSidebarTodos: true });
+		).toMatchObject({
+			showSidebarAgent: true,
+			showSidebarTodos: true,
+			showSidebarOnStartup: true,
+		});
 	});
 
 	it("ignores project and session legacy Sidebar visibility when the user omits it", async () => {
@@ -308,10 +313,19 @@ describe("configuration", () => {
 	});
 
 	it("rejects invalid thresholds and validates boolean preferences", () => {
-		const result = validateConfig({ contextWarning: 95, contextDanger: 80, showSidebarToolNames: "yes" });
+		const result = validateConfig({
+			contextWarning: 95,
+			contextDanger: 80,
+			showSidebarToolNames: "yes",
+			showSidebarOnStartup: "yes",
+		});
 		expect(result.config.contextWarning).toBe(70);
 		expect(result.warnings).toEqual(
-			expect.arrayContaining([expect.stringContaining("threshold"), "showSidebarToolNames must be boolean"]),
+			expect.arrayContaining([
+				expect.stringContaining("threshold"),
+				"showSidebarToolNames must be boolean",
+				"showSidebarOnStartup must be boolean",
+			]),
 		);
 	});
 
@@ -327,20 +341,6 @@ describe("configuration", () => {
 		});
 
 		expect(result.config.showSidebarOnStartup).toBe(false);
-	});
-
-	it("keeps the Sidebar startup preference global when merging config layers", () => {
-		expect(
-			mergeConfig(
-				{ showSidebarOnStartup: false },
-				{ showSidebarOnStartup: true },
-				{ showSidebarOnStartup: true },
-			).config.showSidebarOnStartup,
-		).toBe(false);
-		expect(validateConfig({ showSidebarOnStartup: "yes" }).warnings).toContain(
-			"showSidebarOnStartup must be boolean",
-		);
-		expect(DEFAULT_CONFIG.showSidebarOnStartup).toBe(true);
 	});
 
 	it("loads persisted showSidebarAgent false from user config", async () => {

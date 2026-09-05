@@ -45,6 +45,7 @@ export interface RunActivityTracker {
 	startRun(now?: number): void;
 	startTurn(turnIndex: number): void;
 	startResponse(now?: number): void;
+	/** @deprecated Use updateResponseEstimate(1, now) for the live response path. */
 	recordFirstToken(now?: number): void;
 	updateResponseEstimate(estimatedOutputTokens: number, now?: number): void;
 	finishResponse(outputTokens: number, now?: number): void;
@@ -193,13 +194,10 @@ class DefaultRunActivityTracker implements RunActivityTracker {
 		this.notify();
 	}
 
+	/** @deprecated Retained as a source-compatible alias for the first-token estimate. */
 	recordFirstToken(now?: number): void {
-		if (this.requestStartedAt === undefined || this.firstTokenAt !== undefined) return;
-		this.firstTokenAt = normalizeTimestamp(now ?? Date.now());
-		this.performance = freezePerformance({
-			ttftMs: Math.max(0, this.firstTokenAt - this.requestStartedAt),
-		});
-		this.notify();
+		if (this.firstTokenAt !== undefined) return;
+		this.updateResponseEstimate(1, now);
 	}
 
 	updateResponseEstimate(estimatedOutputTokens: number, now?: number): void {

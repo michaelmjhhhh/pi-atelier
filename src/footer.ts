@@ -11,6 +11,7 @@ export interface ThemeLike {
 	italic(text: string): string;
 }
 
+/** @deprecated The Status Rail composes directly from available width; this mode label is legacy API. */
 export type ResponsiveMode = "gallery" | "balanced" | "focus" | "telemetry" | "safe";
 
 const WORKING_DOT_FRAMES = ["...", "..", "."] as const;
@@ -63,6 +64,7 @@ const sanitize = (text: string): string =>
 		.replace(/\s+/g, " ")
 		.trim();
 
+/** @deprecated Retained for source compatibility; renderFooterLine performs responsive composition directly. */
 export function selectResponsiveMode(width: number): ResponsiveMode {
 	if (width >= 132) return "gallery";
 	if (width >= 96) return "balanced";

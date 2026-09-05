@@ -84,17 +84,16 @@ function harness() {
 		ui: { notify: vi.fn(), input: vi.fn(), confirm: vi.fn(), custom: vi.fn() },
 		compact: vi.fn(),
 	};
-	const save = vi.fn().mockResolvedValue(undefined);
 	const savePatch = vi.fn().mockResolvedValue(undefined);
 	const actions = createMenuActions(
 		pi as never,
 		ctx as never,
 		runtime as never,
 		"/tmp/user.json",
-		save,
+		undefined,
 		savePatch,
 	);
-	return { actions, pi, ctx, runtime, save, savePatch };
+	return { actions, pi, ctx, runtime, savePatch };
 }
 
 describe("Control Center presentation", () => {
@@ -391,10 +390,12 @@ describe("Control Center presentation", () => {
 		expect(sidebar.toggle).toHaveBeenCalledOnce();
 	});
 
-	it("uses a heavy theme-aware border that fills the available width", () => {
+	it("keeps the legacy border helper and narrow frame boundary compatible", () => {
 		const theme = { fg: vi.fn((_color: string, text: string) => text), bold: vi.fn((text: string) => text) };
 		expect(renderMenuBorder(theme, 6)).toBe("━━━━━━");
+		expect(renderMenuFrame(theme, [], 1)).toEqual(["━"]);
 		expect(theme.fg).toHaveBeenCalledWith("borderAccent", "━━━━━━");
+		expect(theme.fg).toHaveBeenCalledWith("borderAccent", "━");
 	});
 
 	it("frames every content row with heavy vertical borders and corners", () => {
@@ -404,6 +405,24 @@ describe("Control Center presentation", () => {
 });
 
 describe("menu actions", () => {
+	it("preserves the legacy full-config callback slot while patch persistence stays active", async () => {
+		const h = harness();
+		const saveConfig = vi.fn().mockResolvedValue(undefined);
+		const actions = createMenuActions(
+			h.pi as never,
+			h.ctx as never,
+			h.runtime as never,
+			"/tmp/user.json",
+			saveConfig,
+			h.savePatch,
+		);
+
+		await actions.setCompletionNotifications(false);
+
+		expect(h.savePatch).toHaveBeenCalledWith("/tmp/user.json", { completionNotifications: false });
+		expect(saveConfig).not.toHaveBeenCalled();
+	});
+
 	it.each([
 		["editorial", ["activity", "metrics", "context", "model", "git", "statuses", "menu"]],
 		["minimal", ["activity", "metrics", "context", "model", "menu"]],
@@ -459,7 +478,7 @@ describe("menu actions", () => {
 			h.ctx as never,
 			h.runtime as never,
 			"/tmp/user.json",
-			h.save,
+			undefined,
 			h.savePatch,
 			{
 				lifetime: {
@@ -509,17 +528,14 @@ describe("menu actions", () => {
 		await h.actions.setCompletionNotifications(false);
 		expect(h.runtime.getConfig().completionNotifications).toBe(false);
 		expect(h.savePatch).toHaveBeenCalledWith("/tmp/user.json", { completionNotifications: false });
-		expect(h.save).not.toHaveBeenCalled();
 		expect(h.ctx.ui.notify).toHaveBeenCalledWith("Completion notifications disabled", "info");
 	});
 
 	it("persists display changes only after explicit save", async () => {
 		const h = harness();
 		h.actions.setPreset("minimal");
-		expect(h.save).not.toHaveBeenCalled();
 		await h.actions.saveDisplayDefaults();
 		expect(h.savePatch).toHaveBeenCalledWith("/tmp/user.json", h.runtime.getDisplaySettings());
-		expect(h.save).not.toHaveBeenCalled();
 	});
 
 	it("restores the ornament-free Status Rail defaults when selecting editorial", () => {

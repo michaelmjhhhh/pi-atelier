@@ -28,8 +28,19 @@ describe("metrics", () => {
 			cost: 0.5,
 		});
 		expect(result.cacheHitPercent).toBeCloseTo(90, 5);
+	});
+
+	it("retains legacy formatter exports for direct source consumers", () => {
+		const result = aggregateMetrics(messages, {
+			subscription: true,
+			context: { tokens: 100_000, contextWindow: 372_000, percent: 26.8817 },
+			autoCompact: true,
+		});
+
 		expect(formatMetrics(result, 3)).toBe("↑3.2k ↓1.2k R26k W300 CH90.0% $0.500 (sub)");
 		expect(formatContext(result)).toBe("26.9%/372k (auto)");
+		expect(formatCompactMetrics(result, 3)).toBe("↑3.2k↓1.2k R26kW300 CH90%$0.50(sub)");
+		expect(formatCompactContext(result)).toBe("26.9%/372k(auto)");
 	});
 
 	it("handles missing and zero prompt usage without NaN", () => {
@@ -55,16 +66,6 @@ describe("metrics", () => {
 		expect(result.costAvailable).toBe(false);
 		expect(formatMetrics(result, 3)).toBe("↑— ↓— R— $—");
 		expect(formatContext(result)).toBe("?/0 (—)");
-	});
-
-	it("uses compact attribution without dropping categories", () => {
-		const result = aggregateMetrics(messages, {
-			subscription: true,
-			context: { tokens: 100_000, contextWindow: 372_000, percent: 26.8817 },
-			autoCompact: true,
-		});
-		expect(formatCompactMetrics(result, 3)).toBe("↑3.2k↓1.2k R26kW300 CH90%$0.50(sub)");
-		expect(formatCompactContext(result)).toBe("26.9%/372k(auto)");
 	});
 
 	it.each([

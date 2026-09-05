@@ -84,6 +84,7 @@ const decimals = (value: number): number => Math.min(6, Math.max(0, Math.trunc(f
 const usageValue = (metrics: AtelierMetrics, amount: number): string =>
 	metrics.usageAvailable ? formatTokens(amount) : "—";
 
+/** @deprecated Legacy compact formatter retained for source compatibility. Use the Status Rail renderer. */
 export function formatMetrics(metrics: AtelierMetrics, currencyDecimals: number): string {
 	const parts = [
 		`↑${usageValue(metrics, metrics.input)}`,
@@ -99,12 +100,14 @@ export function formatMetrics(metrics: AtelierMetrics, currencyDecimals: number)
 	return parts.join(" ");
 }
 
+/** @deprecated Legacy context formatter retained for source compatibility. Use the Status Rail renderer. */
 export function formatContext(metrics: AtelierMetrics): string {
 	const usage = metrics.contextPercent === null ? "?" : `${finite(metrics.contextPercent).toFixed(1)}%`;
 	const compaction = metrics.autoCompact === true ? " (auto)" : metrics.autoCompact === null ? " (—)" : "";
 	return `${usage}/${formatTokens(metrics.contextWindow)}${compaction}`;
 }
 
+/** @deprecated Legacy compact formatter retained for source compatibility. Use the Status Rail renderer. */
 export function formatCompactMetrics(metrics: AtelierMetrics, currencyDecimals: number): string {
 	const parts = [
 		`↑${usageValue(metrics, metrics.input)}↓${usageValue(metrics, metrics.output)}`,
@@ -123,6 +126,7 @@ export function formatCompactMetrics(metrics: AtelierMetrics, currencyDecimals: 
 	return `${parts[0]} ${parts[1]} ${parts.slice(2).join("")}`;
 }
 
+/** @deprecated Legacy compact formatter retained for source compatibility. Use the Status Rail renderer. */
 export function formatCompactContext(metrics: AtelierMetrics): string {
 	const usage = metrics.contextPercent === null ? "?" : `${finite(metrics.contextPercent).toFixed(1)}%`;
 	const compaction = metrics.autoCompact === true ? "(auto)" : metrics.autoCompact === null ? "(—)" : "";

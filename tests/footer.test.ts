@@ -156,7 +156,7 @@ describe("footer performance", () => {
 });
 
 describe("footer", () => {
-	it("selects exact responsive modes", () => {
+	it("retains the legacy responsive mode helper for direct source consumers", () => {
 		expect([132, 131, 96, 95, 72, 71, 56, 55].map(selectResponsiveMode)).toEqual([
 			"gallery",
 			"balanced",

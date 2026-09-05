@@ -671,19 +671,6 @@ function renderGroups(
 	return rendered;
 }
 
-function panelIdForTitle(title: string): string | undefined {
-	return {
-		AGENT: "agent",
-		ACTIVITY: "activity",
-		ALERTS: "alerts",
-		TODOS: "todos",
-		CONTEXT: "context",
-		WORKSPACE: "workspace",
-		USAGE: "usage",
-		TOOLS: "tools",
-	}[title];
-}
-
 function contributedRows(panel: SidebarPanelData, palette: AtelierPalette): string[] {
 	const rows = panel.rows.slice(0, SIDEBAR_PANEL_MAX_ROWS).map((row) => {
 		const text = sanitizeSidebarPanelText(
@@ -814,6 +801,7 @@ function activitySidebarGroups(
 		{
 			name: "activityCore",
 			panel: "ACTIVITY",
+			panelId: "activity",
 			panelRole,
 			rows: groups.core,
 			required: true,
@@ -822,6 +810,7 @@ function activitySidebarGroups(
 		...groups.active.map((active, index, rows) => ({
 			name: `activityActive:${active.id}`,
 			panel: "ACTIVITY",
+			panelId: "activity",
 			panelRole,
 			rows: [active.row],
 			required: false,
@@ -830,6 +819,7 @@ function activitySidebarGroups(
 		...groups.recent.map((recent, index) => ({
 			name: `activityRecent:${recent.id}`,
 			panel: "ACTIVITY",
+			panelId: "activity",
 			panelRole,
 			rows: [recent.row],
 			required: false,
@@ -838,6 +828,7 @@ function activitySidebarGroups(
 		{
 			name: "activityAggregate",
 			panel: "ACTIVITY",
+			panelId: "activity",
 			panelRole,
 			rows: groups.aggregate,
 			required: false,
@@ -906,6 +897,7 @@ export function renderSidebarLines(
 					{
 						name: "agent",
 						panel: "AGENT",
+						panelId: "agent",
 						panelRole: activityRole(snapshot.activity),
 						panelJewel:
 							snapshot.activity === "working" && Math.floor(now / 400) % 2 === 1
@@ -925,6 +917,7 @@ export function renderSidebarLines(
 		{
 			name: "statusDetails",
 			panel: "ALERTS",
+			panelId: "alerts",
 			panelRole: statusDetailPanelRole(snapshot),
 			rows: statusDetailRows(snapshot, palette),
 			required: false,
@@ -933,6 +926,7 @@ export function renderSidebarLines(
 		{
 			name: "todos",
 			panel: "TODOS",
+			panelId: "todos",
 			panelRole: "accent",
 			rows: config.showSidebarTodos ? todosRows(snapshot, palette) : [],
 			required: false,
@@ -941,6 +935,7 @@ export function renderSidebarLines(
 		{
 			name: "context",
 			panel: "CONTEXT",
+			panelId: "context",
 			panelRole: contextRole(snapshot, config),
 			rows: contextRows(snapshot, config, panelContentWidth, layout, palette),
 			required: true,
@@ -949,6 +944,7 @@ export function renderSidebarLines(
 		{
 			name: "workspaceCore",
 			panel: "WORKSPACE",
+			panelId: "workspace",
 			panelRole: "accent",
 			rows: workspace.identity,
 			required: false,
@@ -957,6 +953,7 @@ export function renderSidebarLines(
 		{
 			name: "workspaceLocation",
 			panel: "WORKSPACE",
+			panelId: "workspace",
 			panelRole: "accent",
 			rows: workspace.location,
 			required: false,
@@ -965,6 +962,7 @@ export function renderSidebarLines(
 		{
 			name: "workspaceCore",
 			panel: "WORKSPACE",
+			panelId: "workspace",
 			panelRole: "accent",
 			rows: workspace.pulseCore,
 			required: false,
@@ -973,6 +971,7 @@ export function renderSidebarLines(
 		{
 			name: "workspaceDetails",
 			panel: "WORKSPACE",
+			panelId: "workspace",
 			panelRole: "accent",
 			rows: workspace.pulseDetails,
 			required: false,
@@ -981,6 +980,7 @@ export function renderSidebarLines(
 		{
 			name: "workspaceSession",
 			panel: "WORKSPACE",
+			panelId: "workspace",
 			panelRole: "accent",
 			rows: workspace.session,
 			required: false,
@@ -989,6 +989,7 @@ export function renderSidebarLines(
 		{
 			name: "usage",
 			panel: "USAGE",
+			panelId: "usage",
 			panelRole: "output",
 			rows: usageRows(snapshot, config, panelContentWidth, layout, palette),
 			required: false,
@@ -997,6 +998,7 @@ export function renderSidebarLines(
 		{
 			name: "toolsStatus",
 			panel: "TOOLS",
+			panelId: "tools",
 			panelRole: "cache",
 			rows: toolsStatusRows(snapshot, layout.showToolNames, panelContentWidth, palette),
 			required: false,
@@ -1005,6 +1007,7 @@ export function renderSidebarLines(
 		...toolNameRows.map((row, index, rows) => ({
 			name: `activeToolNames:${index}`,
 			panel: "TOOLS",
+			panelId: "tools",
 			panelRole: "cache" as const,
 			rows: [row],
 			required: false,
@@ -1019,9 +1022,8 @@ export function renderSidebarLines(
 	const contributed = new Map((snapshot.sidebarPanels ?? []).map((panel) => [panel.id, panel]));
 	const grouped = new Map<string, SidebarGroup[]>();
 	for (const group of groups) {
-		const id = group.panel ? panelIdForTitle(group.panel) : undefined;
+		const id = group.panelId;
 		if (!id) continue;
-		group.panelId = id;
 		const list = grouped.get(id) ?? [];
 		list.push(group);
 		grouped.set(id, list);

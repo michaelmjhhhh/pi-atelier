@@ -246,15 +246,20 @@ export default function atelierExtension(
 		return { id: item.id, text: item.subject, status: status as NormalizedTodo["status"] };
 	}
 
+	function getTodoItems(details: unknown): (TodoItem | RpivTask)[] | undefined {
+		if (isOldTodoDetails(details)) return details.todos;
+		if (isNewTaskDetails(details)) return details.tasks;
+		return undefined;
+	}
+
 	function reconstructTodos(ctx: ExtensionContext): NormalizedTodo[] {
 		let allItems: (TodoItem | RpivTask)[] = [];
 		for (const entry of ctx.sessionManager.getBranch()) {
 			if (entry.type !== "message") continue;
 			const msg = entry.message;
 			if (msg.role !== "toolResult" || msg.toolName !== "todo" || msg.isError) continue;
-			const details = msg.details;
-			if (isOldTodoDetails(details)) allItems = details.todos;
-			else if (isNewTaskDetails(details)) allItems = details.tasks;
+			const rawItems = getTodoItems(msg.details);
+			if (rawItems) allItems = rawItems;
 		}
 		return allItems.map(normalizeTodo).filter((item): item is NormalizedTodo => item !== undefined);
 	}
@@ -929,15 +934,8 @@ export default function atelierExtension(
 		const current = getActiveSession(ctx);
 		if (!current || event.isError) return;
 
-		const details = event.details;
-		let rawItems: (TodoItem | RpivTask)[];
-		if (isOldTodoDetails(details)) {
-			rawItems = details.todos;
-		} else if (isNewTaskDetails(details)) {
-			rawItems = details.tasks;
-		} else {
-			return;
-		}
+		const rawItems = getTodoItems(event.details);
+		if (!rawItems) return;
 		const todoList = rawItems.map(normalizeTodo).filter((item): item is NormalizedTodo => item !== undefined);
 		// Keep state updates independent from whether the TODO panel is currently presented.
 		current.todos = todoList;
