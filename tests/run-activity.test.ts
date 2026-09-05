@@ -44,15 +44,6 @@ describe("run activity tracker transitions", () => {
 		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 820, tokensPerSecond: 48 });
 	});
 
-	it("retains the legacy first-token alias for direct source consumers", () => {
-		const tracker = createRunActivityTracker({ cwd: "/repo" });
-		tracker.startResponse(1_000);
-
-		tracker.recordFirstToken(1_500);
-
-		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 500 });
-	});
-
 	it("updates estimated TPS during streaming and replaces it with final throughput", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
 		tracker.startResponse(1_000);

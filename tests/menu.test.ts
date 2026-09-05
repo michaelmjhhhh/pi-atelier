@@ -19,9 +19,7 @@ import { derivePresetIdentity } from "../src/display.js";
 import {
 	createMenuActions,
 	openAtelierControlCenter,
-	openAtelierMenu,
 	openDisplaySettingsWorkspace,
-	renderMenuBorder,
 	renderMenuFrame,
 	type SidebarControls,
 } from "../src/menu.js";
@@ -85,14 +83,7 @@ function harness() {
 		compact: vi.fn(),
 	};
 	const savePatch = vi.fn().mockResolvedValue(undefined);
-	const actions = createMenuActions(
-		pi as never,
-		ctx as never,
-		runtime as never,
-		"/tmp/user.json",
-		undefined,
-		savePatch,
-	);
+	const actions = createMenuActions(pi as never, ctx as never, runtime as never, "/tmp/user.json", savePatch);
 	return { actions, pi, ctx, runtime, savePatch };
 }
 
@@ -138,7 +129,7 @@ describe("Control Center presentation", () => {
 			isToolListExpanded: vi.fn(() => false),
 			toggleToolList: vi.fn().mockResolvedValue(undefined),
 		};
-		await openAtelierMenu(
+		await openAtelierControlCenter(
 			{} as never,
 			contextWithSelections(["close"]) as never,
 			harness().runtime as never,
@@ -169,7 +160,7 @@ describe("Control Center presentation", () => {
 			isToolListExpanded: vi.fn(() => false),
 			toggleToolList: vi.fn().mockResolvedValue(undefined),
 		};
-		await openAtelierMenu(
+		await openAtelierControlCenter(
 			{} as never,
 			contextWithSelections([category, "back", "close"]) as never,
 			harness().runtime as never,
@@ -226,7 +217,7 @@ describe("Control Center presentation", () => {
 		expect(getDisplaySettings).not.toHaveBeenCalled();
 	});
 
-	it("preserves legacy positional Display workspace callbacks", async () => {
+	it("persists Display workspace changes through the active callbacks", async () => {
 		const h = harness();
 		const components: any[] = [];
 		const ctx = contextWithSelections([], { columns: 140, rows: 42 }, components);
@@ -250,7 +241,7 @@ describe("Control Center presentation", () => {
 		);
 	});
 
-	it("preserves legacy positional Control Center callbacks", async () => {
+	it("propagates Control Center renders through the active callbacks", async () => {
 		rootMenuItems.length = 0;
 		const h = harness();
 		const components: any[] = [];
@@ -377,7 +368,7 @@ describe("Control Center presentation", () => {
 			isToolListExpanded: vi.fn(() => false),
 			toggleToolList: vi.fn().mockResolvedValue(undefined),
 		};
-		await openAtelierMenu(
+		await openAtelierControlCenter(
 			{
 				getThinkingLevel: vi.fn().mockReturnValue("medium"),
 				getActiveTools: vi.fn().mockReturnValue([]),
@@ -390,14 +381,6 @@ describe("Control Center presentation", () => {
 		expect(sidebar.toggle).toHaveBeenCalledOnce();
 	});
 
-	it("keeps the legacy border helper and narrow frame boundary compatible", () => {
-		const theme = { fg: vi.fn((_color: string, text: string) => text), bold: vi.fn((text: string) => text) };
-		expect(renderMenuBorder(theme, 6)).toBe("━━━━━━");
-		expect(renderMenuFrame(theme, [], 1)).toEqual(["━"]);
-		expect(theme.fg).toHaveBeenCalledWith("borderAccent", "━━━━━━");
-		expect(theme.fg).toHaveBeenCalledWith("borderAccent", "━");
-	});
-
 	it("frames every content row with heavy vertical borders and corners", () => {
 		const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
 		expect(renderMenuFrame(theme, ["Hi"], 8)).toEqual(["┏━━━━━━┓", "┃Hi    ┃", "┗━━━━━━┛"]);
@@ -405,24 +388,6 @@ describe("Control Center presentation", () => {
 });
 
 describe("menu actions", () => {
-	it("preserves the legacy full-config callback slot while patch persistence stays active", async () => {
-		const h = harness();
-		const saveConfig = vi.fn().mockResolvedValue(undefined);
-		const actions = createMenuActions(
-			h.pi as never,
-			h.ctx as never,
-			h.runtime as never,
-			"/tmp/user.json",
-			saveConfig,
-			h.savePatch,
-		);
-
-		await actions.setCompletionNotifications(false);
-
-		expect(h.savePatch).toHaveBeenCalledWith("/tmp/user.json", { completionNotifications: false });
-		expect(saveConfig).not.toHaveBeenCalled();
-	});
-
 	it.each([
 		["editorial", ["activity", "metrics", "context", "model", "git", "statuses", "menu"]],
 		["minimal", ["activity", "metrics", "context", "model", "menu"]],
@@ -478,7 +443,6 @@ describe("menu actions", () => {
 			h.ctx as never,
 			h.runtime as never,
 			"/tmp/user.json",
-			undefined,
 			h.savePatch,
 			{
 				lifetime: {

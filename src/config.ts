@@ -406,40 +406,6 @@ export function validateConfig(input: unknown, base: AtelierConfig = DEFAULT_CON
 	};
 }
 
-/**
- * @deprecated The file-backed loadConfig pipeline is the supported configuration seam.
- * Retained for source compatibility with older direct imports.
- */
-export function mergeConfig(...inputs: unknown[]): ConfigLoadResult {
-	const config = cloneConfig(DEFAULT_CONFIG);
-	const warnings: string[] = [];
-	for (const input of inputs) applyNonDisplay(input, config, warnings);
-	const records = inputs.map(record).filter((item): item is Record<string, unknown> => !!item);
-	const displayLayers: DisplayLayerState = {
-		...(records[0] ? { user: records[0] } : {}),
-		...(records[1] ? { project: records[1] } : {}),
-		...(records[2] ? { session: records[2] } : {}),
-	};
-	const resolved = resolveDisplayLayers(displayLayers);
-	const sidebar = resolveSidebarLayout(displayLayers);
-	Object.assign(config, resolved.display, { sidebarPanelLayout: cloneSidebarLayout(sidebar.layout) });
-	const global = cloneConfig(DEFAULT_CONFIG);
-	applyNonDisplay(inputs[0], global, []);
-	config.showSidebarOnStartup = global.showSidebarOnStartup;
-	if (sidebar.authoritative) {
-		config.showSidebarAgent =
-			sidebar.layout.find((entry) => entry.id === "agent")?.visible ?? config.showSidebarAgent;
-		config.showSidebarTodos =
-			sidebar.layout.find((entry) => entry.id === "todos")?.visible ?? config.showSidebarTodos;
-	} else applyGlobalSidebarCompatibility(config, inputs[0]);
-	return {
-		config,
-		warnings: [...new Set([...warnings, ...resolved.warnings, ...sidebar.warnings])],
-		displayLayers,
-		displayProvenance: resolved.provenance,
-	};
-}
-
 async function readJson(path: string): Promise<{ value?: unknown; warning?: string }> {
 	try {
 		return { value: JSON.parse(await readFile(path, "utf8")) };
@@ -494,9 +460,6 @@ export async function loadConfig(options: LoadConfigOptions): Promise<ConfigLoad
 	};
 }
 
-export async function saveUserConfig(path: string, config: AtelierConfig): Promise<void> {
-	await writeJsonAtomic(path, config);
-}
 export async function saveUserConfigPatch(path: string, patch: Partial<AtelierConfig>): Promise<void> {
 	let current: Record<string, unknown> = {};
 	try {

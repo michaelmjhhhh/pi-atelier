@@ -56,11 +56,7 @@ export interface SettingsWorkspaceOptions {
 	persistUserDisplayPatch(patch: DisplayPatch): Promise<void>;
 	applySavedUserDisplayPatch(patch: DisplayPatch): void;
 	getRenderConfig(): AtelierConfig;
-	/** @deprecated Retained for direct source consumers; production callers use representative previews. */
-	getPreviewState?(): FooterState;
 	getSidebarPanelLayout?(): readonly SidebarPanelSetting[];
-	/** @deprecated Retained for direct source consumers; production callers use the draft layout preview. */
-	getSidebarPreview?(): readonly string[];
 	/** Live overlay viewport height in rows; omitted direct callers keep full rendering. */
 	getViewportHeight?(): number;
 	theme: ThemeLike;
@@ -505,13 +501,10 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 				{ line: "" },
 				actionLine("sidebar-default", "Restore default", "D"),
 			];
-			const sidebarPreviewRows =
-				options.getSidebarPreview?.() ??
-				sidebarDraft.filter((entry) => entry.visible).map((entry) => entry.id);
+			const sidebarPreviewRows = sidebarDraft.filter((entry) => entry.visible).map((entry) => entry.id);
 			const previewConfig = { ...options.getRenderConfig(), ...cloneDisplay(display) };
-			const previewState = options.getPreviewState?.() ?? representativeState;
 			const previewLine = renderFooterLine(
-				previewState,
+				representativeState,
 				previewConfig,
 				options.theme,
 				Math.max(1, outerInner - 6),

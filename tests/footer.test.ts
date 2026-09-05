@@ -1,7 +1,7 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { DISPLAY_TEMPLATES, legacySegmentsToLayout } from "../src/display.js";
-import { createFooterComponent, renderFooterLine, selectResponsiveMode } from "../src/footer.js";
+import { createFooterComponent, renderFooterLine } from "../src/footer.js";
 import { type AtelierConfig, type AtelierState, DEFAULT_CONFIG } from "../src/types.js";
 
 const plainTheme = {
@@ -156,19 +156,6 @@ describe("footer performance", () => {
 });
 
 describe("footer", () => {
-	it("retains the legacy responsive mode helper for direct source consumers", () => {
-		expect([132, 131, 96, 95, 72, 71, 56, 55].map(selectResponsiveMode)).toEqual([
-			"gallery",
-			"balanced",
-			"balanced",
-			"focus",
-			"focus",
-			"telemetry",
-			"telemetry",
-			"safe",
-		]);
-	});
-
 	it("renders a quiet two-zone Status Rail at wide widths", () => {
 		const line = stripAnsi(renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 160));
 		expect(line).toContain("● READY · gpt-5.6-sol · medium · main*");

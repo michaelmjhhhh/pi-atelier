@@ -14,7 +14,7 @@ import {
 	createCompletionNotifier,
 	type SpawnNotificationProcess,
 } from "../src/completion-notifier.js";
-import { loadConfig, type saveUserConfig, saveUserConfigPatch } from "../src/config.js";
+import { loadConfig, saveUserConfigPatch } from "../src/config.js";
 import { AtelierEditor } from "../src/editor.js";
 import { createFooterComponent, type ThemeLike } from "../src/footer.js";
 import {
@@ -94,8 +94,6 @@ export type {
 } from "../src/types.js";
 
 export interface AtelierExtensionDependencies {
-	/** @deprecated Retained for source compatibility; Atelier no longer performs full config writes. */
-	saveConfig?: typeof saveUserConfig;
 	loadConfig?: typeof loadConfig;
 	saveConfigPatch?: typeof saveUserConfigPatch;
 	notificationPlatform?: NodeJS.Platform;

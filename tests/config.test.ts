@@ -1,14 +1,8 @@
-import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-	loadConfig,
-	mergeConfig,
-	saveUserConfig,
-	saveUserConfigPatch,
-	validateConfig,
-} from "../src/config.js";
+import { loadConfig, saveUserConfigPatch, validateConfig } from "../src/config.js";
 import { DISPLAY_TEMPLATES, PRODUCT_SEGMENT_ORDER } from "../src/display.js";
 import { DEFAULT_CONFIG } from "../src/types.js";
 
@@ -182,31 +176,6 @@ describe("configuration", () => {
 		expect(result.config.showSidebarAgent).toBe(false);
 	});
 
-	it("retains legacy mergeConfig precedence for direct source consumers", () => {
-		const result = mergeConfig(
-			{ showSidebarAgent: false, showSidebarTodos: false, showSidebarOnStartup: false },
-			{ showSidebarAgent: true, showSidebarTodos: true, showSidebarOnStartup: true },
-			{ showSidebarAgent: true, showSidebarTodos: true, showSidebarOnStartup: true },
-		);
-
-		expect(result.config).toMatchObject({
-			showSidebarAgent: false,
-			showSidebarTodos: false,
-			showSidebarOnStartup: false,
-		});
-		expect(
-			mergeConfig(
-				{},
-				{ showSidebarAgent: false, showSidebarTodos: false, showSidebarOnStartup: false },
-				{ showSidebarAgent: false, showSidebarTodos: false, showSidebarOnStartup: false },
-			).config,
-		).toMatchObject({
-			showSidebarAgent: true,
-			showSidebarTodos: true,
-			showSidebarOnStartup: true,
-		});
-	});
-
 	it("ignores project and session legacy Sidebar visibility when the user omits it", async () => {
 		await writeJson(projectPath, { showSidebarAgent: false, showSidebarTodos: false });
 		const result = await loadConfig({
@@ -360,12 +329,6 @@ describe("configuration", () => {
 		const result = await loadConfig({ userPath, projectPath, projectTrusted: false });
 		expect(result.config).toEqual(DEFAULT_CONFIG);
 		expect(result.warnings).toHaveLength(1);
-	});
-
-	it("saves valid JSON atomically without leaving temporary files", async () => {
-		await saveUserConfig(userPath, { ...DEFAULT_CONFIG, preset: "custom" });
-		expect(JSON.parse(await readFile(userPath, "utf8"))).toMatchObject({ preset: "custom" });
-		expect((await readdir(root)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
 	});
 
 	it("patches one preference without losing unknown fields", async () => {
