@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add capability-negotiated default visibility and placement for contributed Sidebar panels: discovery advertises `panel-defaults-v1`, contributions may declare default visibility and placement after a built-in panel, and defaults fill the effective layout without rewriting saved configuration.
+
 ## 0.10.1 — 2026-09-04
 
 - Remove unused internal formatters, configuration helpers, preview hooks, and legacy menu interfaces without changing the active UI or persisted configuration formats.

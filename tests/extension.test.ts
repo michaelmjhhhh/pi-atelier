@@ -342,6 +342,111 @@ describe("extension registration", () => {
 		expect(h.overlays.at(-1)?.component.render(120).join("\n")).not.toContain("Spoofed Agent");
 	});
 
+	it("registers, updates, and unregisters provider-shaped panels and rejects stale revisions", async () => {
+		const h = harness();
+		await withPersistedUserConfig(
+			{
+				sidebarPanelLayout: [
+					{ id: "ollama-cloud:usage", visible: true },
+					...Array.from({ length: 8 }, (_, index) => ({
+						id: ["agent", "activity", "alerts", "todos", "context", "workspace", "usage", "tools"][index],
+						visible: false,
+					})),
+				],
+			},
+			async () => {
+				await start(h);
+				const emit = h.pi.events.emit.bind(h.pi.events);
+				const panelEvent = (revision: number, panel: unknown) =>
+					emit(SIDEBAR_PANEL_EVENT_CHANNEL, {
+						version: 1,
+						type: "register",
+						source: "ollama-cloud",
+						revision,
+						panel,
+					});
+				const usagePanel = (rows: unknown[], title = "Ollama Cloud") => ({
+					id: "ollama-cloud:usage",
+					title,
+					rows,
+					defaults: { visible: true, after: "usage" },
+				});
+				const rendered = () => h.overlays.at(-1)?.component.render(44).join("\n") ?? "";
+				await command(h, "sidebar on");
+
+				panelEvent(1, usagePanel([{ text: "5h ▕████░░░░░▏ 40%", role: "warning" }]));
+				expect(rendered()).toContain("5h ▕████░░░░░▏ 40%");
+				panelEvent(2, usagePanel([{ text: "7d ▕██░░░░░░░▏ 12%" }]));
+				expect(rendered()).toContain("7d ▕██░░░░░░░▏ 12%");
+				expect(rendered()).not.toContain("5h ▕████░░░░░▏ 40%");
+
+				// Stale revision carrying defaults is ignored entirely.
+				panelEvent(2, usagePanel(["stale"], "Stale"));
+				expect(rendered()).not.toContain("stale");
+				// Malformed contribution payload is rejected.
+				panelEvent(3, { id: "ollama-cloud:usage" });
+				expect(rendered()).toContain("7d ▕██░░░░░░░▏ 12%");
+
+				emit(SIDEBAR_PANEL_EVENT_CHANNEL, {
+					version: 1,
+					type: "unregister",
+					source: "ollama-cloud",
+					revision: 4,
+					id: "ollama-cloud:usage",
+				});
+				expect(rendered()).not.toContain("7d ▕██░░░░░░░▏ 12%");
+			},
+		);
+	});
+
+	it("keeps hypercharm-shaped panel fixtures within protocol limits through register and teardown", async () => {
+		const h = harness();
+		await withPersistedUserConfig(
+			{
+				sidebarPanelLayout: [
+					{ id: "hypercharm:usage", visible: true },
+					...Array.from({ length: 8 }, (_, index) => ({
+						id: ["agent", "activity", "alerts", "todos", "context", "workspace", "usage", "tools"][index],
+						visible: false,
+					})),
+				],
+			},
+			async () => {
+				await start(h);
+				h.pi.events.emit(SIDEBAR_PANEL_EVENT_CHANNEL, {
+					version: 1,
+					type: "register",
+					source: "hypercharm",
+					revision: 1,
+					panel: {
+						id: "hypercharm:usage",
+						title: "HyperCharm",
+						rows: [
+							{ text: "⚡ 1.24 hc · 7 req" },
+							{ text: "◆ 249 hc", role: "ready" },
+							{ text: "996/1k/h · 8.2k/10k/d · 29d", role: "muted" },
+						],
+					},
+				});
+				await command(h, "sidebar on");
+				const rendered = h.overlays.at(-1)?.component.render(44).join("\n") ?? "";
+				expect(rendered).toContain("HYPERCHARM");
+				expect(rendered).toContain("1.24 hc");
+				expect(rendered).toContain("249 hc");
+
+				h.pi.events.emit(SIDEBAR_PANEL_EVENT_CHANNEL, {
+					version: 1,
+					type: "unregister",
+					source: "hypercharm",
+					revision: 2,
+					id: "hypercharm:usage",
+				});
+				await command(h, "sidebar on");
+				expect(h.overlays.at(-1)?.component.render(44).join("\n") ?? "").not.toContain("HyperCharm");
+			},
+		);
+	});
+
 	it("registers the command and installs one footer in TUI mode", async () => {
 		const h = harness();
 		expect(h.commands.has("atelier")).toBe(true);

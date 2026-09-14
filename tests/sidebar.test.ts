@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_RUN_ACTIVITY, type RunActivitySnapshot } from "../src/run-activity.js";
 import {
 	buildSidebarSnapshot,
+	type SidebarPanelData,
 	createSidebarComponent,
 	createSidebarController,
 	createSidebarPanelRegistry,
@@ -12,7 +13,9 @@ import {
 	isSidebarPanelTextWithinRawLimit,
 	registerSidebarPanel,
 	renderSidebarLines,
+	resolveEffectiveSidebarPanelLayout,
 	SIDEBAR_PANEL_EVENT_CHANNEL,
+	SIDEBAR_PANEL_DEFAULTS_CAPABILITY,
 	SIDEBAR_PANEL_MAX_ID_CHARS,
 	SIDEBAR_PANEL_MAX_PANELS,
 	SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS,
@@ -25,7 +28,7 @@ import {
 	SIDEBAR_PANEL_MAX_TRACKED_SOURCES,
 } from "../src/sidebar.js";
 import { DEFAULT_SIDEBAR_WIDTH } from "../src/split-pane.js";
-import { type AtelierState, DEFAULT_CONFIG } from "../src/types.js";
+import { type AtelierState, type SidebarPanelLayout, DEFAULT_CONFIG } from "../src/types.js";
 
 const stripAnsi = (text: string) => text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
 
@@ -191,6 +194,33 @@ describe("sidebar snapshot and layout", () => {
 		expect(text).not.toContain("AGENT");
 	});
 
+	it("renders a defaults-inserted panel after the Usage panel without a saved entry", () => {
+		const lines = renderSidebarLines(
+			{
+				...snapshot(),
+				sidebarPanels: [
+					{
+						id: "ollama-cloud:usage",
+						title: "Ollama Cloud",
+						rows: [{ text: "5h ▕████░░░░░▏ 40%", role: "warning" }],
+						available: true,
+						source: "ollama-cloud",
+						defaults: { visible: true, after: "usage" },
+					},
+				],
+			},
+			DEFAULT_CONFIG,
+			theme,
+			44,
+			36,
+		);
+		const text = contentRows(lines).join("\n");
+		expect(text.indexOf("OLLAMA CLOUD")).toBeGreaterThanOrEqual(0);
+		expect(text.indexOf("USAGE")).toBeGreaterThanOrEqual(0);
+		expect(text.indexOf("OLLAMA CLOUD")).toBeGreaterThan(text.indexOf("USAGE"));
+		expect(text.indexOf("OLLAMA CLOUD")).toBeLessThan(text.indexOf("TOOLS"));
+	});
+
 	it("supports load-order discovery, updates, and removal through the public event seam", () => {
 		const listeners = new Set<(data: unknown) => void>();
 		const events = {
@@ -242,6 +272,33 @@ describe("sidebar snapshot and layout", () => {
 		});
 		expect(registry.get("vendor:queue")?.source).toBe("vendor");
 		expect(emitted[0]).toMatchObject({ type: "discover", requestId: "vendor-1" });
+		registry.dispose();
+	});
+
+	it("advertises the defaults capability in every discovery emission including replay", () => {
+		const listeners = new Set<(data: unknown) => void>();
+		const emitted: Array<{ type?: string; requestId?: string; capabilities?: string[] }> = [];
+		const events = {
+			on: (_channel: string, handler: (data: unknown) => void) => {
+				listeners.add(handler);
+				return () => listeners.delete(handler);
+			},
+			emit: (_channel: string, data: unknown) => {
+				emitted.push(data as { type?: string });
+				for (const listener of [...listeners]) listener(data);
+			},
+		};
+		const registry = createSidebarPanelRegistry({ events });
+		const initial = emitted.filter((event) => event.type === "discover");
+		expect(initial).toHaveLength(1);
+		expect(initial[0]?.capabilities).toContain(SIDEBAR_PANEL_DEFAULTS_CAPABILITY);
+		expect(SIDEBAR_PANEL_DEFAULTS_CAPABILITY).toBe("panel-defaults-v1");
+
+		// Discovery replay must keep advertising the capability.
+		registry.requestDiscovery();
+		const replay = emitted.filter((event) => event.type === "discover");
+		expect(replay).toHaveLength(2);
+		expect(replay[1]?.capabilities).toEqual(initial[0]?.capabilities);
 		registry.dispose();
 	});
 
@@ -635,47 +692,158 @@ describe("sidebar snapshot and layout", () => {
 		registry.dispose();
 	});
 
-	it("bounds IDs and source names at direct, event, and publisher seams", () => {
+	it("accepts valid defaults and keeps invalid defaults hidden without rejecting the panel", () => {
 		const registry = createSidebarPanelRegistry();
-		const longId = `vendor:${"x".repeat(SIDEBAR_PANEL_MAX_ID_CHARS)}` as `vendor:${string}`;
-		const longSource = "s".repeat(SIDEBAR_PANEL_MAX_SOURCE_CHARS + 1);
-		const safePanel = { id: "vendor:safe" as const, title: "Safe", rows: [] };
+		expect(
+			registry.register({
+				id: "vendor:defaults",
+				title: "Defaults",
+				rows: ["one"],
+				defaults: { visible: true, after: "usage" },
+			}),
+		).toBe(true);
+		expect(registry.get("vendor:defaults")?.defaults).toEqual({ visible: true, after: "usage" });
 
-		expect(isSidebarPanelId(longId)).toBe(false);
-		expect(registry.register({ ...safePanel, id: longId })).toBe(false);
-		expect(registry.unregister(longId, "vendor")).toBe(false);
-		expect(registry.register(safePanel, longSource)).toBe(false);
-		expect(registry.unregister(safePanel.id, longSource)).toBe(false);
-		registry.handleEvent({
-			version: 1,
-			type: "register",
-			source: "vendor",
-			revision: 1,
-			panel: { ...safePanel, id: longId },
-		});
-		registry.handleEvent({
-			version: 1,
-			type: "register",
-			source: longSource,
-			revision: 1,
-			panel: safePanel,
-		});
-		expect(registry.getAvailable()).toEqual([]);
+		// Non-boolean visible: panel registers hidden.
+		expect(
+			registry.register({
+				id: "vendor:bad-visible",
+				title: "Bad visible",
+				rows: ["x"],
+				defaults: { visible: "yes" as unknown as boolean },
+			}),
+		).toBe(true);
+		expect(registry.get("vendor:bad-visible")?.defaults).toBeUndefined();
 
-		const emitted: unknown[] = [];
-		const events = {
-			on: () => () => undefined,
-			emit: (_channel: string, data: unknown) => emitted.push(data),
-		};
-		const invalidIdPublisher = registerSidebarPanel({ events }, { ...safePanel, id: longId });
-		const invalidSourcePublisher = registerSidebarPanel({ events }, safePanel, { source: longSource });
-		expect(emitted).toEqual([]);
-		invalidIdPublisher.update(safePanel);
-		invalidSourcePublisher.update(safePanel);
-		invalidIdPublisher.dispose();
-		invalidSourcePublisher.dispose();
-		expect(emitted).toEqual([]);
+		// Namespaced (contributed) anchor: defaults ignored, panel retained.
+		expect(
+			registry.register({
+				id: "vendor:bad-after",
+				title: "Bad after",
+				rows: ["x"],
+				defaults: { visible: true, after: "vendor:queue" as never },
+			}),
+		).toBe(true);
+		expect(registry.get("vendor:bad-after")?.defaults).toBeUndefined();
+
+		// Hidden-by-default declaration survives.
+		expect(
+			registry.register({
+				id: "vendor:hidden",
+				title: "Hidden",
+				rows: ["x"],
+				defaults: { visible: false },
+			}),
+		).toBe(true);
+		expect(registry.get("vendor:hidden")?.defaults).toEqual({ visible: false });
+
+		// Regression: a defaults-less contribution still registers.
+		expect(registry.register({ id: "vendor:plain", title: "Plain", rows: ["x"] })).toBe(true);
+		expect(registry.get("vendor:plain")?.defaults).toBeUndefined();
 		registry.dispose();
+	});
+
+	describe("effective sidebar panel layout", () => {
+		const panel = (id: string, after?: string): SidebarPanelData => ({
+			id: id as `${string}:${string}`,
+			title: id,
+			rows: [{ text: "row" }],
+			available: true,
+			source: id.slice(0, id.indexOf(":")),
+			...(after ? { defaults: { visible: true, after: after as never } } : {}),
+		});
+
+		it("inserts a default-visible panel immediately after its anchor when unconfigured", () => {
+			const saved = DEFAULT_CONFIG.sidebarPanelLayout;
+			const effective = resolveEffectiveSidebarPanelLayout(saved, [panel("ollama-cloud:usage", "usage")]);
+			const ids = effective.map((entry) => entry.id);
+			expect(ids.indexOf("ollama-cloud:usage")).toBe(ids.indexOf("usage") + 1);
+			expect(effective.find((entry) => entry.id === "ollama-cloud:usage")?.visible).toBe(true);
+		});
+
+		it("orders same-anchor contributions by panel ID regardless of registration order", () => {
+			const saved = DEFAULT_CONFIG.sidebarPanelLayout;
+			const forward = resolveEffectiveSidebarPanelLayout(saved, [
+				panel("a:one", "usage"),
+				panel("b:two", "usage"),
+			]);
+			const reverse = resolveEffectiveSidebarPanelLayout(saved, [
+				panel("b:two", "usage"),
+				panel("a:one", "usage"),
+			]);
+			expect(forward.map((entry) => entry.id)).toEqual(reverse.map((entry) => entry.id));
+			const ids = forward.map((entry) => entry.id);
+			expect(ids.indexOf("a:one")).toBe(ids.indexOf("usage") + 1);
+			expect(ids.indexOf("b:two")).toBe(ids.indexOf("a:one") + 1);
+			expect(ids.indexOf("tools")).toBe(ids.indexOf("b:two") + 1);
+		});
+
+		it("places a contribution at the end when its anchor is unavailable", () => {
+			const saved: SidebarPanelLayout = [{ id: "agent", visible: true }];
+			const effective = resolveEffectiveSidebarPanelLayout(saved, [panel("vendor:tail", "workspace")]);
+			expect(effective[effective.length - 1]?.id).toBe("vendor:tail");
+		});
+
+		it("lets saved hidden and reordered entries override defaults", () => {
+			const saved: SidebarPanelLayout = [
+				{ id: "agent", visible: true },
+				{ id: "usage", visible: true },
+				{ id: "vendor:tail", visible: false },
+			];
+			const effective = resolveEffectiveSidebarPanelLayout(saved, [panel("vendor:tail", "usage")]);
+			expect(effective).toEqual(saved);
+		});
+
+		it("leaves non-defaulting available panels out of the effective layout", () => {
+			const saved = DEFAULT_CONFIG.sidebarPanelLayout;
+			const effective = resolveEffectiveSidebarPanelLayout(saved, [panel("vendor:plain")]);
+			expect(effective.find((entry) => entry.id === "vendor:plain")).toBeUndefined();
+		});
+	});
+
+	describe("sidebar panel identity bounds", () => {
+		it("bounds IDs and source names at direct, event, and publisher seams", () => {
+			const registry = createSidebarPanelRegistry();
+			const longId = `vendor:${"x".repeat(SIDEBAR_PANEL_MAX_ID_CHARS)}` as `vendor:${string}`;
+			const longSource = "s".repeat(SIDEBAR_PANEL_MAX_SOURCE_CHARS + 1);
+			const safePanel = { id: "vendor:safe" as const, title: "Safe", rows: [] };
+
+			expect(isSidebarPanelId(longId)).toBe(false);
+			expect(registry.register({ ...safePanel, id: longId })).toBe(false);
+			expect(registry.unregister(longId, "vendor")).toBe(false);
+			expect(registry.register(safePanel, longSource)).toBe(false);
+			expect(registry.unregister(safePanel.id, longSource)).toBe(false);
+			registry.handleEvent({
+				version: 1,
+				type: "register",
+				source: "vendor",
+				revision: 1,
+				panel: { ...safePanel, id: longId },
+			});
+			registry.handleEvent({
+				version: 1,
+				type: "register",
+				source: longSource,
+				revision: 1,
+				panel: safePanel,
+			});
+			expect(registry.getAvailable()).toEqual([]);
+
+			const emitted: unknown[] = [];
+			const events = {
+				on: () => () => undefined,
+				emit: (_channel: string, data: unknown) => emitted.push(data),
+			};
+			const invalidIdPublisher = registerSidebarPanel({ events }, { ...safePanel, id: longId });
+			const invalidSourcePublisher = registerSidebarPanel({ events }, safePanel, { source: longSource });
+			expect(emitted).toEqual([]);
+			invalidIdPublisher.update(safePanel);
+			invalidSourcePublisher.update(safePanel);
+			invalidIdPublisher.dispose();
+			invalidSourcePublisher.dispose();
+			expect(emitted).toEqual([]);
+			registry.dispose();
+		});
 	});
 
 	it("caps new panels while allowing updates and unregisters to free capacity", () => {

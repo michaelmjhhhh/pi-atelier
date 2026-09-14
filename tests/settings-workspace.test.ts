@@ -119,6 +119,33 @@ describe("Display Settings Workspace", () => {
 		]);
 	});
 
+	it("lists a defaults-inserted panel as shown and persists an explicit hidden entry on save", async () => {
+		const configuredLayout = DEFAULT_CONFIG.sidebarPanelLayout;
+		const renderConfig = { ...DEFAULT_CONFIG, sidebarPanelLayout: configuredLayout };
+		const h = harness({}, renderConfig, () => [
+			...configuredLayout.map((entry) => ({
+				id: entry.id,
+				title: entry.id,
+				available: entry.id !== "tools",
+				visible: entry.visible,
+			})),
+			// Unconfigured defaults-inserted panel: effective entry is visible.
+			{ id: "ollama-cloud:usage" as const, title: "Ollama Cloud", available: true, visible: true },
+		]);
+		const rendered = text(h.component);
+		expect(rendered).toContain("ollama-cloud:usage");
+
+		// Two display rows, nine segments, and three actions precede the layout;
+		// walk to the defaults-inserted row (last sidebar entry), hide it, save.
+		const sidebarRowCount = configuredLayout.length + 1;
+		for (let index = 0; index < 14 + sidebarRowCount - 1; index += 1) h.component.handleInput("\u001b[B");
+		h.component.handleInput(" ");
+		h.component.handleInput("s");
+		await vi.waitFor(() => expect(h.persist).toHaveBeenCalled());
+		const savedLayout = h.persist.mock.calls[0]?.[0].sidebarPanelLayout ?? [];
+		expect(savedLayout.at(-1)).toEqual({ id: "ollama-cloud:usage", visible: false });
+	});
+
 	it("defensively sanitizes contributed titles before Settings interpolation", () => {
 		const h = harness({}, DEFAULT_CONFIG, () =>
 			DEFAULT_CONFIG.sidebarPanelLayout.map((entry) => ({

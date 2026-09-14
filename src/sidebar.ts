@@ -20,6 +20,7 @@ import {
 	SIDEBAR_PANEL_MAX_TITLE_CHARS,
 	type SidebarPanelData,
 	type SidebarPanelRole,
+	resolveEffectiveSidebarPanelLayout,
 	sanitizeSidebarPanelText,
 } from "./sidebar-panels.js";
 import { createSplitPaneController, type SplitPaneController } from "./split-pane.js";
@@ -49,6 +50,7 @@ export {
 	BUILTIN_SIDEBAR_PANEL_IDS,
 	createSidebarPanelRegistry,
 	DEFAULT_SIDEBAR_PANEL_LAYOUT,
+	resolveEffectiveSidebarPanelLayout,
 	isSidebarPanelContributionId,
 	isSidebarPanelId,
 	isSidebarPanelRequestId,
@@ -56,6 +58,7 @@ export {
 	isSidebarPanelTextWithinRawLimit,
 	registerSidebarPanel,
 	SIDEBAR_PANEL_EVENT_CHANNEL,
+	SIDEBAR_PANEL_DEFAULTS_CAPABILITY,
 	SIDEBAR_PANEL_MAX_ID_CHARS,
 	SIDEBAR_PANEL_MAX_PANELS,
 	SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS,
@@ -1017,9 +1020,12 @@ export function renderSidebarLines(
 
 	// Keep panel content grouped while making the user-owned order the only
 	// source of top-to-bottom composition. Contributed panels are available only
-	// when a current registry snapshot exists; their saved entries remain in the
-	// layout and are therefore still visible to Settings as unavailable.
-	const contributed = new Map((snapshot.sidebarPanels ?? []).map((panel) => [panel.id, panel]));
+	// when a current registry snapshot exists; capability-negotiated defaults
+	// fill unconfigured panels into the effective layout, while saved entries
+	// remain the sole authority over explicit order and visibility.
+	const availablePanels = snapshot.sidebarPanels ?? [];
+	const contributed = new Map(availablePanels.map((panel) => [panel.id, panel]));
+	const effectiveLayout = resolveEffectiveSidebarPanelLayout(config.sidebarPanelLayout, availablePanels);
 	const grouped = new Map<string, SidebarGroup[]>();
 	for (const group of groups) {
 		const id = group.panelId;
@@ -1030,7 +1036,7 @@ export function renderSidebarLines(
 	}
 	const ordered: SidebarGroup[] = groups.filter((group) => !group.panel);
 	let availableVisible = false;
-	for (const entry of config.sidebarPanelLayout) {
+	for (const entry of effectiveLayout) {
 		if (!entry.visible) continue;
 		const builtin = BUILTIN_SIDEBAR_PANEL_IDS.includes(
 			entry.id as (typeof BUILTIN_SIDEBAR_PANEL_IDS)[number],

@@ -64,6 +64,12 @@ In Pi fullscreen TUI mode, the sidebar is rendered as a separate split-layout ch
 
 The TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension.
 
+## Extension contributions
+
+Other extensions can publish structured panels through Pi's event bus on the `pi-atelier:sidebar-panels` channel. Panels are namespaced (`vendor:id`), sanitized (ANSI and control characters are stripped, titles and rows are bounded), and theme-aware via semantic row roles.
+
+Discovery events advertise host capabilities; a defaults-capable host advertises `panel-defaults-v1`. A contribution with `defaults: { "visible": true, "after": "usage" }` appears beside the built-in panels immediately after the Usage panel the first time it registers — no manual Settings step and no configuration rewrite. Explicit entries in Settings always override a contribution's defaults.
+
 Status rail presets:
 
 - **editorial**: default layout

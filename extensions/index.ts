@@ -32,6 +32,7 @@ import {
 	type SidebarSnapshot,
 } from "../src/sidebar.js";
 import {
+	resolveEffectiveSidebarPanelLayout,
 	BUILTIN_SIDEBAR_PANEL_IDS,
 	createSidebarPanelRegistry,
 	isSidebarPanelContributionId,
@@ -429,11 +430,15 @@ export default function atelierExtension(
 
 	function getSidebarPanelSettings(targetSession: ActiveSession): readonly SidebarPanelSetting[] {
 		const configured = targetSession.runtime.getSidebarPanelLayout();
-		const available = new Map(targetSession.panelRegistry.getAvailable().map((panel) => [panel.id, panel]));
+		const available = targetSession.panelRegistry.getAvailable();
+		const effective = resolveEffectiveSidebarPanelLayout(configured, available);
+		const effectiveVisible = new Map(effective.map((entry) => [entry.id, entry.visible] as const));
 		const configuredIds = new Set(configured.map((entry) => entry.id));
 		return [
 			...configured.map((entry) => {
-				const contributed = isSidebarPanelContributionId(entry.id) ? available.get(entry.id) : undefined;
+				const contributed = isSidebarPanelContributionId(entry.id)
+					? available.find((panel) => panel.id === entry.id)
+					: undefined;
 				return {
 					id: entry.id,
 					title: contributed?.title ?? entry.id,
@@ -443,13 +448,13 @@ export default function atelierExtension(
 					visible: entry.visible,
 				};
 			}),
-			...Array.from(available.values())
+			...available
 				.filter((panel) => !configuredIds.has(panel.id))
 				.map((panel) => ({
 					id: panel.id,
 					title: panel.title,
 					available: true,
-					visible: false,
+					visible: effectiveVisible.get(panel.id) ?? false,
 				})),
 		];
 	}

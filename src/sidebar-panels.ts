@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type {
 	ConfigurationSource,
 	ContributedSidebarPanelId,
+	BuiltinSidebarPanelId,
 	SidebarPanelId,
 	SidebarPanelLayout,
 	SidebarPanelLayoutEntry,
@@ -10,6 +11,9 @@ import type {
 /** The event channel used by the public sidebar contribution protocol. */
 export const SIDEBAR_PANEL_EVENT_CHANNEL = "pi-atelier:sidebar-panels" as const;
 export const SIDEBAR_PANEL_PROTOCOL_VERSION = 1 as const;
+
+/** Capability advertised in discovery when the host supports contribution defaults. */
+export const SIDEBAR_PANEL_DEFAULTS_CAPABILITY = "panel-defaults-v1" as const;
 
 /** Maximum visible characters retained for a contributed panel title. */
 export const SIDEBAR_PANEL_MAX_TITLE_CHARS = 48;
@@ -91,12 +95,23 @@ export interface SidebarPanelRow {
 	role?: SidebarPanelRole;
 }
 
+/** Built-in panel an optional contribution default may anchor to. */
+export type SidebarPanelAnchorId = BuiltinSidebarPanelId;
+
+/** Capability-negotiated default visibility and placement for a contribution. */
+export interface SidebarPanelDefaults {
+	visible: boolean;
+	/** Built-in panel the contribution is inserted after when absent from saved layout. */
+	after?: SidebarPanelAnchorId;
+}
+
 /** Structured, presentation-only data accepted from another extension. */
 export interface SidebarPanelContribution {
 	id: ContributedSidebarPanelId;
 	title: string;
 	rows: readonly (string | SidebarPanelRow)[];
 	role?: SidebarPanelRole;
+	defaults?: SidebarPanelDefaults;
 }
 
 interface SanitizedSidebarPanelContribution {
@@ -104,6 +119,7 @@ interface SanitizedSidebarPanelContribution {
 	title: string;
 	rows: SidebarPanelRow[];
 	role?: SidebarPanelRole;
+	defaults?: SidebarPanelDefaults;
 }
 
 export interface SidebarPanelData extends Omit<SidebarPanelContribution, "rows"> {
@@ -137,6 +153,8 @@ export interface SidebarPanelDiscoveryEvent {
 	version: typeof SIDEBAR_PANEL_PROTOCOL_VERSION;
 	type: "discover";
 	requestId: string;
+	/** Host capabilities so contributors can adopt optional protocol features. */
+	capabilities?: readonly string[];
 }
 
 export type SidebarPanelEvent =
@@ -257,6 +275,42 @@ export function normalizeSidebarPanelLayout(
 	return normalized;
 }
 
+/**
+ * Composes the effective runtime layout: saved entries keep their explicit
+ * order and visibility, then capability-negotiated defaults fill in available
+ * contributed panels that have no saved entry. Defaults never rewrite the
+ * saved layout; each contribution appears at most once.
+ */
+export function resolveEffectiveSidebarPanelLayout(
+	savedLayout: readonly SidebarPanelLayoutEntry[],
+	availablePanels: readonly SidebarPanelData[],
+): SidebarPanelLayout {
+	const effective: SidebarPanelLayout = savedLayout.map((entry) => ({
+		id: entry.id,
+		visible: entry.visible,
+	}));
+	const configured = new Set(effective.map((entry) => entry.id));
+	const pending: Array<{ id: ContributedSidebarPanelId; after: SidebarPanelAnchorId | undefined }> = [];
+	for (const panel of availablePanels) {
+		if (configured.has(panel.id) || panel.defaults?.visible !== true) continue;
+		pending.push({ id: panel.id, after: panel.defaults.after });
+	}
+	pending.sort((first, second) => (first.id < second.id ? -1 : first.id > second.id ? 1 : 0));
+	// Insert in reverse so same-anchor siblings keep their sorted order: the
+	// last sorted item inserts first, and each earlier item lands directly
+	// after the anchor, ahead of everything inserted before it.
+	for (let index = pending.length - 1; index >= 0; index -= 1) {
+		const item = pending[index] as { id: ContributedSidebarPanelId; after: SidebarPanelAnchorId | undefined };
+		const anchorIndex = item.after ? effective.findIndex((entry) => entry.id === item.after) : -1;
+		if (anchorIndex >= 0) {
+			effective.splice(anchorIndex + 1, 0, { id: item.id, visible: true });
+		} else {
+			effective.push({ id: item.id, visible: true });
+		}
+	}
+	return effective;
+}
+
 const ANSI_ESCAPE =
 	/(?:\u001b\][^\u0007]*(?:\u0007|\u001b\\)|\u001b\[[0-?]*[ -/]*[@-~]|\u009b[0-?]*[ -/]*[@-~])/g;
 
@@ -323,12 +377,27 @@ function sanitizeContribution(value: unknown): SanitizedSidebarPanelContribution
 			...(isRecord(row) && isSidebarPanelRole(row.role) ? { role: row.role } : {}),
 		});
 	}
+	const defaults = sanitizeSidebarPanelDefaults(value.defaults);
 	return {
 		id: value.id,
 		title: sanitizeSidebarPanelText(value.title, SIDEBAR_PANEL_MAX_TITLE_CHARS),
 		rows,
 		...(isSidebarPanelRole(value.role) ? { role: value.role } : {}),
+		...(defaults ? { defaults } : {}),
 	};
+}
+
+/**
+ * Validate capability-negotiated default metadata. Returns undefined when the
+ * metadata is absent or malformed so an otherwise-valid panel stays
+ * registerable but hidden until the user enables it.
+ */
+export function sanitizeSidebarPanelDefaults(value: unknown): SidebarPanelDefaults | undefined {
+	if (!isRecord(value) || typeof value.visible !== "boolean") return undefined;
+	if (value.after === undefined) return { visible: value.visible };
+	if (typeof value.after !== "string") return undefined;
+	const anchor = BUILTIN_SIDEBAR_PANEL_IDS.find((id) => id === value.after);
+	return anchor ? { visible: value.visible, after: anchor } : undefined;
 }
 
 function sourceFor(id: string): string {
@@ -509,6 +578,7 @@ export function createSidebarPanelRegistry(options: SidebarPanelRegistryOptions 
 			version: SIDEBAR_PANEL_PROTOCOL_VERSION,
 			type: "discover",
 			requestId,
+			capabilities: [SIDEBAR_PANEL_DEFAULTS_CAPABILITY],
 		});
 	};
 	requestDiscovery();
