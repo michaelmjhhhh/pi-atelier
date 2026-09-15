@@ -210,7 +210,11 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 		{ kind: "action", id: "sidebar-default" },
 	];
 
-	/** Keep unavailable configured entries in place and append newly discovered panels. */
+	/**
+	 * Keep unavailable configured entries in place, and append newly discovered
+	 * panels with the effective visibility the host computed for them
+	 * (capability-negotiated defaults appear shown; plain panels stay hidden).
+	 */
 	const syncSidebarDraft = (): void => {
 		const available = options.getSidebarPanelLayout?.();
 		if (!available) return;
@@ -219,7 +223,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 		for (const setting of available) {
 			if (!isSidebarPanelId(setting.id) || configuredIds.has(setting.id)) continue;
 			configuredIds.add(setting.id);
-			sidebarDraft.push({ id: setting.id, visible: false });
+			sidebarDraft.push({ id: setting.id, visible: setting.visible });
 		}
 		if (focusedRow) {
 			const nextFocus = buildRows().findIndex(
