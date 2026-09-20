@@ -1,7 +1,13 @@
 import { homedir } from "node:os";
 import { basename } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { type Component, type OverlayHandle, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+	type Component,
+	type OverlayHandle,
+	truncateToWidth,
+	type TUI,
+	visibleWidth,
+} from "@earendil-works/pi-tui";
 import type { ThemeLike } from "./footer.js";
 import { aggregateMetrics, formatTokens } from "./metrics.js";
 import { type AtelierPalette, createPalette, type PaletteRole } from "./palette.js";
@@ -1131,6 +1137,7 @@ export function createSidebarComponent(options: SidebarComponentOptions): Compon
 }
 
 export interface SidebarController {
+	attach(tui: TUI): boolean;
 	show(): void;
 	hide(): void;
 	toggle(): void;
@@ -1284,6 +1291,9 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		animationTimer.unref?.();
 	};
 
+	const attach = (tui: TUI, requestInitialRender = false): boolean =>
+		safely(() => split.attach(tui, requestInitialRender));
+
 	const clearOverlayCallbacks = () => {
 		closeOverlay = undefined;
 		requestOverlayRender = undefined;
@@ -1330,7 +1340,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 						closed = true;
 						done(undefined);
 					};
-					if (!safely(() => split.attach(tui))) {
+					if (!attach(tui, true)) {
 						enabled = false;
 						generation += 1;
 						stopAnimation();
@@ -1392,6 +1402,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	};
 
 	return {
+		attach: (tui) => attach(tui),
 		show,
 		hide,
 		toggle() {

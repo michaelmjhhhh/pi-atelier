@@ -538,7 +538,12 @@ export default function atelierExtension(
 				if (getCurrentSession()) tui.requestRender();
 			};
 			const current = getCurrentSession();
-			if (current) current.requestFooterRender = footerRequestRender;
+			if (current) {
+				if (tui.terminal && typeof tui.render === "function" && typeof tui.showOverlay === "function") {
+					current.sidebar.attach(tui);
+				}
+				current.requestFooterRender = footerRequestRender;
+			}
 			const component = createFooterComponent({
 				getState: (): FooterState => {
 					// A footer outliving its `setFooter(undefined)` reports detached inert state.

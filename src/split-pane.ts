@@ -11,6 +11,7 @@ import {
 
 const ENABLE_MOUSE = "\u001b[?1002h\u001b[?1006h";
 const DISABLE_MOUSE = "\u001b[?1006l\u001b[?1002l";
+const END_SYNCHRONIZED_OUTPUT = "\u001b[?2026l";
 const SGR_MOUSE = /^\u001b\[<(\d+);(\d+);(\d+)([Mm])$/;
 const PI_084_REGULAR_RENDER_ADAPTER = Symbol("pi-atelier.regular-render-adapter");
 const PI_084_FULLSCREEN_LAYOUT_ADAPTER = Symbol("pi-atelier.fullscreen-layout-adapter");
@@ -95,7 +96,7 @@ export interface SplitPaneControllerOptions {
 }
 
 export interface SplitPaneController {
-	attach(tui: TUI): void;
+	attach(tui: TUI, requestInitialRender?: boolean): void;
 	show(): void;
 	hide(): void;
 	setSidebarWidth(width: number): void;
@@ -359,11 +360,11 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		const height = Math.max(0, tui.terminal.rows);
 		const column = tui.terminal.columns - width + 1;
 		const lines = sidebarComponent.render(width).slice(0, height);
-		let output = "\u001b7\u001b[?2026h";
+		let output = "\u001b7";
 		for (let row = 0; row < height; row++) {
 			output += `\u001b[${row + 1};${column}H${padLine(lines[row] ?? "", width)}\u001b[0m\u001b]8;;\u0007`;
 		}
-		return `${output}\u001b[?2026l\u001b8`;
+		return `${output}\u001b8`;
 	};
 
 	const syncFullscreenPaintAdapter = () => {
@@ -375,9 +376,30 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		if (!baseDoRender) return;
 		adaptedTui[PI_084_FULLSCREEN_PAINT_ADAPTER] = { owner: adapterOwner, baseDoRender };
 		adaptedTui.doRender = () => {
-			Reflect.apply(baseDoRender, tui, []);
-			const sidebar = renderFullscreenSidebar();
-			if (sidebar) tui?.terminal.write(sidebar);
+			if (!tui) return;
+			const terminal = tui.terminal;
+			const baseWrite = terminal.write;
+			let painted = false;
+			terminal.write = (data: string) => {
+				if (!painted) {
+					const sidebar = renderFullscreenSidebar();
+					const boundary = sidebar ? data.lastIndexOf(END_SYNCHRONIZED_OUTPUT) : -1;
+					if (boundary >= 0) {
+						data = `${data.slice(0, boundary)}${sidebar}${data.slice(boundary)}`;
+						painted = true;
+					}
+				}
+				Reflect.apply(baseWrite, terminal, [data]);
+			};
+			try {
+				Reflect.apply(baseDoRender, tui, []);
+			} finally {
+				terminal.write = baseWrite;
+			}
+			if (!painted) {
+				const sidebar = renderFullscreenSidebar();
+				if (sidebar) Reflect.apply(baseWrite, terminal, [sidebar]);
+			}
 		};
 	};
 
@@ -585,7 +607,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		sidebarWidth = clamp(sidebarWidth, minimumSidebar, Math.max(minimumSidebar, effectiveMax));
 	};
 
-	const attach = (nextTui: TUI) => {
+	const attach = (nextTui: TUI, requestInitialRender = true) => {
 		if (disposed) throw new Error("Cannot attach a disposed split pane");
 		if (tui === nextTui) return;
 		if (tui) throw new Error("Split pane is already attached to another TUI");
@@ -595,7 +617,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		syncRegularRenderAdapter();
 		syncFullscreenLayoutAdapter();
 		syncOverlayAdapter();
-		requestRender();
+		if (requestInitialRender) requestRender();
 	};
 
 	const handleResizeInput = (data: string): { consume?: boolean; data?: string } | undefined => {
