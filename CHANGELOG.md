@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Prevent inline terminal images from overpainting the Sidebar and Control Center by composing regular-mode Sidebar rows with image placements and temporarily using image fallbacks where Pi's compositor cannot safely layer TUI surfaces.
+
 ## 0.10.1 — 2026-09-04
 
 - Remove unused internal formatters, configuration helpers, preview hooks, and legacy menu interfaces without changing the active UI or persisted configuration formats.
