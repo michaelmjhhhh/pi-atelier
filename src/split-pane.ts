@@ -5,6 +5,7 @@ import {
 	isViewportTUI,
 	matchesKey,
 	setCapabilities,
+	sliceByColumn,
 	truncateToWidth,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
@@ -35,6 +36,7 @@ interface FullscreenLayoutAdapterState {
 interface FullscreenPaintAdapterState {
 	owner: object;
 	baseDoRender: () => void;
+	basePrepareKittyScreen?: (screen: string[]) => unknown;
 }
 
 interface OverlayAdapterState {
@@ -45,10 +47,18 @@ interface OverlayAdapterState {
 
 interface TrackedOverlay {
 	component: Component;
+	options: OverlayOptions | undefined;
 	sidebar: boolean;
 	blocking: boolean;
 	hidden: boolean;
 	removed: boolean;
+}
+
+interface ScreenRect {
+	row: number;
+	col: number;
+	width: number;
+	height: number;
 }
 
 type AdaptedTui = TUI & {
@@ -56,8 +66,16 @@ type AdaptedTui = TUI & {
 	[PI_084_FULLSCREEN_LAYOUT_ADAPTER]: FullscreenLayoutAdapterState | undefined;
 	[PI_084_FULLSCREEN_PAINT_ADAPTER]: FullscreenPaintAdapterState | undefined;
 	[PI_084_OVERLAY_ADAPTER]: OverlayAdapterState | undefined;
+	currentLayout?: { lines: string[] };
 	doRender(): void;
 	layoutRoot?: Component;
+	prepareKittyScreen?(screen: string[]): unknown;
+	resolveOverlayLayout(
+		options: OverlayOptions | undefined,
+		overlayHeight: number,
+		termWidth: number,
+		termHeight: number,
+	): { width: number; row: number; col: number; maxHeight: number | undefined };
 	setLayoutRoot(component: Component | undefined): void;
 };
 
@@ -130,6 +148,35 @@ function isInlineImageLine(line: string): boolean {
 function padLine(line: string, width: number): string {
 	const truncated = truncateToWidth(line, width, "");
 	return `${truncated}${" ".repeat(Math.max(0, width - visibleWidth(truncated)))}`;
+}
+
+function kittyImageRect(line: string, row: number): ScreenRect | undefined {
+	const match = /\u001b_G([^;]*);/.exec(line);
+	if (!match) return undefined;
+	const controls = match[1] ?? "";
+	const columns = /(?:^|,)c=(\d+)(?:,|$)/.exec(controls)?.[1];
+	const rows = /(?:^|,)r=(\d+)(?:,|$)/.exec(controls)?.[1];
+	if (!columns || !rows) return undefined;
+	return {
+		row,
+		col: visibleWidth(line.slice(0, match.index)),
+		width: Number.parseInt(columns, 10),
+		height: Number.parseInt(rows, 10),
+	};
+}
+
+function isCroppedKittyImageLine(line: string): boolean {
+	const controls = /\u001b_G([^;]*);/.exec(line)?.[1];
+	return controls !== undefined && /(?:^|,)(?:y|h)=\d+(?:,|$)/.test(controls);
+}
+
+function intersects(first: ScreenRect, second: ScreenRect): boolean {
+	return (
+		first.col < second.col + second.width &&
+		first.col + first.width > second.col &&
+		first.row < second.row + second.height &&
+		first.row + first.height > second.row
+	);
 }
 
 function composeRegularSidebar(
@@ -209,6 +256,18 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		return undefined;
 	};
 
+	const findPrototypePrepareKittyScreen = (nextTui: TUI): ((screen: string[]) => unknown) | undefined => {
+		let prototype = Object.getPrototypeOf(nextTui) as object | null;
+		while (prototype) {
+			const descriptor = Object.getOwnPropertyDescriptor(prototype, "prepareKittyScreen");
+			if (typeof descriptor?.value === "function") {
+				return descriptor.value as (screen: string[]) => unknown;
+			}
+			prototype = Object.getPrototypeOf(prototype) as object | null;
+		}
+		return undefined;
+	};
+
 	const findPrototypeOverlayMethods = (
 		nextTui: TUI,
 	): { showOverlay: TUI["showOverlay"]; hideOverlay: TUI["hideOverlay"] } | undefined => {
@@ -229,12 +288,46 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 
 	const isPiFullscreenRenderer = (): boolean => tui?.mode === "fullscreen" && isViewportTUI(tui);
 
-	// Pi treats terminal-image escape rows as indivisible, so modal overlays
-	// cannot safely paint over them. Use image fallbacks only while a modal is
-	// active; Sidebar rows have dedicated regular/fullscreen composition paths.
+	const getBlockingOverlayRects = (): ScreenRect[] => {
+		if (!tui || !isPiFullscreenRenderer()) return [];
+		const adaptedTui = tui as AdaptedTui;
+		const termWidth = Math.max(1, tui.terminal.columns);
+		const termHeight = Math.max(1, tui.terminal.rows);
+		const result: ScreenRect[] = [];
+		for (const entry of blockingOverlays) {
+			if (entry.hidden || entry.removed || entry.options?.visible?.(termWidth, termHeight) === false)
+				continue;
+			try {
+				const initial = adaptedTui.resolveOverlayLayout(entry.options, 0, termWidth, termHeight);
+				let height = entry.component.render(initial.width).length;
+				if (initial.maxHeight !== undefined) height = Math.min(height, initial.maxHeight);
+				const resolved = adaptedTui.resolveOverlayLayout(entry.options, height, termWidth, termHeight);
+				result.push({ row: resolved.row, col: resolved.col, width: resolved.width, height });
+			} catch {
+				// A retiring overlay may stop rendering between tracking and host removal.
+			}
+		}
+		return result;
+	};
+
+	const fullscreenImageIntersectsBlockingOverlay = (): boolean => {
+		if (!tui || !isPiFullscreenRenderer()) return false;
+		const lines = (tui as AdaptedTui).currentLayout?.lines ?? [];
+		const overlayRects = getBlockingOverlayRects();
+		for (let row = 0; row < lines.length; row++) {
+			const imageRect = kittyImageRect(lines[row] ?? "", row);
+			if (imageRect && overlayRects.some((overlayRect) => intersects(imageRect, overlayRect))) return true;
+		}
+		return false;
+	};
+
+	// Pi treats terminal-image escape rows as indivisible. Keep regular-mode
+	// modal fallbacks, but suppress a fullscreen image only when its placement
+	// actually intersects the modal rather than hiding unrelated images.
 	const syncImageSuppression = () => {
 		if (!tui) return;
-		const shouldSuppress = blockingOverlays.size > 0;
+		const shouldSuppress =
+			blockingOverlays.size > 0 && (!isPiFullscreenRenderer() || fullscreenImageIntersectsBlockingOverlay());
 		if (shouldSuppress && savedImageProtocol === undefined) {
 			const capabilities = getCapabilities();
 			savedImageProtocol = capabilities.images;
@@ -354,15 +447,33 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 
 	const renderFullscreenSidebar = (): string => {
 		if (!tui || !isPiFullscreenRenderer() || !enabled || !sidebarComponent || sidebarHidden) return "";
-		if (blockingOverlays.size > 0) return "";
 		const width = effectiveSidebarWidth(tui.terminal.columns);
 		if (width === 0) return "";
 		const height = Math.max(0, tui.terminal.rows);
-		const column = tui.terminal.columns - width + 1;
+		const sidebarStart = tui.terminal.columns - width;
 		const lines = sidebarComponent.render(width).slice(0, height);
+		const overlayRects = getBlockingOverlayRects();
 		let output = "\u001b7";
 		for (let row = 0; row < height; row++) {
-			output += `\u001b[${row + 1};${column}H${padLine(lines[row] ?? "", width)}\u001b[0m\u001b]8;;\u0007`;
+			let segments = [{ start: 0, end: width }];
+			for (const overlay of overlayRects) {
+				if (row < overlay.row || row >= overlay.row + overlay.height) continue;
+				const cutStart = clamp(overlay.col - sidebarStart, 0, width);
+				const cutEnd = clamp(overlay.col + overlay.width - sidebarStart, 0, width);
+				if (cutStart >= cutEnd) continue;
+				segments = segments.flatMap((segment) => {
+					if (cutEnd <= segment.start || cutStart >= segment.end) return [segment];
+					return [
+						...(cutStart > segment.start ? [{ start: segment.start, end: cutStart }] : []),
+						...(cutEnd < segment.end ? [{ start: cutEnd, end: segment.end }] : []),
+					];
+				});
+			}
+			for (const segment of segments) {
+				const segmentWidth = segment.end - segment.start;
+				const text = sliceByColumn(lines[row] ?? "", segment.start, segment.end, true);
+				output += `\u001b[${row + 1};${sidebarStart + segment.start + 1}H${padLine(text, segmentWidth)}\u001b[0m\u001b]8;;\u0007`;
+			}
 		}
 		return `${output}\u001b8`;
 	};
@@ -374,9 +485,21 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		if (currentState?.owner === adapterOwner || currentState) return;
 		const baseDoRender = findPrototypeDoRender(tui);
 		if (!baseDoRender) return;
-		adaptedTui[PI_084_FULLSCREEN_PAINT_ADAPTER] = { owner: adapterOwner, baseDoRender };
+		const basePrepareKittyScreen = findPrototypePrepareKittyScreen(tui);
+		adaptedTui[PI_084_FULLSCREEN_PAINT_ADAPTER] = {
+			owner: adapterOwner,
+			baseDoRender,
+			...(basePrepareKittyScreen ? { basePrepareKittyScreen } : {}),
+		};
+		if (basePrepareKittyScreen) {
+			adaptedTui.prepareKittyScreen = (screen) =>
+				Reflect.apply(basePrepareKittyScreen, tui, [
+					screen.map((line) => (isCroppedKittyImageLine(line) ? "" : line)),
+				]);
+		}
 		adaptedTui.doRender = () => {
 			if (!tui) return;
+			syncImageSuppression();
 			const terminal = tui.terminal;
 			const baseWrite = terminal.write;
 			let painted = false;
@@ -409,6 +532,9 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		const currentState = adaptedTui[PI_084_FULLSCREEN_PAINT_ADAPTER];
 		if (currentState?.owner !== adapterOwner) return;
 		adaptedTui.doRender = currentState.baseDoRender;
+		if (currentState.basePrepareKittyScreen) {
+			adaptedTui.prepareKittyScreen = currentState.basePrepareKittyScreen;
+		}
 		adaptedTui[PI_084_FULLSCREEN_PAINT_ADAPTER] = undefined;
 	};
 
@@ -445,6 +571,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			const sidebar = enabled && overlayOptions === overlayLayout;
 			const entry: TrackedOverlay = {
 				component,
+				options: overlayOptions,
 				sidebar,
 				blocking: !sidebar,
 				hidden: false,

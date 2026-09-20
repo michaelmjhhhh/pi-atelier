@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Prevent inline terminal images from overpainting the Sidebar and Control Center by composing regular-mode Sidebar rows with image placements, painting the fullscreen Sidebar inside Pi's synchronized frame, and temporarily using image fallbacks while modal overlays are visible—even before the Sidebar is opened.
+- Prevent inline terminal images from overpainting the Sidebar and Control Center by composing regular-mode Sidebar rows with image placements, painting and clipping the fullscreen Sidebar inside Pi's synchronized frame, omitting partially clipped Kitty remnants, and using image fallbacks only when a modal actually intersects an image.
 
 ## 0.10.1 — 2026-09-04
 
