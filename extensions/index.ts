@@ -17,6 +17,7 @@ import {
 import { loadConfig, saveUserConfigPatch } from "../src/config.js";
 import { AtelierEditor } from "../src/editor.js";
 import { createFooterComponent, type ThemeLike } from "../src/footer.js";
+import { createImageCompositorBinding } from "../src/image-compositor.js";
 import {
 	type DisplaySettingsRuntime,
 	type OverlayLifetime,
@@ -566,6 +567,20 @@ export default function atelierExtension(
 					}),
 				theme: theme as unknown as ThemeLike,
 			});
+			const imageCompositor = createImageCompositorBinding(tui);
+			const renderFooter = component.render;
+			component.render = (width) => {
+				imageCompositor.sync();
+				return renderFooter(width);
+			};
+			const disposeFooter = component.dispose;
+			component.dispose = () => {
+				try {
+					disposeFooter();
+				} finally {
+					imageCompositor.dispose();
+				}
+			};
 			const mounted = getCurrentSession();
 			if (mounted) mounted.footerDisposer = component.dispose;
 			else component.dispose();

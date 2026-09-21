@@ -1,5 +1,6 @@
 import type { Component, OverlayHandle, OverlayOptions, TUI } from "@earendil-works/pi-tui";
 import { HStack, isViewportTUI, matchesKey } from "@earendil-works/pi-tui";
+import { createImageCompositorBinding } from "./image-compositor.js";
 
 const ENABLE_MOUSE = "\u001b[?1002h\u001b[?1006h";
 const DISABLE_MOUSE = "\u001b[?1006l\u001b[?1002l";
@@ -122,6 +123,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 	let resizeMouseTerminal: TUI["terminal"] | undefined;
 	let fullscreenSidebarComponent: Component | undefined;
 	let fullscreenSidebarHidden = false;
+	let imageCompositor: ReturnType<typeof createImageCompositorBinding> | undefined;
 	let controller: SplitPaneController;
 	const adapterOwner = {};
 
@@ -380,6 +382,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 	};
 
 	const requestRender = () => {
+		imageCompositor?.sync();
 		syncRegularRenderAdapter();
 		syncFullscreenLayoutAdapter();
 		syncFullscreenOverlayAdapter();
@@ -418,6 +421,18 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		if (tui === nextTui) return;
 		if (tui) throw new Error("Split pane is already attached to another TUI");
 		tui = nextTui;
+		imageCompositor = createImageCompositorBinding(nextTui, (width) => {
+			if (!isPiFullscreenRenderer() || fullscreenSidebarHidden || !fullscreenSidebarComponent) {
+				return undefined;
+			}
+			const sidebar = effectiveSidebarWidth(width);
+			if (sidebar === 0) return undefined;
+			return {
+				column: width - sidebar,
+				width: sidebar,
+				lines: fullscreenSidebarComponent.render(sidebar),
+			};
+		});
 		reconcileResizeWidth(nextTui.terminal.columns);
 		syncOverlayWidth(nextTui.terminal.columns);
 		syncRegularRenderAdapter();
@@ -555,6 +570,8 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			restoreRegularRenderAdapter();
 			restoreFullscreenOverlayAdapter();
 			restoreFullscreenLayoutAdapter();
+			imageCompositor?.dispose();
+			imageCompositor = undefined;
 			tui?.requestRender();
 			tui = undefined;
 		},
