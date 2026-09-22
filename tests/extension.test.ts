@@ -470,35 +470,22 @@ describe("extension registration", () => {
 		expect(renderOverlayText(h, 1)).toContain("Distinct UI replacement");
 	});
 
-	it("closes a session-owned Control Center overlay during replacement", async () => {
+	it.each([
+		["Control Center", ""],
+		["Display Settings", "display"],
+	])("closes a session-owned %s overlay during replacement", async (_label, args) => {
 		const h = harness("tui", "linux", true);
 		await start(h);
 
-		const opening = command(h, "");
+		const opening = command(h, args);
 		await vi.waitFor(() => expect(h.overlays).toHaveLength(2));
-		const controlCenter = h.overlays[1]!;
+		const overlay = h.overlays[1]!;
 
 		await start(h, replacementContext(h.ctx, "Replacement session"));
 		await opening;
 
-		expect(controlCenter.done).toHaveBeenCalledOnce();
-		expect(controlCenter.closed).toBe(true);
-		expect(renderOverlayText(h, 2)).toContain("Replacement session");
-	});
-
-	it("closes a session-owned Display Settings overlay during replacement", async () => {
-		const h = harness("tui", "linux", true);
-		await start(h);
-
-		const opening = command(h, "display");
-		await vi.waitFor(() => expect(h.overlays).toHaveLength(2));
-		const displaySettings = h.overlays[1]!;
-
-		await start(h, replacementContext(h.ctx, "Replacement session"));
-		await opening;
-
-		expect(displaySettings.done).toHaveBeenCalledOnce();
-		expect(displaySettings.closed).toBe(true);
+		expect(overlay.done).toHaveBeenCalledOnce();
+		expect(overlay.closed).toBe(true);
 		expect(renderOverlayText(h, 2)).toContain("Replacement session");
 	});
 
@@ -510,42 +497,21 @@ describe("extension registration", () => {
 		await start(h);
 		const opening = command(h, args);
 		await vi.waitFor(() => expect(h.overlays).toHaveLength(2));
-		const displaySettings = h.overlays[1]!;
-		displaySettings.done.mockImplementation(() => {
+		const overlay = h.overlays[1]!;
+		overlay.done.mockImplementation(() => {
 			throw new Error("overlay close failed");
 		});
 
 		await start(h, replacementContext(h.ctx, "Replacement session"));
 
+		expect(overlay.closed).toBe(false);
+		expect(() => overlay.component.render(80)).not.toThrow();
+		expect(overlay.component.render(80)).toEqual([]);
+		overlay.requestRender.mockClear();
+		expect(() => overlay.component.handleInput(" ")).not.toThrow();
+		expect(overlay.requestRender).not.toHaveBeenCalled();
+		expect(renderOverlayText(h, 2)).toContain("Replacement session");
 		await expect(opening).resolves.toBeUndefined();
-		expect(displaySettings.closed).toBe(false);
-		expect(() => displaySettings.component.render(80)).not.toThrow();
-		expect(displaySettings.component.render(80)).toEqual([]);
-		displaySettings.requestRender.mockClear();
-		expect(() => displaySettings.component.handleInput(" ")).not.toThrow();
-		expect(displaySettings.requestRender).not.toHaveBeenCalled();
-		expect(renderOverlayText(h, 2)).toContain("Replacement session");
-	});
-
-	it("renders an inert Display workspace when retirement cannot remove its overlay", async () => {
-		const h = harness("tui", "linux", true);
-		await start(h);
-		const opening = command(h, "display");
-		await vi.waitFor(() => expect(h.overlays).toHaveLength(2));
-		const displaySettings = h.overlays[1]!;
-		displaySettings.done.mockImplementation(() => {
-			throw new Error("display overlay close failed");
-		});
-
-		await start(h, replacementContext(h.ctx, "Replacement session"));
-
-		expect(displaySettings.closed).toBe(false);
-		expect(() => displaySettings.component.render(80)).not.toThrow();
-		expect(displaySettings.component.render(80)).toEqual([]);
-		displaySettings.requestRender.mockClear();
-		expect(() => displaySettings.component.handleInput(" ")).not.toThrow();
-		expect(displaySettings.requestRender).not.toHaveBeenCalled();
-		expect(renderOverlayText(h, 2)).toContain("Replacement session");
 	});
 
 	it("renders an inert retired Control Center tool overlay", async () => {
@@ -2500,7 +2466,13 @@ describe("sidebar todos integration", () => {
 		expect(sidebarText).not.toContain("Initial task");
 	});
 
-	it("clears cached todos when a valid empty list arrives", async () => {
+	it.each([
+		["a valid empty list arrives", { todos: [], nextId: 1 }],
+		[
+			"all task statuses are filtered out",
+			{ tasks: [{ id: 2, subject: "Deleted task", status: "deleted" }], nextId: 3 },
+		],
+	])("clears cached todos when %s", async (_label, details) => {
 		const h = harness();
 		h.ctx.sessionManager.getBranch.mockReturnValue([
 			todoBranchEntry({ todos: [{ id: 1, text: "Stale task", done: false }], nextId: 2 }),
@@ -2510,34 +2482,7 @@ describe("sidebar todos integration", () => {
 
 		const toolResultHandler = h.handlers.get("tool_result");
 		expect(toolResultHandler).toBeDefined();
-		const result = await toolResultHandler!({ toolName: "todo", details: { todos: [], nextId: 1 } }, h.ctx);
-		expect(result).toBeUndefined();
-
-		await command(h, "sidebar off");
-		await command(h, "sidebar on");
-		expect(h.overlays.at(-1)).toBeDefined();
-		const sidebarText = h.overlays.at(-1)!.component.render(44).join("\n");
-		expect(sidebarText).not.toContain("Stale task");
-		expect(sidebarText).not.toContain("TODOS");
-	});
-
-	it("clears cached todos when all task statuses are filtered out", async () => {
-		const h = harness();
-		h.ctx.sessionManager.getBranch.mockReturnValue([
-			todoBranchEntry({ todos: [{ id: 1, text: "Stale task", done: false }], nextId: 2 }),
-		]);
-		await start(h);
-		await command(h, "sidebar on");
-
-		const toolResultHandler = h.handlers.get("tool_result");
-		expect(toolResultHandler).toBeDefined();
-		const result = await toolResultHandler!(
-			{
-				toolName: "todo",
-				details: { tasks: [{ id: 2, subject: "Deleted task", status: "deleted" }], nextId: 3 },
-			},
-			h.ctx,
-		);
+		const result = await toolResultHandler!({ toolName: "todo", details }, h.ctx);
 		expect(result).toBeUndefined();
 
 		await command(h, "sidebar off");

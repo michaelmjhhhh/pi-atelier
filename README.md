@@ -133,7 +133,7 @@ git clone https://github.com/michaelmjhhhh/pi-atelier.git
 cd pi-atelier
 npm install
 npm run check
-npx --no-install pi -e .
+./node_modules/.bin/pi --no-session --no-extensions -e ./extensions/index.ts
 ```
 
 See [CONTRIBUTING.md](https://github.com/michaelmjhhhh/pi-atelier/blob/main/CONTRIBUTING.md).

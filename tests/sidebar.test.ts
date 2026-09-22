@@ -16,7 +16,6 @@ import {
 	SIDEBAR_PANEL_MAX_ID_CHARS,
 	SIDEBAR_PANEL_MAX_PANELS,
 	SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS,
-	SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS,
 	SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS,
 	SIDEBAR_PANEL_MAX_ROW_CHARS,
 	SIDEBAR_PANEL_MAX_ROWS,
@@ -1232,10 +1231,13 @@ describe("sidebar snapshot and layout", () => {
 			extensionStatuses: [],
 		});
 		const rows = contentRows(renderSidebarLines(missingSession, DEFAULT_CONFIG, theme, 44, 36, false));
-		const sessionIndex = rows.findIndex((row) => row.startsWith("SESSION "));
-		const usageIndex = rows.findIndex((row) => row.startsWith("USAGE "));
-		expect(rows.slice(sessionIndex + 1, usageIndex)).not.toContain("—");
-		expect(rows.slice(sessionIndex + 1, usageIndex)).toContain("6 entries · ephemeral");
+		const workspaceIndex = rows.indexOf("WORKSPACE");
+		const usageIndex = rows.indexOf("USAGE");
+		expect(workspaceIndex).toBeGreaterThanOrEqual(0);
+		expect(usageIndex).toBeGreaterThan(workspaceIndex);
+		const workspaceRows = rows.slice(workspaceIndex + 1, usageIndex);
+		expect(workspaceRows).not.toContain("—");
+		expect(workspaceRows).toContain("6 entries · ephemeral");
 	});
 
 	it("does not render the session file path", () => {

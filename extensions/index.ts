@@ -199,11 +199,9 @@ export default function atelierExtension(
 
 	interface OldTodoDetails {
 		todos: TodoItem[];
-		nextId: number;
 	}
 	interface NewTaskDetails {
 		tasks: RpivTask[];
-		nextId: number;
 	}
 
 	function isOldTodoDetails(details: unknown): details is OldTodoDetails {

@@ -1,4 +1,3 @@
-import type { TUI } from "@earendil-works/pi-tui";
 import { ScrollView, TuiAltScreen } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { createSidebarController } from "../src/sidebar.js";

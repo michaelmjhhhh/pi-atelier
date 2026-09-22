@@ -1,82 +1,72 @@
 # Contributing to Pi Atelier
 
-Thanks for helping improve Pi Atelier. It is an interactive Pi TUI extension, so contributions should preserve a focused user experience and include evidence that behavior works at runtime.
+## Scope and setup
 
-## Before you start
+- Open an issue before non-trivial work: new behavior, configuration, public/runtime integration, or architecture changes. Typo/docs-only fixes and narrowly scoped, obvious bug fixes may go directly to a PR; ask in an issue when unsure.
+- Fork from current `main`, keep each PR to one coherent change, and rebase before review. Do not change `AGENTS.md`, `.agents/`, or `.claude/` unless the agreed issue explicitly requires it.
+- Node.js `22.19.0` or newer and Pi `0.84.0` or newer are required; UI validation needs an interactive terminal.
 
-- **Open an issue first** for non-trivial work, including new user-visible behavior, configuration, public or runtime integration, and architecture changes. Describe the problem and intended outcome before implementation. Typo-only or documentation-only fixes and narrowly scoped, obvious bug fixes may go directly to a pull request. If you are unsure whether the work is non-trivial, open an issue first.
-- Fork the repository and create your branch from the current `main`. Do not develop against an old release. Fetch the current `main` and rebase your branch as needed before requesting review.
-- Keep each pull request to one coherent change or user-facing behavior. Focused documentation, test, refactor, and maintenance changes are welcome; unrelated bundles should be split into separate pull requests.
-- Do not change maintainer or agent workflow files (`AGENTS.md`, `.agents/`, or `.claude/`) unless the agreed issue explicitly requires it.
-
-## Set up a checkout
-
-Pi Atelier requires Node.js `22.19.0` or newer, Pi `0.84.0` or newer, and an interactive TUI.
-
-```bash
+```sh
 npm install
-```
-
-Add the Pi Atelier repository as `upstream` once, then fetch and rebase the current `main` before validating your branch:
-
-```bash
-git remote add upstream https://github.com/michaelmjhhhh/pi-atelier.git # once
+git remote add upstream https://github.com/michaelmjhhhh/pi-atelier.git # once; skip if configured
 git fetch upstream main
 git rebase upstream/main
 ```
 
-If `upstream` already exists, skip the first command. Run the required checks before opening a pull request and again before updating it. `npm run check` is mandatory for every PR, including docs-only PRs, and is the complete repository gate:
+## Validation and pull requests
 
-```bash
+Run the complete gate before opening or updating any PR, including docs-only changes:
+
+```sh
 npm run check
 git diff --check upstream/main...HEAD
 ```
 
-The committed-PR comparison in `git diff --check upstream/main...HEAD` catches whitespace errors against updated `main`; run it after fetching and rebasing. `npm run check` runs strict TypeScript checking, Biome linting and format checking, Vitest, and package-content verification.
+`check` runs strict TypeScript checking, Biome format checking, Vitest, and package-content verification. The diff check covers committed changes against updated `main`; also run `git diff --check` for uncommitted edits.
 
-Use the extension in the TUI when validating behavior. After `npm install`, use the repository-local CLI for reproducibility:
+Preserve useful existing tests. For non-TUI behavior changes, add regression coverage through public/runtime seams where practical, or explain the gap. Relevant cases include persisted `false` values and defaults, malformed/error payloads, empty/hidden states, session transitions, and stale events.
 
-```bash
-npx --no-install pi -e .
+For TUI changes (sidebar, footer, menus, or overlays), **do not add unit or e2e tests**. Run existing checks and provide a manual TODO checklist, observed results, and a screenshot/recording or attached artifact. State terminal dimensions, OS, Pi version, and scenario. Start an ephemeral session with only the checkout extension to avoid conflicts with installed extensions:
+
+```sh
+./node_modules/.bin/pi --no-session --no-extensions -e ./extensions/index.ts
 ```
 
-A globally installed `pi -e .` is equivalent when it matches the supported Pi version.
+Use the PR template to record the problem/solution, issue link when required, validation, and any configuration, documentation, or compatibility impact. For user-visible changes, update `README.md` and `CHANGELOG.md` under `Unreleased` when applicable. Keep pending validation explicit. Conventional commit subjects are optional.
 
-## Tests and validation
+Maintainers own merging and releases. Contributors must not publish packages, change release versions, create tags/releases, or edit publishing credentials.
 
-Behavior changes need regression coverage through the public or runtime seams that users exercise, not only assertions against isolated pure helpers. Choose the cases that match the risk of your change. For configuration, event, or sidebar work, consider persisted `false` values and defaults, malformed or error payloads, empty states, session start/tree/lifecycle transitions, stale events, hidden state, and the active UI path.
+## Performance probes
 
-Changes to the TUI (including the sidebar, footer, menus, and overlays) require all of the following:
+These optional scripts compare the checkout with the original optimization baselines without changing the checkout. Run measurements sequentially, without concurrent checks. They transpile source into temporary directories using installed dependencies, exclude setup from timings, report samples/environment, and clean up afterward. Historical results remain in Git history; they do not establish current performance or completed manual QA.
 
-1. Automated tests for the changed behavior.
-2. Manual validation with `npx --no-install pi -e .` in an interactive terminal (a globally installed equivalent is acceptable when it matches the supported Pi version).
-3. A screenshot or recording URL, or an attached artifact, showing the relevant result.
-4. The evidence must state terminal dimensions and context (such as OS, Pi version, and scenario) and the observed result.
+**Sidebar height fitting (#59):** baseline `2cf8e77047a32d7a61c4dfffdac4e00c7834cc59`.
 
-For other changes, include useful automated regression tests where behavior or compatibility could regress. Explain any tests that are not practical to add.
+```sh
+node scripts/benchmark-sidebar.mjs --ref 2cf8e77047a32d7a61c4dfffdac4e00c7834cc59
+node scripts/benchmark-sidebar.mjs
+```
 
-## Documentation and changelog
+The probe measures isolated rendering at 40 columns × 40 rows with 0/8/64 contributed panels (24 rows each, short prefix plus 140 `x` characters), an inert snapshot, identity theme functions, color disabled, and a fixed clock. It uses three warmups and ten samples per case, opens no TUI, performs no TUI assertions or Git inspection, and does not measure whole-Pi CPU, memory, battery, or terminal latency. The 64-panel case is maximum stress, not typical use; historical built-in-only variation did not demonstrate a speedup. Original measurements used Node 22.22.2, macOS arm64, and Pi 0.84.0.
 
-For a user-visible change, update `README.md` and add an entry under the `Unreleased` section of `CHANGELOG.md` when applicable. Keep documentation aligned with the behavior actually shipped.
+**Workspace Pulse clean fast path (#61):** baseline `60377680972be1012b7568cf19d3b7f988603d61`.
 
-## Pull requests
+```sh
+node scripts/benchmark-workspace.mjs --ref 60377680972be1012b7568cf19d3b7f988603d61 > /tmp/workspace-before.json
+node scripts/benchmark-workspace.mjs > /tmp/workspace-after.json
+```
 
-Use the repository pull request template. A useful description states:
+The probe inspects the current checkout and temporary fixtures with 10,000 tracked files of 100 lines each: clean; 100 tracked files each appended with 100 lines; and restored tracked content plus 5,000 untracked files. It uses three warmups and 15 sequential samples with warm filesystem caches. JSON includes command timings/counts. It uses Node `execFile`, not Pi's exact process wrapper; wall time includes process launch and output parsing, not child CPU, battery, or memory. Historical runs used Node 22.22.2, macOS arm64, and Apple Git 2.50.1. Clean/untracked-only cases use two Git commands; tracked-dirty cases retain four and have no intended speedup. Outliers and a dirty checkout prevent claims about tail latency, systematic checkout regressions, or whole-session energy savings. Status and diff are sequential observations, not an atomic filesystem snapshot.
 
-- the problem and solution;
-- the linked issue, when an issue was required;
-- the scope and non-goals;
-- tests and commands run, including mandatory `npm run check` and `git diff --check upstream/main...HEAD`;
-- manual validation with terminal dimensions/context, observed result, and a screenshot or recording URL or attached artifact, when applicable;
-- configuration and documentation impact; and
-- known limitations or compatibility considerations.
+### Pending manual performance checks
 
-Keep the review surface small and explain meaningful trade-offs. Focused conventional-style commit subjects such as `feat:`, `fix:`, or `docs:` are recommended, but they are not a requirement.
+The original reports left these checks unfinished; prior PR acceptance and automated checks do not complete them. Use the isolated session above.
 
-## Releases and publishing
-
-Contributors must not publish packages, change release versions, create tags or releases, or edit npm publishing credentials. Maintainers own merging, releases, and publishing.
-
-## Questions
-
-If you are unsure whether a change needs an issue, tests, or documentation, open an issue or ask in the pull request. Early context is welcome, and small, focused contributions are appreciated.
+- [ ] In regular and fullscreen modes, shorten/expand terminal height; verify drop order and intact borders/spacers. At very small heights, verify required-content clipping and the minimum available-panel fallback.
+- [ ] Repeatedly drag the sidebar divider across the 39/40-column compact threshold; verify resize guidance, padding, and clipping.
+- [ ] Hide/reorder panels in Settings; verify order and no blank/orphaned frames.
+- [ ] With TODOs, workspace changes, and live tool activity, check running and settled layouts at small heights. Workspace identity and primary Pulse rows must retain their joint drop behavior.
+- [ ] If contributed panels are available, verify separate frames for equal titles with different IDs, Unicode/ANSI text, and enough panels to force dropping. Use only explicitly selected, nonconflicting fixture extensions in a separate run.
+- [ ] In a clean repository, verify Workspace Pulse is clean after a Turn; add an untracked file and verify its count with zero tracked line changes.
+- [ ] Edit/stage a tracked file, verify tracked/line counts, then revert and verify clean state returns.
+- [ ] Disable/re-enable Atelier and switch sessions; verify stale workspace data cannot overwrite the active session.
