@@ -170,6 +170,23 @@ export function createMenuActions(
 				);
 			}
 		},
+		async setNerdFont(enabled: boolean): Promise<void> {
+			if (!isActive()) return;
+			runtime.setConfig({ ...runtime.getConfig(), nerdFont: enabled });
+			try {
+				await savePatch(userConfigPath, { nerdFont: enabled });
+				if (!isActive()) return;
+				notify(`Font mode: ${enabled ? "Nerd Font" : "Plain text"}`, "info");
+			} catch (error) {
+				if (!isActive()) return;
+				notify(
+					`Font mode changed for this session but could not be saved: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+					"warning",
+				);
+			}
+		},
 		async renameSession(): Promise<void> {
 			if (!isActive()) return;
 			try {
@@ -458,6 +475,11 @@ export async function openAtelierControlCenter(
 							description: "Session overrides, preview, Undo, Revert, and Save",
 						},
 						{
+							value: "font-mode",
+							label: `Font mode: ${runtime.getConfig().nerdFont ? "Nerd Font" : "Plain text"}`,
+							description: "Global user preference; plain text needs no Nerd Font",
+						},
+						{
 							value: "sidebar-startup",
 							label: `Sidebar on startup: ${runtime.getConfig().showSidebarOnStartup ? "On" : "Off"}`,
 							description: "Global user preference",
@@ -506,6 +528,7 @@ export async function openAtelierControlCenter(
 						savePatch,
 						lifetime ? { lifetime } : {},
 					);
+				else if (choice === "font-mode") await actions.setNerdFont(!runtime.getConfig().nerdFont);
 				else if (choice === "sidebar-startup")
 					await actions.setShowSidebarOnStartup(!runtime.getConfig().showSidebarOnStartup);
 				else if (choice === "notifications")

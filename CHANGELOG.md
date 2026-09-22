@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Integrate an original prompt-style session strip into the composer's top border, with colored model/workspace/Git groups, Nerd Font icons, and context percentage/capacity. Keep measured usage and timing in a quiet row below, preserve editor scroll hints, and fall back to the complete footer when the composer is unavailable or too narrow. A Nerd Font must be enabled in the terminal.
+- Add a global **Font mode** setting with a Plain text option for terminals without Nerd Fonts. Replace footer icons with labels and ordinary separators across the composer, complete footer, and display preview; preserve the default Nerd Font mode. Set `"nerdFont": false` in user configuration to use Plain text on startup ([#67](https://github.com/michaelmjhhhh/pi-atelier/issues/67)).
+- Integrate an original prompt-style session strip into the composer's top border, with colored model/workspace/Git groups, optional Nerd Font icons, and context percentage/capacity. Keep measured usage and timing in a quiet row below, preserve editor scroll hints, and fall back to the complete footer when the composer is unavailable or too narrow.
 - Exclude Sidebar text from fullscreen screen selection and copy when a mouse drag starts outside the transcript, including in the editor or Sidebar. Preserve transcript scrolling and modal selection.
 
 ## 0.10.3 — 2026-09-22

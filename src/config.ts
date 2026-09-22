@@ -366,9 +366,13 @@ function applyNonDisplay(
 		"showSidebarToolNames",
 		"showSidebarOnStartup",
 		"completionNotifications",
+		"nerdFont",
 	] as const) {
 		if (typeof input[key] === "boolean") {
-			if (userLayer || (key !== "showSidebarOnStartup" && key !== "completionNotifications"))
+			if (
+				userLayer ||
+				(key !== "showSidebarOnStartup" && key !== "completionNotifications" && key !== "nerdFont")
+			)
 				config[key] = input[key];
 		} else if (key in input) warnings.push(`${key} must be boolean`);
 	}

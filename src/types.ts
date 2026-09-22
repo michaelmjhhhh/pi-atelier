@@ -102,6 +102,7 @@ export interface DisplayValue {
 }
 
 export interface AtelierConfig extends DisplaySettings {
+	nerdFont: boolean;
 	shortcut: string;
 	contextWarning: number;
 	contextDanger: number;
@@ -155,6 +156,7 @@ export interface FooterState extends AtelierState {
 
 export const DEFAULT_CONFIG: AtelierConfig = {
 	...applyDisplayTemplate("editorial"),
+	nerdFont: true,
 	shortcut: "alt+a",
 	contextWarning: 70,
 	contextDanger: 90,
