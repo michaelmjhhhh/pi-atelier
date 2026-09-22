@@ -21,7 +21,7 @@ A responsive status rail and activity sidebar for [Pi](https://pi.dev).
 - Pi 0.84.0 or newer
 - Node.js 22.19.0 or newer
 - Interactive TUI mode
-- A Nerd Font enabled in your terminal, such as JetBrainsMono Nerd Font Mono or FiraCode Nerd Font Mono
+- A [Nerd Font configured in your terminal](#terminal-font), such as JetBrainsMono Nerd Font Mono or FiraCode Nerd Font Mono
 
 ## Install
 
@@ -36,6 +36,18 @@ pi -e ./pi-atelier
 ```
 
 Pi packages run with your system permissions. Review third-party source before installation.
+
+### Terminal font
+
+The session strip and footer icons require a Nerd Font. macOS does not include Nerd Fonts by default. Install one with [Homebrew](https://formulae.brew.sh/cask/font-jetbrains-mono-nerd-font):
+
+```sh
+brew install --cask font-jetbrains-mono-nerd-font
+```
+
+Then select **JetBrainsMono Nerd Font Mono** in your terminal's font settings. Installing the font alone does not select it for the terminal. On other platforms, install a font from [Nerd Fonts downloads](https://www.nerdfonts.com/font-downloads) and select it in the same way.
+
+Atelier does not bundle or install fonts or change terminal settings. There is currently no plain-text icon fallback; unsupported glyphs may appear as boxes or missing symbols.
 
 ## Use
 
