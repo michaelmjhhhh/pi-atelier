@@ -236,9 +236,7 @@ describe("inspectWorkspacePulse", () => {
 		const exec = vi
 			.fn()
 			.mockResolvedValueOnce(result("true\n/repo \n"))
-			.mockResolvedValueOnce(result("# branch.oid abc\0# branch.head main\0"))
-			.mockResolvedValueOnce(result("tree-id\n"))
-			.mockResolvedValueOnce(result());
+			.mockResolvedValueOnce(result("# branch.oid abc\0# branch.head main\0"));
 
 		await expect(inspectWorkspacePulse({ exec, cwd: "/repo /packages/api" })).resolves.toEqual({
 			kind: "available",
@@ -256,6 +254,65 @@ describe("inspectWorkspacePulse", () => {
 			},
 		});
 	});
+
+	it.each([
+		["abc", "", 0],
+		["abc", "? new file.ts\0? nested/other.ts\0", 2],
+		["(initial)", "", 0],
+		["(initial)", "? first.ts\0", 1],
+	])("skips diff work with oid %s and untracked records %s", async (oid, records, untrackedFiles) => {
+		const exec = vi
+			.fn()
+			.mockResolvedValueOnce(result("true\n/repo\n"))
+			.mockResolvedValueOnce(result(`# branch.oid ${oid}\0# branch.head main\0${records}`));
+		await expect(inspectWorkspacePulse({ exec, cwd: "/repo" })).resolves.toMatchObject({
+			kind: "available",
+			branch: "main",
+			snapshot: {
+				trackedFiles: 0,
+				untrackedFiles,
+				linesAdded: 0,
+				linesRemoved: 0,
+				binaryFiles: 0,
+				conflicts: 0,
+				submodules: 0,
+			},
+		});
+		expect(exec).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not report a clean result when cancelled during status", async () => {
+		const controller = new AbortController();
+		const status = deferred<ReturnType<typeof result>>();
+		const exec = vi.fn().mockResolvedValueOnce(result("true\n/repo\n")).mockReturnValueOnce(status.promise);
+		const inspection = inspectWorkspacePulse({ exec, cwd: "/repo", signal: controller.signal });
+		await vi.waitFor(() => expect(exec).toHaveBeenCalledTimes(2));
+		controller.abort();
+		status.resolve(result("# branch.oid abc\0# branch.head main\0"));
+		await expect(inspection).resolves.toEqual({ kind: "unavailable" });
+		expect(exec).toHaveBeenCalledTimes(2);
+	});
+
+	it.each([
+		["1 M. N... 100644 100644 100644 aaa bbb staged.ts", 0, 0, "2\t1\tstaged.ts\0", 2],
+		["u UU N... 100644 100644 100644 100644 aaa bbb ccc conflict.ts", 1, 0, "0\t0\tconflict.ts\0", 0],
+		["1 .M S.M. 160000 160000 160000 aaa aaa modules/lib", 0, 1, "1\t1\tmodules/lib\0", 0],
+	])(
+		"retains diff inspection for a lone tracked record: %s",
+		async (record, conflicts, submodules, diff, linesAdded) => {
+			const exec = vi
+				.fn()
+				.mockResolvedValueOnce(result("true\n/repo\n"))
+				.mockResolvedValueOnce(result(`# branch.oid abc\0# branch.head main\0${record}\0`))
+				.mockResolvedValueOnce(result("tree-id\n"))
+				.mockResolvedValueOnce(result(diff));
+			await expect(inspectWorkspacePulse({ exec, cwd: "/repo" })).resolves.toMatchObject({
+				kind: "available",
+				snapshot: { trackedFiles: 1, conflicts, submodules, linesAdded },
+			});
+			expect(exec).toHaveBeenCalledTimes(4);
+		},
+	);
 
 	it("aggregates tracked, untracked, text, binary, submodule, rename, and conflict changes", async () => {
 		const status = [

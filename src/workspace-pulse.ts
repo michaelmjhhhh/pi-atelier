@@ -295,30 +295,35 @@ async function inspectWorkspacePulseUnchecked(
 		["-C", root, "status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"],
 		{ timeout: 2_000 },
 	);
-	if (status.code !== 0 || status.killed) return { kind: "unavailable" };
+	if (status.code !== 0 || status.killed || options.signal?.aborted) return { kind: "unavailable" };
 
 	const parsedStatus = parseStatus(status.stdout);
 	if (!parsedStatus.valid) return { kind: "unavailable" };
-	const head = await options.exec("git", ["-C", root, "rev-parse", "--verify", "HEAD^{tree}"], {
-		timeout: 2_000,
-	});
-	if (head.killed) return { kind: "unavailable" };
-	const baseline =
-		head.code === 0
-			? head.stdout.trim()
-			: parsedStatus.unborn
-				? "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-				: "";
-	if (!baseline) return { kind: "unavailable" };
+	let numstat = { linesAdded: 0, linesRemoved: 0, binaryFiles: 0 };
+	// Untracked files have no HEAD diff. Conflicts and changed submodules count as tracked.
+	if (parsedStatus.trackedFiles > 0) {
+		const head = await options.exec("git", ["-C", root, "rev-parse", "--verify", "HEAD^{tree}"], {
+			timeout: 2_000,
+		});
+		if (head.killed) return { kind: "unavailable" };
+		const baseline =
+			head.code === 0
+				? head.stdout.trim()
+				: parsedStatus.unborn
+					? "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+					: "";
+		if (!baseline) return { kind: "unavailable" };
 
-	const diff = await options.exec(
-		"git",
-		["-C", root, "diff", "--numstat", "-z", "--find-renames", baseline, "--"],
-		{ timeout: 2_000 },
-	);
-	if (diff.code !== 0 || diff.killed) return { kind: "unavailable" };
+		const diff = await options.exec(
+			"git",
+			["-C", root, "diff", "--numstat", "-z", "--find-renames", baseline, "--"],
+			{ timeout: 2_000 },
+		);
+		if (diff.code !== 0 || diff.killed) return { kind: "unavailable" };
 
-	const numstat = parseNumstat(diff.stdout, parsedStatus.submodulePaths);
+		numstat = parseNumstat(diff.stdout, parsedStatus.submodulePaths);
+	}
+
 	return {
 		kind: "available",
 		root,
