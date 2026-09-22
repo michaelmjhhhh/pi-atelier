@@ -150,6 +150,7 @@ export interface AtelierState {
 /** Footer render input: runtime state plus the live response metrics the runtime does not own. */
 export interface FooterState extends AtelierState {
 	performance?: ResponsePerformance;
+	workspaceLabel?: string;
 }
 
 export const DEFAULT_CONFIG: AtelierConfig = {

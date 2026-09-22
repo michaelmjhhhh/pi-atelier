@@ -14,6 +14,24 @@ export interface ThemeLike {
 const WORKING_DOT_FRAMES = ["...", "..", "."] as const;
 const WORKING_ANIMATION_INTERVAL_MS = 400;
 
+// Nerd Font glyphs, matching the icon vocabulary used by shell prompts.
+const FOOTER_ICONS = {
+	brand: "\ue795", // nf-dev-terminal
+	model: "\ueb08", // nf-cod-hubot
+	thinking: "\uf0eb", // nf-fa-lightbulb
+	git: "\uf418", // nf-oct-git_branch (Starship's Nerd Font preset)
+	workspace: "\uf07b", // nf-fa-folder
+	input: "\uf019", // nf-fa-download
+	output: "\uf093", // nf-fa-upload
+	cache: "\uf1c0", // nf-fa-database
+	performance: "\uf017", // nf-fa-clock
+	speed: "\uf0e7", // nf-fa-bolt
+	context: "\uf2db", // nf-fa-microchip
+	autoCompact: "\uf021", // nf-fa-refresh
+	menu: "\uf013", // nf-fa-gear
+	separator: "\ue0b1", // nf-pl-right_soft_divider
+} as const;
+
 type FooterZone = "left" | "right";
 type FooterItemId =
 	| "brand"
@@ -21,6 +39,7 @@ type FooterItemId =
 	| "activity"
 	| "model"
 	| "thinking"
+	| "workspace"
 	| "git"
 	| "input"
 	| "output"
@@ -39,18 +58,49 @@ interface FooterItem {
 	required: boolean;
 }
 
+type FooterSurface = "all" | "header" | "telemetry";
+const HEADER_ITEMS = new Set<FooterItemId>([
+	"brand",
+	"activity",
+	"model",
+	"thinking",
+	"workspace",
+	"git",
+	"status",
+	"context",
+]);
+
+// Related readings share a quiet space; separate concerns get a visible divider.
+const ITEM_GROUP: Record<FooterItemId, string> = {
+	brand: "brand",
+	status: "status",
+	activity: "activity",
+	model: "model",
+	thinking: "model",
+	workspace: "workspace",
+	git: "workspace",
+	input: "usage",
+	output: "usage",
+	cache: "usage",
+	cost: "usage",
+	performance: "performance",
+	context: "context",
+	menu: "menu",
+};
+
 const DROP = {
 	brand: 0,
 	status: 0,
-	git: 10,
+	git: 55,
+	workspace: 50,
 	thinking: 10,
 	cost: 20,
-	model: 30,
+	model: 60,
 	input: 40,
 	output: 40,
 	performance: 45,
 	cache: 50,
-	menu: 60,
+	menu: 0,
 	activity: Number.POSITIVE_INFINITY,
 	context: Number.POSITIVE_INFINITY,
 } as const;
@@ -119,6 +169,8 @@ function buildItems(
 	const items: FooterItem[] = [];
 	const itemIds = new Set<FooterItemId>();
 	const compactDensity = config.density === "compact";
+	const icon = (symbol: string, text: string, role: PaletteRole = "muted"): string =>
+		`${palette.paint(role, symbol)} ${text}`;
 	const add = (item: FooterItem): void => {
 		if (itemIds.has(item.id)) return;
 		itemIds.add(item.id);
@@ -129,7 +181,7 @@ function buildItems(
 		if (!entry.visible) continue;
 		const segment = entry.id;
 		if (segment === "brand") {
-			const brand = palette.paint("muted", "ATELIER");
+			const brand = icon(FOOTER_ICONS.brand, palette.paint("muted", "ATELIER"), "accent");
 			add({
 				id: "brand",
 				zone: "left",
@@ -156,19 +208,24 @@ function buildItems(
 		if (segment === "model") {
 			const model = state.modelId ? sanitize(state.modelId) : "";
 			if (model) {
-				const rendered = palette.paint("primary", model);
+				const rendered = icon(FOOTER_ICONS.model, palette.paint("accent", theme.bold(model)), "accent");
 				add({
 					id: "model",
 					zone: "left",
 					full: rendered,
-					compact: rendered,
+					compact: icon(
+						FOOTER_ICONS.model,
+						palette.paint("accent", theme.bold(truncateToWidth(model, 24, "…"))),
+						"accent",
+					),
 					dropRank: DROP.model,
 					required: false,
 				});
 			}
 			const thinking = state.thinkingLevel ? sanitize(state.thinkingLevel) : "";
 			if (thinking) {
-				const rendered = palette.paint("muted", thinking);
+				const role = thinking === "off" ? "dim" : "accent";
+				const rendered = icon(FOOTER_ICONS.thinking, palette.paint(role, thinking), role);
 				add({
 					id: "thinking",
 					zone: "left",
@@ -182,14 +239,37 @@ function buildItems(
 		}
 
 		if (segment === "git") {
+			const workspace = state.workspaceLabel ? sanitize(state.workspaceLabel) : "";
+			if (workspace) {
+				add({
+					id: "workspace",
+					zone: "left",
+					full: icon(FOOTER_ICONS.workspace, palette.paint("cache", workspace), "cache"),
+					compact: icon(
+						FOOTER_ICONS.workspace,
+						palette.paint("cache", truncateToWidth(workspace, 18, "…")),
+						"cache",
+					),
+					dropRank: DROP.workspace,
+					required: false,
+				});
+			}
 			const branch = state.branch ? sanitize(state.branch) : "";
 			if (branch) {
-				const rendered = `${palette.paint("primary", branch)}${state.dirty ? palette.paint("warning", "*") : ""}`;
+				const rendered = icon(
+					FOOTER_ICONS.git,
+					`${palette.paint("input", branch)}${state.dirty ? palette.paint("warning", "*") : ""}`,
+					"input",
+				);
 				add({
 					id: "git",
 					zone: "left",
 					full: rendered,
-					compact: rendered,
+					compact: icon(
+						FOOTER_ICONS.git,
+						`${palette.paint("input", truncateToWidth(branch, 18, "…"))}${state.dirty ? palette.paint("warning", "*") : ""}`,
+						"input",
+					),
 					dropRank: DROP.git,
 					required: false,
 				});
@@ -215,14 +295,9 @@ function buildItems(
 
 		if (segment === "metrics") {
 			const metrics = state.metrics;
-			const inputFull = metric("in", availableValue(metrics.usageAvailable, metrics.input), palette, "input");
-			const outputFull = metric(
-				"out",
-				availableValue(metrics.usageAvailable, metrics.output),
-				palette,
-				"output",
-			);
-			const cacheHit = metric("cache", percentValue(metrics.cacheHitPercent, 0), palette, "cache");
+			const input = availableValue(metrics.usageAvailable, metrics.input);
+			const output = availableValue(metrics.usageAvailable, metrics.output);
+			const cache = percentValue(metrics.cacheHitPercent, 0);
 			const cacheDetail = [
 				metric("read", availableValue(metrics.usageAvailable, metrics.cacheRead), palette, "cache"),
 				metrics.cacheWrite > 0
@@ -239,24 +314,36 @@ function buildItems(
 			add({
 				id: "input",
 				zone: "right",
-				full: inputFull,
-				compact: inputFull,
+				full: icon(
+					FOOTER_ICONS.input,
+					paintValue(input, "input", palette),
+					input.available ? "input" : "dim",
+				),
+				compact: icon(FOOTER_ICONS.input, paintValue(input, "input", palette)),
 				dropRank: DROP.input,
 				required: false,
 			});
 			add({
 				id: "output",
 				zone: "right",
-				full: outputFull,
-				compact: outputFull,
+				full: icon(
+					FOOTER_ICONS.output,
+					paintValue(output, "output", palette),
+					output.available ? "output" : "dim",
+				),
+				compact: icon(FOOTER_ICONS.output, paintValue(output, "output", palette)),
 				dropRank: DROP.output,
 				required: false,
 			});
 			add({
 				id: "cache",
 				zone: "right",
-				full: config.preset === "classic" ? cacheDetail : cacheHit,
-				compact: cacheHit,
+				full: icon(
+					FOOTER_ICONS.cache,
+					config.preset === "classic" ? cacheDetail : paintValue(cache, "cache", palette),
+					cache.available ? "cache" : "dim",
+				),
+				compact: icon(FOOTER_ICONS.cache, paintValue(cache, "cache", palette)),
 				dropRank: DROP.cache,
 				required: false,
 			});
@@ -266,15 +353,19 @@ function buildItems(
 
 		if (segment === "performance") {
 			const values = responsePerformanceValues(state.performance);
-			const rendered = [
-				metric("TTFT", values.ttft, palette, "output"),
-				metric("TPS", values.tps, palette, "output"),
-			].join(palette.paint("muted", " · "));
+			const compact = [
+				icon(FOOTER_ICONS.performance, paintValue(values.ttft, "output", palette)),
+				icon(
+					FOOTER_ICONS.speed,
+					paintValue(values.tps, "output", palette) +
+						(values.tps.available ? palette.paint("muted", "/s") : ""),
+				),
+			].join("  ");
 			add({
 				id: "performance",
 				zone: "right",
-				full: rendered,
-				compact: rendered,
+				full: compact,
+				compact,
 				dropRank: DROP.performance,
 				required: false,
 			});
@@ -284,10 +375,16 @@ function buildItems(
 		if (segment === "context") {
 			const metrics = state.metrics;
 			const role = contextRole(metrics, config);
-			const contextFull = `${metric("ctx", percentValue(metrics.contextPercent, 1), palette, role)}${
-				metrics.autoCompact === true ? palette.paint("muted", " (auto)") : ""
-			}`;
-			const contextCompact = metric("ctx", percentValue(metrics.contextPercent, 0), palette, role);
+			const contextCompact = icon(
+				FOOTER_ICONS.context,
+				paintValue(percentValue(metrics.contextPercent, 1), role, palette),
+				role,
+			);
+			const contextFull = `${contextCompact}${
+				Number.isFinite(metrics.contextWindow) && metrics.contextWindow > 0
+					? palette.paint("muted", ` / ${formatTokens(metrics.contextWindow)}`)
+					: ""
+			}${metrics.autoCompact === true ? ` ${palette.paint("muted", FOOTER_ICONS.autoCompact)}` : ""}`;
 			add({
 				id: "context",
 				zone: "right",
@@ -307,7 +404,7 @@ function buildItems(
 				add({
 					id: "menu",
 					zone: "right",
-					full: rendered,
+					full: icon(FOOTER_ICONS.menu, rendered, "menu"),
 					compact: rendered,
 					dropRank: DROP.menu,
 					required: false,
@@ -319,35 +416,56 @@ function buildItems(
 	return items;
 }
 
-function renderItems(items: FooterItem[], compactIds: Set<FooterItemId>, separator: string): string {
+function renderItems(items: FooterItem[], compactIds: Set<FooterItemId>, palette: AtelierPalette): string {
 	return items
-		.map((item) => (compactIds.has(item.id) ? item.compact : item.full))
-		.filter(Boolean)
-		.join(separator);
+		.map((item, index) => {
+			const text = compactIds.has(item.id) ? item.compact : item.full;
+			const previous = items[index - 1];
+			if (!previous) return text;
+			if (ITEM_GROUP[previous.id] !== ITEM_GROUP[item.id])
+				return `${palette.paint("dim", ` ${FOOTER_ICONS.separator} `)}${text}`;
+			return `${ITEM_GROUP[item.id] === "model" || ITEM_GROUP[item.id] === "workspace" ? palette.paint("dim", " · ") : "  "}${text}`;
+		})
+		.join("");
 }
 
-function compose(items: FooterItem[], width: number, leftSeparator: string): string {
+function compose(items: FooterItem[], width: number, palette: AtelierPalette, flow = false): string {
 	const active = [...items];
 	const compactIds = new Set<FooterItemId>();
 	const left = () =>
 		renderItems(
 			active.filter((item) => item.zone === "left"),
 			compactIds,
-			leftSeparator,
+			palette,
 		);
 	const right = () =>
 		renderItems(
 			active.filter((item) => item.zone === "right"),
 			compactIds,
-			"  ",
+			palette,
 		);
 	const measured = () => {
 		const leftText = left();
 		const rightText = right();
-		return visibleWidth(leftText) + visibleWidth(rightText) + (leftText && rightText ? 2 : 0);
+		return visibleWidth(leftText) + visibleWidth(rightText) + (leftText && rightText ? (flow ? 3 : 2) : 0);
 	};
 
 	const droppable = active.filter((item) => !item.required).sort((a, b) => a.dropRank - b.dropRank);
+	// Long contributed statuses must not force the rest of the rail into compact form.
+	for (const item of droppable.filter((candidate) => candidate.dropRank === 0)) {
+		if (measured() <= width) break;
+		const index = active.findIndex((candidate) => candidate.id === item.id);
+		if (index >= 0) active.splice(index, 1);
+	}
+
+	// Give up secondary detail first; retain the model and prompt icons.
+	if (measured() > width) compactIds.add("context");
+	if (measured() > width) {
+		for (const item of active) {
+			if (item.id !== "activity" && item.full !== item.compact) compactIds.add(item.id);
+		}
+	}
+
 	for (const item of droppable) {
 		if (measured() <= width) break;
 		const index = active.findIndex((candidate) => candidate.id === item.id);
@@ -361,6 +479,13 @@ function compose(items: FooterItem[], width: number, leftSeparator: string): str
 
 	const leftText = left();
 	const rightText = right();
+	if (flow) {
+		return truncateToWidth(
+			[leftText, rightText].filter(Boolean).join(palette.paint("dim", ` ${FOOTER_ICONS.separator} `)),
+			width,
+			"",
+		);
+	}
 	const gap = width - visibleWidth(leftText) - visibleWidth(rightText);
 	if (leftText && rightText && gap >= 2) return `${leftText}${" ".repeat(gap)}${rightText}`;
 	return truncateToWidth([leftText, rightText].filter(Boolean).join("  "), width, "");
@@ -373,14 +498,30 @@ export function renderFooterLine(
 	width: number,
 	colorEnabled = true,
 	workingDots = "...",
+	surface: FooterSurface = "all",
 ): string {
 	if (width <= 0) return "";
 	const palette = createPalette(theme, colorEnabled);
-	const line = compose(
-		buildItems(state, config, theme, colorEnabled, workingDots),
-		width,
-		palette.paint("dim", " · "),
-	);
+	let items = buildItems(state, config, theme, colorEnabled, workingDots);
+	if (surface === "header") items = items.filter((item) => HEADER_ITEMS.has(item.id));
+	if (surface === "telemetry") {
+		const metrics = state.metrics;
+		const available: Partial<Record<FooterItemId, boolean>> = {
+			input: metrics.usageAvailable && Number.isFinite(metrics.input),
+			output: metrics.usageAvailable && Number.isFinite(metrics.output),
+			cache:
+				Number.isFinite(metrics.cacheHitPercent) || (config.preset === "classic" && metrics.usageAvailable),
+			cost: metrics.costAvailable && Number.isFinite(metrics.cost),
+			performance: responsePerformanceValues(state.performance).ttft.available,
+		};
+		items = items
+			.filter((item) => !HEADER_ITEMS.has(item.id) && available[item.id] !== false)
+			.map((item) => ({ ...item, zone: item.id === "performance" || item.id === "menu" ? "right" : "left" }));
+	}
+	const line = compose(items, width, palette, surface === "header");
+	if (surface === "telemetry" && items.length > 0 && items.every((item) => item.zone === "right")) {
+		return `${" ".repeat(Math.max(0, width - visibleWidth(line)))}${line}`;
+	}
 	return truncateToWidth(line, width, "");
 }
 
@@ -393,7 +534,13 @@ export interface FooterComponentOptions {
 	theme: ThemeLike;
 }
 
-export function createFooterComponent(options: FooterComponentOptions): Component & { dispose(): void } {
+export interface AtelierFooterComponent extends Component {
+	renderHeader(width: number): string;
+	renderTelemetry(width: number): string[];
+	dispose(): void;
+}
+
+export function createFooterComponent(options: FooterComponentOptions): AtelierFooterComponent {
 	let disposed = false;
 	let frameIndex = 0;
 	let animationTimer: ReturnType<typeof setInterval> | undefined;
@@ -420,22 +567,33 @@ export function createFooterComponent(options: FooterComponentOptions): Componen
 		}, WORKING_ANIMATION_INTERVAL_MS);
 	};
 
+	const renderSurface = (width: number, surface: FooterSurface): string => {
+		const state = options.getState();
+		const config = options.getConfig();
+		const colorEnabled = options.colorEnabled ?? true;
+		const workingDots = WORKING_DOT_FRAMES[frameIndex] ?? WORKING_DOT_FRAMES[0];
+		const line = renderFooterLine(state, config, options.theme, width, colorEnabled, workingDots, surface);
+		const fullActivity = activityText(
+			state,
+			createPalette(options.theme, colorEnabled),
+			options.theme,
+			workingDots,
+			false,
+		);
+		if (surface !== "telemetry") syncAnimation(state.activity === "working" && line.includes(fullActivity));
+		return line;
+	};
+
 	return {
 		render(width) {
-			const state = options.getState();
-			const config = options.getConfig();
-			const colorEnabled = options.colorEnabled ?? true;
-			const workingDots = WORKING_DOT_FRAMES[frameIndex] ?? WORKING_DOT_FRAMES[0];
-			const line = renderFooterLine(state, config, options.theme, width, colorEnabled, workingDots);
-			const fullActivity = activityText(
-				state,
-				createPalette(options.theme, colorEnabled),
-				options.theme,
-				workingDots,
-				false,
-			);
-			syncAnimation(state.activity === "working" && line.includes(fullActivity));
-			return [line];
+			return [renderSurface(width, "all")];
+		},
+		renderHeader(width) {
+			return renderSurface(width, "header");
+		},
+		renderTelemetry(width) {
+			const line = renderSurface(Math.max(0, width - 4), "telemetry");
+			return line ? [`  ${line}  `] : [];
 		},
 		invalidate() {},
 		dispose() {

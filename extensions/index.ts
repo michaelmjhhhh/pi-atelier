@@ -16,7 +16,7 @@ import {
 } from "../src/completion-notifier.js";
 import { loadConfig, saveUserConfigPatch } from "../src/config.js";
 import { AtelierEditor } from "../src/editor.js";
-import { createFooterComponent, type ThemeLike } from "../src/footer.js";
+import { type AtelierFooterComponent, createFooterComponent, type ThemeLike } from "../src/footer.js";
 import { createImageCompositorBinding } from "../src/image-compositor.js";
 import {
 	type DisplaySettingsRuntime,
@@ -526,13 +526,17 @@ export default function atelierExtension(
 		const retiredState = targetSession.retiredState;
 		const retiredConfig = targetSession.retiredConfig;
 		if (ctx.mode !== "tui") return;
+		let editor: AtelierEditor | undefined;
+		let footer: AtelierFooterComponent | undefined;
+		let headerRendered = false;
+		let editorInstalled = false;
+		const getCurrentSession = (): ActiveSession | undefined => {
+			const current = activeSession;
+			return enabled && current?.token === token && current.footerGeneration === generation
+				? current
+				: undefined;
+		};
 		ctx.ui.setFooter((tui, theme, footerData) => {
-			const getCurrentSession = (): ActiveSession | undefined => {
-				const current = activeSession;
-				return enabled && current?.token === token && current.footerGeneration === generation
-					? current
-					: undefined;
-			};
 			const footerRequestRender = (): void => {
 				if (getCurrentSession()) tui.requestRender();
 			};
@@ -548,6 +552,7 @@ export default function atelierExtension(
 					const performance = currentSession.runActivity.getSnapshot().performance;
 					return {
 						...currentSession.runtime.getState(),
+						workspaceLabel: basename(currentSession.ctx.cwd),
 						...(branch ? { branch } : {}),
 						...(performance ? { performance } : {}),
 						extensionStatuses: currentSession.extensionStatuses,
@@ -565,15 +570,22 @@ export default function atelierExtension(
 					}),
 				theme: theme as unknown as ThemeLike,
 			});
+			footer = component;
 			const imageCompositor = createImageCompositorBinding(tui);
 			const renderFooter = component.render;
 			component.render = (width) => {
 				imageCompositor.sync();
-				return renderFooter(width);
+				// Selectors can temporarily replace the editor without disposing it.
+				const promptVisible = editorInstalled && headerRendered && editor?.statusLineVisible;
+				headerRendered = false;
+				return promptVisible ? component.renderTelemetry(width) : renderFooter(width);
 			};
 			const disposeFooter = component.dispose;
 			component.dispose = () => {
 				try {
+					if (editor) delete editor.renderStatusLine;
+					editor = undefined;
+					editorInstalled = false;
 					disposeFooter();
 				} finally {
 					imageCompositor.dispose();
@@ -585,9 +597,30 @@ export default function atelierExtension(
 			return component;
 		});
 		try {
-			ctx.ui.setEditorComponent((tui, theme, keybindings) => new AtelierEditor(tui, theme, keybindings));
+			ctx.ui.setEditorComponent((tui, theme, keybindings) => {
+				const next = new AtelierEditor(tui, theme, keybindings);
+				next.renderStatusLine = (width) => {
+					// Fullscreen Pi crops the top of a tall draft after editor rendering.
+					// Keep essential state in the bottom footer on short terminals.
+					const line =
+						getCurrentSession() && tui.terminal.rows >= 12 ? (footer?.renderHeader(width) ?? "") : "";
+					headerRendered = Boolean(line);
+					return line;
+				};
+				editor = next;
+				return next;
+			});
+			editorInstalled = true;
 		} catch {
 			// Composer framing is optional; the Status Rail should still install.
+			if (editor) delete editor.renderStatusLine;
+			editor = undefined;
+			editorInstalled = false;
+			try {
+				ctx.ui.setEditorComponent(undefined);
+			} catch {
+				// Pi may also reject restoration; leave the complete footer available.
+			}
 		}
 	}
 
