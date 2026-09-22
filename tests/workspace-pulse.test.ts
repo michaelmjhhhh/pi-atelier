@@ -1,3 +1,4 @@
+import { getEventListeners } from "node:events";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -124,9 +125,113 @@ describe("createWorkspacePulseRefresh", () => {
 		expect(inspect).toHaveBeenCalledOnce();
 		expect(publish).not.toHaveBeenCalled();
 	});
+
+	it("cancels pending work and accepts no requests while suspended", async () => {
+		vi.useFakeTimers();
+		const inspect = vi.fn().mockResolvedValue(clean);
+		const refresh = createWorkspacePulseRefresh({ inspect, publish: vi.fn() });
+		refresh.request();
+		refresh.setEnabled(false);
+		refresh.request();
+		await refresh.flush();
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(inspect).not.toHaveBeenCalled();
+		expect(vi.getTimerCount()).toBe(0);
+		refresh.setEnabled(true);
+		await refresh.flush();
+		expect(inspect).toHaveBeenCalledOnce();
+		refresh.dispose();
+	});
+
+	it("releases suspended flushes but serializes resumption behind an uncooperative inspection", async () => {
+		const first = deferred<WorkspacePulseInspection>();
+		const second = deferred<WorkspacePulseInspection>();
+		const signals: AbortSignal[] = [];
+		const inspect = vi.fn((signal: AbortSignal) => {
+			signals.push(signal);
+			return signals.length === 1 ? first.promise : second.promise;
+		});
+		const publish = vi.fn();
+		const refresh = createWorkspacePulseRefresh({ inspect, publish });
+		const suspendedFlush = refresh.flush();
+		refresh.setEnabled(false);
+		expect(signals[0]?.aborted).toBe(true);
+		await suspendedFlush;
+
+		refresh.setEnabled(true);
+		const resumedFlush = refresh.flush();
+		expect(inspect).toHaveBeenCalledOnce();
+		first.resolve(clean);
+		await vi.waitFor(() => expect(inspect).toHaveBeenCalledTimes(2));
+		expect(publish).not.toHaveBeenCalled();
+		expect(signals[1]?.aborted).toBe(false);
+		const changed = { ...clean, branch: "resumed" };
+		second.resolve(changed);
+		await resumedFlush;
+		expect(publish).toHaveBeenCalledExactlyOnceWith(changed);
+		refresh.dispose();
+	});
+
+	it("removes cancellation listeners after each completed flush", async () => {
+		let observedSignal: AbortSignal | undefined;
+		const refresh = createWorkspacePulseRefresh({
+			inspect: async (signal) => {
+				observedSignal = signal;
+				return clean;
+			},
+			publish: vi.fn(),
+		});
+		for (let count = 0; count < 50; count += 1) {
+			await refresh.flush();
+			expect(getEventListeners(observedSignal!, "abort")).toHaveLength(0);
+		}
+		refresh.dispose();
+	});
+
+	it("aborts active work and releases flush waiters permanently on disposal", async () => {
+		const pending = deferred<WorkspacePulseInspection>();
+		let signal: AbortSignal | undefined;
+		const publish = vi.fn();
+		const inspect = vi.fn((current: AbortSignal) => {
+			signal = current;
+			return pending.promise;
+		});
+		const refresh = createWorkspacePulseRefresh({ inspect, publish });
+		const flushed = refresh.flush();
+		refresh.dispose();
+		await flushed;
+		expect(signal?.aborted).toBe(true);
+		refresh.setEnabled(true);
+		refresh.request();
+		await refresh.flush();
+		pending.resolve(clean);
+		await Promise.resolve();
+		expect(inspect).toHaveBeenCalledOnce();
+		expect(publish).not.toHaveBeenCalled();
+	});
 });
 
 describe("inspectWorkspacePulse", () => {
+	it("forwards cancellation to Git and starts no subsequent command after abort", async () => {
+		const controller = new AbortController();
+		const discovery = deferred<ReturnType<typeof result>>();
+		const exec = vi.fn().mockReturnValue(discovery.promise);
+		const inspection = inspectWorkspacePulse({ exec, cwd: "/repo", signal: controller.signal });
+		expect(exec).toHaveBeenCalledWith("git", ["rev-parse", "--is-inside-work-tree", "--show-toplevel"], {
+			cwd: "/repo",
+			timeout: 2_000,
+			signal: controller.signal,
+		});
+		controller.abort();
+		discovery.resolve(result("true\n/repo\n"));
+		await expect(inspection).resolves.toEqual({ kind: "unavailable" });
+		expect(exec).toHaveBeenCalledOnce();
+		await expect(inspectWorkspacePulse({ exec, cwd: "/repo", signal: controller.signal })).resolves.toEqual({
+			kind: "unavailable",
+		});
+		expect(exec).toHaveBeenCalledOnce();
+	});
+
 	it("reports an explicit clean Pulse for the containing worktree", async () => {
 		const exec = vi
 			.fn()

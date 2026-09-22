@@ -153,7 +153,7 @@ export default function atelierExtension(
 	}
 
 	const requestAllRenders = (targetSession: ActiveSession): void => {
-		if (activeSession !== targetSession) return;
+		if (!enabled || activeSession !== targetSession) return;
 		targetSession.requestFooterRender();
 		targetSession.sidebar.requestRender();
 	};
@@ -263,7 +263,7 @@ export default function atelierExtension(
 		return allItems.map(normalizeTodo).filter((item): item is NormalizedTodo => item !== undefined);
 	}
 	function getSidebarSnapshot(targetSession: ActiveSession): SidebarSnapshot {
-		if (targetSession.retired || activeSession !== targetSession) {
+		if (!enabled || targetSession.retired || activeSession !== targetSession) {
 			return buildSidebarSnapshot({
 				state: targetSession.retiredState,
 				cwd: targetSession.retiredCwd,
@@ -470,7 +470,7 @@ export default function atelierExtension(
 			{
 				isVisible: () => activeSession === current && targetSidebar.isVisible(),
 				toggle: () => {
-					if (activeSession === current) targetSidebar.toggle();
+					if (enabled && activeSession === current) targetSidebar.toggle();
 				},
 				isToolListExpanded: () => activeSession === current && targetRuntime.getConfig().showSidebarToolNames,
 				toggleToolList: async () => {
@@ -616,6 +616,10 @@ export default function atelierExtension(
 					ctx.ui.notify("Pi Atelier is not active in this session", "warning");
 					return;
 				}
+				if (!enabled && sidebarAction !== "off") {
+					ctx.ui.notify("Enable Pi Atelier with /atelier enable before showing its sidebar", "info");
+					return;
+				}
 				if (sidebarAction === "tools") {
 					const [toolAction, ...toolExtra] = extra;
 					if (
@@ -647,6 +651,10 @@ export default function atelierExtension(
 					return;
 				}
 				enabled = false;
+				current.runtime.setEnabled(false);
+				current.runActivity.resetResponse();
+				current.completionNotifier.reset();
+				current.todos = [];
 				current.sidebar.hide();
 				updateExtensionStatuses(current, []);
 				clearFooter(current, true);
@@ -659,8 +667,12 @@ export default function atelierExtension(
 					ctx.ui.notify("Pi Atelier is not active in this session", "warning");
 					return;
 				}
-				enabled = true;
-				installFooter(current);
+				if (!enabled) {
+					enabled = true;
+					current.todos = reconstructTodos(current.ctx);
+					current.runtime.setEnabled(true);
+					installFooter(current);
+				}
 				ctx.ui.notify("Pi Atelier enabled", "info");
 				return;
 			}
@@ -721,6 +733,7 @@ export default function atelierExtension(
 				displayLayers: loaded.displayLayers,
 				displayProvenance: loaded.displayProvenance,
 				autoCompact,
+				enabled,
 				requestRender: requestCandidateRenders,
 			});
 			localRuntime = candidateRuntime;
@@ -753,7 +766,8 @@ export default function atelierExtension(
 				getConfig: () =>
 					activeSession?.token === initializationToken ? candidateRuntime.getConfig() : loaded.config,
 				colorEnabled: !("NO_COLOR" in process.env),
-				shouldAnimate: () => activeSession?.token === initializationToken && localRunActivity.isRunning(),
+				shouldAnimate: () =>
+					enabled && activeSession?.token === initializationToken && localRunActivity.isRunning(),
 				onWarning: (message) => initializationContext.ui.notify(message, "warning"),
 				onError: (error) =>
 					initializationContext.ui.notify(
@@ -789,7 +803,7 @@ export default function atelierExtension(
 				unsubscribeAskUserBlocked: undefined,
 				askUserBlocked: false,
 				inputRequestSequence: 0,
-				todos: reconstructTodos(initializationContext),
+				todos: enabled ? reconstructTodos(initializationContext) : [],
 				requestFooterRender: noopRender,
 				extensionStatuses: [],
 			};
@@ -807,6 +821,7 @@ export default function atelierExtension(
 				if (active !== true || current.askUserBlocked) return;
 				current.askUserBlocked = true;
 				current.inputRequestSequence += 1;
+				if (!enabled || !current.runtime.getConfig().completionNotifications) return;
 				current.completionNotifier.inputRequested(
 					`blocked-${current.inputRequestSequence}`,
 					completionNotification(current.ctx, "input-requested", current.runActivity.getSnapshot()),
@@ -901,7 +916,7 @@ export default function atelierExtension(
 
 	pi.on("session_tree", (_event, ctx) => {
 		const current = getActiveSession(ctx);
-		if (!current) return;
+		if (!enabled || !current) return;
 		current.todos = reconstructTodos(ctx);
 		requestAllRenders(current);
 	});
@@ -921,19 +936,21 @@ export default function atelierExtension(
 		current.runtime.scheduleWorkspacePulseRefresh();
 	});
 	pi.on("before_provider_request", (_event, ctx) => {
-		getActiveSession(ctx)?.runActivity.startResponse();
+		if (enabled) getActiveSession(ctx)?.runActivity.startResponse();
 	});
 	pi.on("message_update", (event, ctx) => {
+		const current = getActiveSession(ctx);
+		if (!enabled || !current) return;
 		const estimatedOutputTokens = estimateTokens(event.message);
 		if (estimatedOutputTokens <= 0) return;
-		getActiveSession(ctx)?.runActivity.updateResponseEstimate(estimatedOutputTokens);
+		current.runActivity.updateResponseEstimate(estimatedOutputTokens);
 	});
 	pi.on("message_end", (event, ctx) => {
 		if (event.message.role !== "assistant") return;
 		getActiveSession(ctx)?.runActivity.finishResponse(event.message.usage.output);
 	});
 	pi.on("tool_execution_start", (event, ctx) => {
-		getActiveSession(ctx)?.runActivity.startTool(event);
+		getActiveSession(ctx)?.runActivity.startTool(enabled ? event : { ...event, args: undefined });
 	});
 	pi.on("tool_execution_end", (event, ctx) => {
 		const current = getActiveSession(ctx);
@@ -943,7 +960,7 @@ export default function atelierExtension(
 	});
 	// Collapse todo tool output when sidebar shows todos
 	pi.on("tool_result", (event, ctx) => {
-		if (event.toolName !== "todo") return;
+		if (!enabled || event.toolName !== "todo") return;
 		const current = getActiveSession(ctx);
 		if (!current || event.isError) return;
 
@@ -968,7 +985,9 @@ export default function atelierExtension(
 		if (!current || !ctx.isIdle()) return;
 		current.runActivity.settle();
 		current.runtime.setActivity("ready");
+		if (!enabled) return;
 		current.sidebar.requestRender();
+		if (!current.runtime.getConfig().completionNotifications) return;
 		current.completionNotifier.turnSettled(
 			completionNotification(current.ctx, "turn-settled", current.runActivity.getSnapshot()),
 		);

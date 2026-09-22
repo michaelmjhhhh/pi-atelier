@@ -45,6 +45,7 @@ export interface RunActivityTracker {
 	startRun(now?: number): void;
 	startTurn(turnIndex: number): void;
 	startResponse(now?: number): void;
+	resetResponse(): void;
 	updateResponseEstimate(estimatedOutputTokens: number, now?: number): void;
 	finishResponse(outputTokens: number, now?: number): void;
 	startTool(event: ToolExecutionStartEvent, now?: number): void;
@@ -187,6 +188,14 @@ class DefaultRunActivityTracker implements RunActivityTracker {
 
 	startResponse(now?: number): void {
 		this.requestStartedAt = normalizeTimestamp(now ?? Date.now());
+		this.firstTokenAt = undefined;
+		this.performance = undefined;
+		this.notify();
+	}
+
+	/** A response partly observed while disabled has no reliable TTFT or TPS. */
+	resetResponse(): void {
+		this.requestStartedAt = undefined;
 		this.firstTokenAt = undefined;
 		this.performance = undefined;
 		this.notify();

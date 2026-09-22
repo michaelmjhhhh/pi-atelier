@@ -34,34 +34,59 @@ interface ExecResult {
 type WorkspacePulseExec = (
 	command: string,
 	args: string[],
-	options?: { cwd?: string; timeout?: number },
+	options?: { cwd?: string; timeout?: number; signal?: AbortSignal },
 ) => Promise<ExecResult>;
 
 export interface InspectWorkspacePulseOptions {
 	exec: WorkspacePulseExec;
 	cwd: string;
+	signal?: AbortSignal;
 }
 
 export interface WorkspacePulseRefresh {
 	request(): void;
 	flush(): Promise<void>;
+	setEnabled(enabled: boolean): void;
 	dispose(): void;
 }
 
 export interface WorkspacePulseRefreshOptions {
-	inspect(): Promise<WorkspacePulseInspection>;
+	inspect(signal: AbortSignal): Promise<WorkspacePulseInspection>;
 	publish(inspection: WorkspacePulseInspection): void;
 	delayMs?: number;
+}
+
+/** Release a waiter on suspension without forgetting the still-running inspection. */
+function waitForInspection(running: Promise<void>, signal: AbortSignal): Promise<void> {
+	if (signal.aborted) return Promise.resolve();
+	return new Promise((resolve, reject) => {
+		const aborted = () => resolve();
+		signal.addEventListener("abort", aborted, { once: true });
+		void running.then(
+			() => {
+				signal.removeEventListener("abort", aborted);
+				resolve();
+			},
+			(error: unknown) => {
+				signal.removeEventListener("abort", aborted);
+				reject(error);
+			},
+		);
+	});
 }
 
 /** Owns coalescing, serialization, and freshness for Workspace Pulse inspections. */
 export function createWorkspacePulseRefresh(options: WorkspacePulseRefreshOptions): WorkspacePulseRefresh {
 	const delayMs = Math.max(0, Math.trunc(options.delayMs ?? 250));
 	let disposed = false;
+	let enabled = true;
+	let lifetime = new AbortController();
 	let requestedVersion = 0;
 	let completedVersion = 0;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let inFlight: Promise<void> | undefined;
+	const isActive = (current: typeof lifetime): boolean =>
+		!disposed && enabled && lifetime === current && !current.signal.aborted;
 
 	const clearTimer = (): void => {
 		if (timer) clearTimeout(timer);
@@ -70,14 +95,15 @@ export function createWorkspacePulseRefresh(options: WorkspacePulseRefreshOption
 
 	const runInspection = (): Promise<void> => {
 		const version = requestedVersion;
+		const current = lifetime;
 		const running = (async () => {
 			let inspection: WorkspacePulseInspection;
 			try {
-				inspection = await options.inspect();
+				inspection = await options.inspect(current.signal);
 			} catch {
 				inspection = { kind: "unavailable" };
 			}
-			if (disposed) return;
+			if (!isActive(current)) return;
 			completedVersion = Math.max(completedVersion, version);
 			options.publish(inspection);
 		})();
@@ -93,38 +119,48 @@ export function createWorkspacePulseRefresh(options: WorkspacePulseRefreshOption
 		return running;
 	};
 
-	const runScheduled = async (version: number): Promise<void> => {
-		if (disposed || version !== requestedVersion) return;
-		if (inFlight) await inFlight;
-		if (disposed || version !== requestedVersion || completedVersion >= version) return;
+	const runScheduled = async (version: number, current: typeof lifetime): Promise<void> => {
+		if (!isActive(current) || version !== requestedVersion) return;
+		while (inFlight && isActive(current)) await waitForInspection(inFlight, current.signal);
+		if (!isActive(current) || version !== requestedVersion || completedVersion >= version) return;
 		await runInspection();
 	};
 
 	return {
 		request() {
-			if (disposed) return;
+			if (!isActive(lifetime)) return;
 			const version = ++requestedVersion;
+			const current = lifetime;
 			clearTimer();
 			timer = setTimeout(() => {
 				timer = undefined;
-				void runScheduled(version);
+				void runScheduled(version, current);
 			}, delayMs);
 			timer.unref?.();
 		},
 		async flush() {
-			if (disposed) return;
+			const current = lifetime;
+			if (!isActive(current)) return;
 			const targetVersion = ++requestedVersion;
 			clearTimer();
-			while (!disposed && completedVersion < targetVersion) {
-				if (inFlight) await inFlight;
-				else await runInspection();
+			while (isActive(current) && completedVersion < targetVersion) {
+				await waitForInspection(inFlight ?? runInspection(), current.signal);
 			}
+		},
+		setEnabled(next) {
+			if (disposed || enabled === next) return;
+			enabled = next;
+			requestedVersion += 1;
+			clearTimer();
+			if (enabled) lifetime = new AbortController();
+			else lifetime.abort();
 		},
 		dispose() {
 			if (disposed) return;
 			disposed = true;
 			requestedVersion += 1;
 			clearTimer();
+			lifetime.abort();
 		},
 	};
 }
@@ -302,7 +338,16 @@ export async function inspectWorkspacePulse(
 	options: InspectWorkspacePulseOptions,
 ): Promise<WorkspacePulseInspection> {
 	try {
-		return await inspectWorkspacePulseUnchecked(options);
+		return await inspectWorkspacePulseUnchecked({
+			...options,
+			exec: (command, args, execOptions) =>
+				options.signal?.aborted
+					? Promise.resolve({ stdout: "", stderr: "", code: 1, killed: true })
+					: options.exec(command, args, {
+							...execOptions,
+							...(options.signal ? { signal: options.signal } : {}),
+						}),
+		});
 	} catch {
 		return { kind: "unavailable" };
 	}

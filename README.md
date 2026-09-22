@@ -58,6 +58,8 @@ Commands:
 /atelier enable|disable     # set extension state
 ```
 
+Disabling Atelier hides its UI, pauses usage/history scans and streaming estimates, cancels pending workspace refreshes, and aborts active Git inspection. Small run/tool bookkeeping continues. Re-enabling refreshes usage, TODOs, and workspace state once; show the sidebar again with `/atelier sidebar on`. If a response spans a disabled interval, its TTFT/TPS remains unavailable until the next provider request rather than reporting partial timing.
+
 The sidebar starts visible and hides when the terminal is too narrow. Press `Ctrl+Shift+R` to resize it.
 
 In Pi fullscreen TUI mode, the sidebar is rendered as a separate split-layout child so transcript selection and copy stay scoped to Pi output. Regular TUI mode remains terminal-native, so a rectangular terminal selection can still include sidebar text.
