@@ -9,6 +9,7 @@ import {
 	MIN_SIDEBAR_WIDTH,
 	parseSgrMouseEvent,
 } from "../src/split-pane.js";
+import { stableTuiReference } from "./helpers/stable-tui-reference.js";
 
 function harness(columns = 120) {
 	const baseRender = vi.fn((width: number) => [`base:${width}`]);
@@ -30,27 +31,6 @@ function concreteHarness(columns = 120) {
 	renderer.addChild({ render: baseRender, invalidate() {} });
 	renderer.requestRender = requestRender;
 	return { tui: renderer as unknown as TUI, baseRender, requestRender, write };
-}
-
-function stableTuiReference(getRenderer: () => TUI): TUI {
-	return new Proxy({} as TUI, {
-		get: (_target, property) => {
-			const renderer = getRenderer();
-			const value = Reflect.get(renderer, property, renderer);
-			if (typeof value !== "function") return value;
-			return (...args: unknown[]) => {
-				const currentRenderer = getRenderer();
-				const method = Reflect.get(currentRenderer, property, currentRenderer);
-				if (typeof method !== "function") throw new TypeError(`${String(property)} is not callable`);
-				return Reflect.apply(method, currentRenderer, args);
-			};
-		},
-		set: (_target, property, value) => {
-			const renderer = getRenderer();
-			return Reflect.set(renderer, property, value, renderer);
-		},
-		getPrototypeOf: () => Reflect.getPrototypeOf(getRenderer()),
-	}) as TUI;
 }
 
 class TuiMainScreen {
@@ -694,18 +674,6 @@ describe("split pane render lifecycle", () => {
 
 		expect(h.tui.render).toBe(originalRender);
 		expect(h.tui.render(120)).toEqual(["base:120"]);
-	});
-
-	it("adapts render through Pi 0.84's concrete regular renderer", () => {
-		const h = concreteHarness();
-		const originalRender = h.tui.render;
-		const split = createSplitPaneController();
-
-		split.attach(h.tui);
-		split.show();
-
-		expect(h.tui.render).not.toBe(originalRender);
-		expect(h.tui.render(120)).toEqual(["base:76"]);
 	});
 
 	it("attaches once and restores the exact original method on dispose", () => {

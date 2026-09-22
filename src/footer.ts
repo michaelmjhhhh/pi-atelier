@@ -82,13 +82,9 @@ function percentValue(value: number | null | undefined, decimals: number): Displ
 		: { text: "—", available: false };
 }
 
-function costValue(metrics: AtelierMetrics, decimals: number, compact: boolean): DisplayValue {
+function costValue(metrics: AtelierMetrics, decimals: number): DisplayValue {
 	if (!metrics.costAvailable || !Number.isFinite(metrics.cost)) return { text: "$—", available: false };
-	const amount =
-		compact && metrics.cost >= 1_000
-			? formatTokens(metrics.cost)
-			: metrics.cost.toFixed(compact ? Math.min(2, decimals) : decimals);
-	return { text: `$${amount}`, available: true };
+	return { text: `$${metrics.cost.toFixed(decimals)}`, available: true };
 }
 
 function contextRole(metrics: AtelierMetrics, config: AtelierConfig): PaletteRole {
@@ -244,7 +240,7 @@ function buildItems(
 			]
 				.filter(Boolean)
 				.join(" ");
-			const cost = `${paintValue(costValue(metrics, config.currencyDecimals, false), "cost", palette)}${
+			const cost = `${paintValue(costValue(metrics, config.currencyDecimals), "cost", palette)}${
 				metrics.subscription ? palette.paint("muted", " (sub)") : ""
 			}`;
 

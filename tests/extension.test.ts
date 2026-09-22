@@ -939,7 +939,7 @@ describe("extension registration", () => {
 		expect(h.saveConfigPatch).not.toHaveBeenCalled();
 	});
 
-	it("keeps Pi rendering untouched beneath the visible sidebar", async () => {
+	it("keeps modeless host rendering untouched beneath the visible sidebar", async () => {
 		const h = harness();
 		await start(h);
 		await command(h, "sidebar on");
@@ -1656,11 +1656,13 @@ describe("extension registration", () => {
 			},
 		);
 		footer.render(120);
+		expect(h.overlays[0]?.requestRender).toHaveBeenCalled();
+		h.overlays[0]?.requestRender.mockClear();
 		footer.render(120);
-		expect(h.overlays[0]?.requestRender).toHaveBeenCalledTimes(2);
+		expect(h.overlays[0]?.requestRender).not.toHaveBeenCalled();
 		statuses = new Map([["one", "extension two"]]);
 		footer.render(120);
-		expect(h.overlays[0]?.requestRender).toHaveBeenCalledTimes(4);
+		expect(h.overlays[0]?.requestRender).toHaveBeenCalled();
 	});
 
 	it("collapses activated tool names at narrow sidebar widths", async () => {

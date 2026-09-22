@@ -122,16 +122,11 @@ export class AtelierRuntime {
 		void this.flushWorkspacePulseRefresh();
 	}
 
-	/** State with no branch, workspace data, or usage history; context is included only when explicit. */
-	#inertState(context: ReturnType<ExtensionContext["getContextUsage"]> = undefined): AtelierState {
+	/** State with no branch, workspace data, context, or usage history. */
+	#inertState(): AtelierState {
 		return {
 			...createInertAtelierState(this.#autoCompact),
 			workspacePulse: { status: "inspecting" },
-			metrics: aggregateMetrics([], {
-				subscription: false,
-				autoCompact: this.#autoCompact,
-				...(context ? { context } : {}),
-			}),
 		};
 	}
 

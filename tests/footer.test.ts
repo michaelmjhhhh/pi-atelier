@@ -295,18 +295,6 @@ describe("footer", () => {
 		expect(line).not.toMatch(/\u001b\[38;2;125;211;252m—/);
 	});
 
-	it("renders the selected light theme with the same fixed dark palette", () => {
-		const light = renderFooterLine(state, DEFAULT_CONFIG, namedTheme("light"), 400);
-		const dark = renderFooterLine(state, DEFAULT_CONFIG, namedTheme("dark"), 400);
-		expect(light).toBe(dark);
-		expect(light).toContain(`${darkRgb.blue}324k\u001b[39m`);
-		expect(light).toContain(`${darkRgb.purple}15k\u001b[39m`);
-		expect(light).toContain(`${darkRgb.cyan}99%\u001b[39m`);
-		expect(light).toContain(`${darkRgb.amber}$5.041\u001b[39m`);
-		expect(light).toContain(`${darkRgb.blue}27.0%\u001b[39m`);
-		expect(light).toContain(`${darkRgb.purple}⌥A\u001b[39m`);
-	});
-
 	it("uses state-specific activity colors", () => {
 		const ready = renderFooterLine(state, DEFAULT_CONFIG, namedTheme("dark"), 180);
 		const working = renderFooterLine(

@@ -4,31 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 import { createSidebarController } from "../src/sidebar.js";
 import { createSplitPaneController } from "../src/split-pane.js";
 import { DEFAULT_CONFIG } from "../src/types.js";
+import { stableTuiReference } from "./helpers/stable-tui-reference.js";
 
 const press = (x: number, y: number) => `\u001b[<0;${x};${y}M`;
 const motion = (x: number, y: number) => `\u001b[<32;${x};${y}M`;
 const release = (x: number, y: number) => `\u001b[<0;${x};${y}m`;
-
-function stableTuiReference(getRenderer: () => TUI): TUI {
-	return new Proxy({} as TUI, {
-		get: (_target, property) => {
-			const renderer = getRenderer();
-			const value = Reflect.get(renderer, property, renderer);
-			if (typeof value !== "function") return value;
-			return (...args: unknown[]) => {
-				const currentRenderer = getRenderer();
-				const method = Reflect.get(currentRenderer, property, currentRenderer);
-				if (typeof method !== "function") throw new TypeError(`${String(property)} is not callable`);
-				return Reflect.apply(method, currentRenderer, args);
-			};
-		},
-		set: (_target, property, value) => {
-			const renderer = getRenderer();
-			return Reflect.set(renderer, property, value, renderer);
-		},
-		getPrototypeOf: () => Reflect.getPrototypeOf(getRenderer()),
-	}) as TUI;
-}
 
 describe("fullscreen Sidebar selection", () => {
 	it("removes the split child immediately when ctx.ui.custom closes its lifecycle overlay", async () => {

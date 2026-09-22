@@ -31,13 +31,11 @@ const cleanInspection = {
 };
 
 function createRuntime(
-	execResult = { stdout: "", stderr: "", code: 0, killed: false },
 	random: () => number = Math.random,
 	inspectWorkspace = vi.fn().mockResolvedValue(cleanInspection),
 	enabled = true,
 ) {
 	const requestRender = vi.fn();
-	const exec = vi.fn().mockResolvedValue(execResult);
 	const ctx = {
 		model: { id: "model", provider: "provider", reasoning: true },
 		modelRegistry: { isUsingOAuth: vi.fn().mockReturnValue(true) },
@@ -46,7 +44,7 @@ function createRuntime(
 		sessionManager: { getEntries: vi.fn().mockReturnValue([assistant]) },
 	};
 	const runtime = new AtelierRuntime({
-		pi: { exec } as never,
+		pi: {} as never,
 		ctx: ctx as never,
 		config: DEFAULT_CONFIG,
 		autoCompact: true,
@@ -55,14 +53,14 @@ function createRuntime(
 		requestRender,
 		inspectWorkspace,
 	});
-	return { runtime, exec, requestRender, inspectWorkspace, ctx };
+	return { runtime, requestRender, inspectWorkspace, ctx };
 }
 
 describe("AtelierRuntime", () => {
 	it("does no history/context or workspace work when initialized disabled", async () => {
 		vi.useFakeTimers();
 		const inspectWorkspace = vi.fn().mockResolvedValue(cleanInspection);
-		const { runtime, ctx, requestRender } = createRuntime(undefined, Math.random, inspectWorkspace, false);
+		const { runtime, ctx, requestRender } = createRuntime(Math.random, inspectWorkspace, false);
 		runtime.refreshUsage();
 		runtime.scheduleWorkspacePulseRefresh();
 		await runtime.flushWorkspacePulseRefresh();
@@ -128,7 +126,7 @@ describe("AtelierRuntime", () => {
 			snapshot: { ...cleanInspection.snapshot, trackedFiles: 2, linesAdded: 12, linesRemoved: 3 },
 		};
 		const inspectWorkspace = vi.fn().mockResolvedValue(changed);
-		const { runtime } = createRuntime(undefined, Math.random, inspectWorkspace);
+		const { runtime } = createRuntime(Math.random, inspectWorkspace);
 
 		expect(runtime.getState()).toMatchObject({ workspacePulse: { status: "inspecting" } });
 		await runtime.flushWorkspacePulseRefresh();
@@ -148,7 +146,7 @@ describe("AtelierRuntime", () => {
 			...cleanInspection,
 			snapshot: { ...cleanInspection.snapshot, untrackedFiles: 2 },
 		};
-		const { runtime } = createRuntime(undefined, Math.random, vi.fn().mockResolvedValue(untrackedOnly));
+		const { runtime } = createRuntime(Math.random, vi.fn().mockResolvedValue(untrackedOnly));
 
 		await runtime.flushWorkspacePulseRefresh();
 
@@ -163,7 +161,7 @@ describe("AtelierRuntime", () => {
 			.fn()
 			.mockResolvedValueOnce(cleanInspection)
 			.mockResolvedValueOnce({ kind: "unavailable" });
-		const { runtime } = createRuntime(undefined, Math.random, inspectWorkspace);
+		const { runtime } = createRuntime(Math.random, inspectWorkspace);
 
 		await runtime.flushWorkspacePulseRefresh();
 		await runtime.flushWorkspacePulseRefresh();
@@ -180,7 +178,7 @@ describe("AtelierRuntime", () => {
 
 	it("does not invalidate rendering when a refresh confirms the same Pulse", async () => {
 		const inspectWorkspace = vi.fn().mockResolvedValue(cleanInspection);
-		const { runtime, requestRender } = createRuntime(undefined, Math.random, inspectWorkspace);
+		const { runtime, requestRender } = createRuntime(Math.random, inspectWorkspace);
 		await runtime.flushWorkspacePulseRefresh();
 		requestRender.mockClear();
 
@@ -222,7 +220,7 @@ describe("AtelierRuntime", () => {
 
 	it("selects one stable label when a work cycle starts", () => {
 		const random = vi.fn().mockReturnValue(0.5);
-		const { runtime, requestRender } = createRuntime(undefined, random);
+		const { runtime, requestRender } = createRuntime(random);
 		requestRender.mockClear();
 
 		runtime.setActivity("working");
@@ -309,7 +307,7 @@ describe("AtelierRuntime", () => {
 
 	it("selects again for the next work cycle and still updates configuration", () => {
 		const random = vi.fn().mockReturnValueOnce(0).mockReturnValueOnce(0.999_999);
-		const { runtime, requestRender } = createRuntime(undefined, random);
+		const { runtime, requestRender } = createRuntime(random);
 		requestRender.mockClear();
 
 		runtime.setActivity("working");

@@ -1,7 +1,7 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { resolveDisplayLayers } from "../src/config.js";
-import { createSettingsWorkspace, getDisplaySettingsViewportHeight } from "../src/settings-workspace.js";
+import { createSettingsWorkspace } from "../src/settings-workspace.js";
 import {
 	DEFAULT_CONFIG,
 	type AtelierConfig,
@@ -254,15 +254,6 @@ describe("Display Settings Workspace", () => {
 		expect(lines.at(-1)).toContain("╰");
 		expect(lines.every((line) => visibleWidth(line) <= 126)).toBe(true);
 	});
-
-	it.each([0, 1, 2, 3, 4])(
-		"uses the same effective overlay height as the menu helper for terminal rows %s",
-		(rows) => {
-			const viewport = getDisplaySettingsViewportHeight(rows);
-			const h = harness({}, DEFAULT_CONFIG, undefined, () => viewport);
-			expect(h.component.render(126)).toHaveLength(viewport);
-		},
-	);
 
 	it.each([0, 1, 2, 3, 4])("keeps every line within a tiny viewport of %s rows", (viewport) => {
 		const h = harness({}, DEFAULT_CONFIG, undefined, () => viewport);

@@ -1179,20 +1179,12 @@ function createDetachedSidebarSnapshot(cwd: string): SidebarSnapshot {
 	});
 }
 
-function cloneSidebarSnapshot(snapshot: SidebarSnapshot): SidebarSnapshot {
-	return structuredClone(snapshot);
-}
-
-function cloneSidebarConfig(config: AtelierConfig): AtelierConfig {
-	return structuredClone(config);
-}
-
 function createRetirableSidebarBinding(options: SidebarControllerOptions): RetirableSidebarBinding {
 	let readSnapshot: (() => SidebarSnapshot) | undefined = options.getSnapshot;
 	let readConfig: (() => AtelierConfig) | undefined = options.getConfig;
 	let readResizing: (() => boolean) | undefined;
 	let snapshot = createDetachedSidebarSnapshot(typeof options.ctx.cwd === "string" ? options.ctx.cwd : "");
-	let config = cloneSidebarConfig(DEFAULT_CONFIG);
+	let config = structuredClone(DEFAULT_CONFIG);
 	return {
 		getSnapshot: () => (readSnapshot ? readSnapshot() : snapshot),
 		getConfig: () => (readConfig ? readConfig() : config),
@@ -1203,14 +1195,14 @@ function createRetirableSidebarBinding(options: SidebarControllerOptions): Retir
 		detach: () => {
 			if (readSnapshot) {
 				try {
-					snapshot = cloneSidebarSnapshot(readSnapshot());
+					snapshot = structuredClone(readSnapshot());
 				} catch {
 					// The inert snapshot is already detached from the retired runtime.
 				}
 			}
 			if (readConfig) {
 				try {
-					config = cloneSidebarConfig(readConfig());
+					config = structuredClone(readConfig());
 				} catch {
 					// Keep the last plain configuration snapshot.
 				}
@@ -1229,7 +1221,6 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	let generation = 0;
 	let closeOverlay: (() => void) | undefined;
 	let requestOverlayRender: (() => void) | undefined;
-	let splitRequestRender: (() => void) | undefined;
 	let overlayHandle: OverlayHandle | undefined;
 	let animationTimer: ReturnType<typeof setInterval> | undefined;
 	const animationIntervalMs = Math.max(1, Math.trunc(options.animationIntervalMs ?? 1_000));
@@ -1256,7 +1247,6 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		subscribeInput: (handler) => options.ctx.ui.onTerminalInput(handler),
 		onResizeChange: () => {
 			safely(() => requestOverlayRender?.());
-			safely(() => splitRequestRender?.());
 		},
 		...(options.onWarning ? { onWarning: options.onWarning } : {}),
 		...(options.onError ? { onError: options.onError } : {}),
@@ -1285,7 +1275,6 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	const clearOverlayCallbacks = () => {
 		closeOverlay = undefined;
 		requestOverlayRender = undefined;
-		splitRequestRender = undefined;
 		overlayHandle = undefined;
 	};
 
@@ -1336,7 +1325,6 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 						safely(split.hide);
 						safely(close);
 					} else {
-						splitRequestRender = () => tui.requestRender();
 						if (enabled && generation === currentGeneration) {
 							closeOverlay = close;
 							requestOverlayRender = () => tui.requestRender();
@@ -1403,8 +1391,8 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		isResizing: split.isResizing,
 		getWidth: split.getSidebarWidth,
 		requestRender() {
-			safely(() => requestOverlayRender?.());
-			safely(split.requestRender);
+			// Still refresh the overlay if adapter reconciliation fails.
+			if (!safely(split.requestRender)) safely(() => requestOverlayRender?.());
 			syncAnimation();
 		},
 		dispose() {
