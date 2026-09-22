@@ -289,7 +289,7 @@ describe("run activity tracker transitions", () => {
 		expect(snapshot).not.toHaveProperty("performance");
 	});
 
-	it("returns frozen snapshots with isolated arrays and cloned tool records", () => {
+	it("returns immutable snapshots without exposing mutable tracker state", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
 		tracker.startRun(0);
 		tracker.startTool(
@@ -298,12 +298,9 @@ describe("run activity tracker transitions", () => {
 		);
 
 		const first = tracker.getSnapshot();
-		const second = tracker.getSnapshot();
 		expect(Object.isFrozen(first)).toBe(true);
 		expect(Object.isFrozen(first.activeTools)).toBe(true);
 		expect(Object.isFrozen(first.activeTools[0])).toBe(true);
-		expect(first.activeTools).not.toBe(second.activeTools);
-		expect(first.activeTools[0]).not.toBe(second.activeTools[0]);
 		expect(() => (first.activeTools as unknown as { pop(): unknown }).pop()).toThrow();
 		expect(tracker.getSnapshot().activeTools).toHaveLength(1);
 	});

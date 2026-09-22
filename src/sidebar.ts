@@ -892,23 +892,16 @@ export function renderSidebarLines(
 					},
 				]
 			: []),
-		...(config.showSidebarAgent
-			? [
-					{
-						name: "agent",
-						panel: "AGENT",
-						panelId: "agent",
-						panelRole: activityRole(snapshot.activity),
-						panelJewel:
-							snapshot.activity === "working" && Math.floor(now / 400) % 2 === 1
-								? ("✧" as const)
-								: ("✦" as const),
-						rows: agentRows(snapshot, layout, panelContentWidth, palette, theme),
-						required: true,
-						dropRank: Number.POSITIVE_INFINITY,
-					},
-				]
-			: []),
+		{
+			name: "agent",
+			panel: "AGENT",
+			panelId: "agent",
+			panelRole: activityRole(snapshot.activity),
+			panelJewel: snapshot.activity === "working" && Math.floor(now / 400) % 2 === 1 ? "✧" : "✦",
+			rows: agentRows(snapshot, layout, panelContentWidth, palette, theme),
+			required: true,
+			dropRank: Number.POSITIVE_INFINITY,
+		},
 		...activitySidebarGroups(snapshot, panelContentWidth, palette, now).map((group) => ({
 			...group,
 			required: group.name === "activityCore",
@@ -928,7 +921,7 @@ export function renderSidebarLines(
 			panel: "TODOS",
 			panelId: "todos",
 			panelRole: "accent",
-			rows: config.showSidebarTodos ? todosRows(snapshot, palette) : [],
+			rows: todosRows(snapshot, palette),
 			required: false,
 			dropRank: 90,
 		},

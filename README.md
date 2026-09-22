@@ -105,7 +105,7 @@ Project settings override user settings. Session changes override both. Global s
 }
 ```
 
-Use **Settings → Display** to reorder or hide status rail segments and sidebar panels.
+Use **Settings → Display** to reorder or hide status rail segments and sidebar panels. Undo restores the latest Display or Sidebar edit, including a Display Revert. Legacy user settings `showSidebarAgent` and `showSidebarTodos` remain supported when `sidebarPanelLayout` is absent.
 
 ## Privacy
 

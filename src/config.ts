@@ -39,7 +39,6 @@ export interface LoadConfigOptions {
 interface SidebarResolution {
 	layout: AtelierConfig["sidebarPanelLayout"];
 	warnings: string[];
-	authoritative: boolean;
 }
 
 function cloneSidebarLayout(
@@ -94,7 +93,6 @@ function resolveSidebarLayout(
 		return {
 			layout: parsed ?? cloneSidebarLayout(base.sidebarPanelLayout),
 			warnings,
-			authoritative: true,
 		};
 	}
 	const layout = cloneSidebarLayout(base.sidebarPanelLayout);
@@ -104,7 +102,7 @@ function resolveSidebarLayout(
 		setSidebarVisibility(layout, "agent", user.showSidebarAgent);
 	if (user && typeof user.showSidebarTodos === "boolean")
 		setSidebarVisibility(layout, "todos", user.showSidebarTodos);
-	return { layout, warnings, authoritative: false };
+	return { layout, warnings };
 }
 
 const presets = new Set<PresetName>(["editorial", "minimal", "classic", "custom"]);
@@ -329,7 +327,12 @@ export function resolveDisplayLayers(
 	return { display, provenance, warnings: [...new Set(warnings)] };
 }
 
-function applyNonDisplay(input: unknown, config: AtelierConfig, warnings: string[]): void {
+function applyNonDisplay(
+	input: unknown,
+	config: AtelierConfig,
+	warnings: string[],
+	userLayer: boolean,
+): void {
 	if (!isRecord(input)) {
 		if (input !== undefined) warnings.push("Configuration must be a JSON object");
 		return;
@@ -361,49 +364,45 @@ function applyNonDisplay(input: unknown, config: AtelierConfig, warnings: string
 	for (const key of [
 		"showSessionActions",
 		"showSidebarToolNames",
-		"showSidebarAgent",
-		"showSidebarTodos",
 		"showSidebarOnStartup",
 		"completionNotifications",
 	] as const) {
-		if (typeof input[key] === "boolean") config[key] = input[key];
-		else if (key in input) warnings.push(`${key} must be boolean`);
+		if (typeof input[key] === "boolean") {
+			if (userLayer || (key !== "showSidebarOnStartup" && key !== "completionNotifications"))
+				config[key] = input[key];
+		} else if (key in input) warnings.push(`${key} must be boolean`);
+	}
+	for (const key of ["showSidebarAgent", "showSidebarTodos"] as const) {
+		if (key in input && typeof input[key] !== "boolean") warnings.push(`${key} must be boolean`);
 	}
 }
 
-function applyGlobalSidebarCompatibility(
-	config: AtelierConfig,
-	input: unknown,
-	base: Pick<AtelierConfig, "showSidebarAgent" | "showSidebarTodos"> = DEFAULT_CONFIG,
-): void {
-	config.showSidebarAgent = base.showSidebarAgent;
-	config.showSidebarTodos = base.showSidebarTodos;
-	const global = record(input);
-	if (typeof global?.showSidebarAgent === "boolean") config.showSidebarAgent = global.showSidebarAgent;
-	if (typeof global?.showSidebarTodos === "boolean") config.showSidebarTodos = global.showSidebarTodos;
-}
-
-export function validateConfig(input: unknown, base: AtelierConfig = DEFAULT_CONFIG): ConfigLoadResult {
+/** Resolve both file-backed and direct configuration through the same layer rules. */
+function resolveConfig(
+	input: { user?: unknown; project?: unknown; session?: unknown },
+	base: AtelierConfig = DEFAULT_CONFIG,
+): ConfigLoadResult {
 	const config = cloneConfig(base);
 	const warnings: string[] = [];
-	applyNonDisplay(input, config, warnings);
-	const inputRecord = record(input);
-	const displayLayers: DisplayLayerState = inputRecord ? { user: inputRecord } : {};
+	const displayLayers: DisplayLayerState = {};
+	for (const source of ["user", "project", "session"] as const) {
+		applyNonDisplay(input[source], config, warnings, source === "user");
+		const layer = record(input[source]);
+		if (layer) displayLayers[source] = layer;
+	}
 	const resolved = resolveDisplayLayers(displayLayers, base);
 	const sidebar = resolveSidebarLayout(displayLayers, base);
-	Object.assign(config, resolved.display, { sidebarPanelLayout: cloneSidebarLayout(sidebar.layout) });
-	if (sidebar.authoritative) {
-		config.showSidebarAgent =
-			sidebar.layout.find((entry) => entry.id === "agent")?.visible ?? config.showSidebarAgent;
-		config.showSidebarTodos =
-			sidebar.layout.find((entry) => entry.id === "todos")?.visible ?? config.showSidebarTodos;
-	} else applyGlobalSidebarCompatibility(config, input, base);
+	Object.assign(config, resolved.display, { sidebarPanelLayout: sidebar.layout });
 	return {
 		config,
 		warnings: [...new Set([...warnings, ...resolved.warnings, ...sidebar.warnings])],
 		displayLayers,
 		displayProvenance: resolved.provenance,
 	};
+}
+
+export function validateConfig(input: unknown, base: AtelierConfig = DEFAULT_CONFIG): ConfigLoadResult {
+	return resolveConfig({ user: input }, base);
 }
 
 async function readJson(path: string): Promise<{ value?: unknown; warning?: string }> {
@@ -418,45 +417,14 @@ async function readJson(path: string): Promise<{ value?: unknown; warning?: stri
 export async function loadConfig(options: LoadConfigOptions): Promise<ConfigLoadResult> {
 	const user = await readJson(options.userPath);
 	const project = options.projectTrusted ? await readJson(options.projectPath) : {};
-	const config = cloneConfig(DEFAULT_CONFIG);
-	const warnings: string[] = [];
-	applyNonDisplay(user.value, config, warnings);
-	if (options.projectTrusted) applyNonDisplay(project.value, config, warnings);
-	applyNonDisplay(options.session, config, warnings);
-	const userRecord = record(user.value);
-	const projectRecord = options.projectTrusted ? record(project.value) : undefined;
-	const sessionRecord = record(options.session);
-	const displayLayers: DisplayLayerState = {
-		...(userRecord ? { user: userRecord } : {}),
-		...(projectRecord ? { project: projectRecord } : {}),
-		...(sessionRecord ? { session: sessionRecord } : {}),
-	};
-	const resolved = resolveDisplayLayers(displayLayers);
-	const sidebar = resolveSidebarLayout(displayLayers);
-	Object.assign(config, resolved.display, { sidebarPanelLayout: cloneSidebarLayout(sidebar.layout) });
-	if (sidebar.authoritative) {
-		config.showSidebarAgent =
-			sidebar.layout.find((entry) => entry.id === "agent")?.visible ?? config.showSidebarAgent;
-		config.showSidebarTodos =
-			sidebar.layout.find((entry) => entry.id === "todos")?.visible ?? config.showSidebarTodos;
-	}
-	// Startup visibility, completion notifications, and legacy Sidebar visibility are global-user-only.
-	const global = cloneConfig(DEFAULT_CONFIG);
-	applyNonDisplay(user.value, global, []);
-	config.showSidebarOnStartup = global.showSidebarOnStartup;
-	config.completionNotifications = global.completionNotifications;
-	if (!sidebar.authoritative) applyGlobalSidebarCompatibility(config, user.value);
+	const resolved = resolveConfig({ user: user.value, project: project.value, session: options.session });
 	return {
-		config,
+		...resolved,
 		warnings: [
 			...new Set(
-				[user.warning, project.warning, ...warnings, ...resolved.warnings, ...sidebar.warnings].filter(
-					(item): item is string => !!item,
-				),
+				[user.warning, project.warning, ...resolved.warnings].filter((item): item is string => !!item),
 			),
 		],
-		displayLayers,
-		displayProvenance: resolved.provenance,
 	};
 }
 

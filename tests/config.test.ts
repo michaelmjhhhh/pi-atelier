@@ -1,7 +1,7 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadConfig, saveUserConfigPatch, validateConfig } from "../src/config.js";
 import { DISPLAY_TEMPLATES, PRODUCT_SEGMENT_ORDER } from "../src/display.js";
 import { DEFAULT_CONFIG } from "../src/types.js";
@@ -15,6 +15,10 @@ beforeEach(async () => {
 	root = await mkdtemp(join(tmpdir(), "pi-atelier-"));
 	userPath = join(root, "user.json");
 	projectPath = join(root, "project.json");
+});
+
+afterEach(async () => {
+	await rm(root, { recursive: true, force: true });
 });
 
 const visibility = (layout: typeof DEFAULT_CONFIG.segmentLayout, id: string) =>
@@ -32,7 +36,7 @@ describe("configuration", () => {
 		}
 		expect(DEFAULT_CONFIG.showSidebarToolNames).toBe(false);
 		expect(DEFAULT_CONFIG.completionNotifications).toBe(true);
-		expect(DEFAULT_CONFIG.showSidebarAgent).toBe(true);
+		expect(DEFAULT_CONFIG.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(true);
 		expect(DEFAULT_CONFIG.sidebarPanelLayout.map((entry) => entry.id)).toEqual([
 			"agent",
 			"activity",
@@ -97,8 +101,6 @@ describe("configuration", () => {
 	it("preserves a custom base Sidebar layout when input omits layout", () => {
 		const base = {
 			...DEFAULT_CONFIG,
-			showSidebarAgent: false,
-			showSidebarTodos: true,
 			sidebarPanelLayout: [
 				{ id: "vendor:queue" as const, visible: true },
 				{ id: "agent" as const, visible: false },
@@ -107,15 +109,12 @@ describe("configuration", () => {
 		};
 		const result = validateConfig({ shortcut: "ctrl+x" }, base);
 		expect(result.config.sidebarPanelLayout).toEqual(base.sidebarPanelLayout);
-		expect(result.config.showSidebarAgent).toBe(false);
-		expect(result.config.showSidebarTodos).toBe(true);
+		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(false);
 	});
 
 	it("translates legacy Sidebar visibility against a custom base without resetting it", () => {
 		const base = {
 			...DEFAULT_CONFIG,
-			showSidebarAgent: false,
-			showSidebarTodos: true,
 			sidebarPanelLayout: [
 				{ id: "vendor:queue" as const, visible: true },
 				{ id: "agent" as const, visible: false },
@@ -126,8 +125,6 @@ describe("configuration", () => {
 		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "vendor:queue")?.visible).toBe(true);
 		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(false);
 		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "todos")?.visible).toBe(false);
-		expect(result.config.showSidebarAgent).toBe(false);
-		expect(result.config.showSidebarTodos).toBe(false);
 	});
 
 	it("merges user, trusted project, then session with actionable provenance", async () => {
@@ -173,7 +170,7 @@ describe("configuration", () => {
 			projectTrusted: true,
 			session: { showSidebarAgent: true },
 		});
-		expect(result.config.showSidebarAgent).toBe(false);
+		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(false);
 	});
 
 	it("ignores project and session legacy Sidebar visibility when the user omits it", async () => {
@@ -184,8 +181,8 @@ describe("configuration", () => {
 			projectTrusted: true,
 			session: { showSidebarAgent: false, showSidebarTodos: false },
 		});
-		expect(result.config.showSidebarAgent).toBe(true);
-		expect(result.config.showSidebarTodos).toBe(true);
+		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(true);
+		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "todos")?.visible).toBe(true);
 	});
 
 	it("keeps a user legacy TODOS value ahead of trusted project and session values", async () => {
@@ -197,7 +194,6 @@ describe("configuration", () => {
 			projectTrusted: true,
 			session: { showSidebarTodos: true },
 		});
-		expect(result.config.showSidebarTodos).toBe(false);
 		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "todos")?.visible).toBe(false);
 	});
 
@@ -315,12 +311,12 @@ describe("configuration", () => {
 	it("loads persisted showSidebarAgent false from user config", async () => {
 		await writeJson(userPath, { showSidebarAgent: false });
 		const result = await loadConfig({ userPath, projectPath, projectTrusted: false });
-		expect(result.config.showSidebarAgent).toBe(false);
+		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(false);
 	});
 
 	it("rejects non-boolean showSidebarAgent with warning", () => {
 		const result = validateConfig({ showSidebarAgent: "off" });
-		expect(result.config.showSidebarAgent).toBe(true);
+		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(true);
 		expect(result.warnings).toContain("showSidebarAgent must be boolean");
 	});
 

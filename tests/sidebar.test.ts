@@ -158,13 +158,13 @@ describe("sidebar snapshot and layout", () => {
 	it("composes visible panels in persisted order and keeps unavailable entries out of rendering", () => {
 		const ordered = {
 			...DEFAULT_CONFIG,
-			showSidebarAgent: false,
-			showSidebarTodos: false,
 			sidebarPanelLayout: [
 				{ id: "vendor:queue" as const, visible: true },
 				{ id: "tools" as const, visible: true },
 				{ id: "activity" as const, visible: true },
-				...DEFAULT_CONFIG.sidebarPanelLayout.filter((entry) => !["tools", "activity"].includes(entry.id)),
+				...DEFAULT_CONFIG.sidebarPanelLayout
+					.filter((entry) => !["tools", "activity"].includes(entry.id))
+					.map((entry) => ({ ...entry, visible: !["agent", "todos"].includes(entry.id) })),
 			],
 		};
 		const lines = renderSidebarLines(
@@ -950,8 +950,6 @@ describe("sidebar snapshot and layout", () => {
 		const hiddenBuiltins = DEFAULT_CONFIG.sidebarPanelLayout.map((entry) => ({ ...entry, visible: false }));
 		const emptyConfig = {
 			...DEFAULT_CONFIG,
-			showSidebarAgent: false,
-			showSidebarTodos: false,
 			sidebarPanelLayout: [{ id: "vendor:missing" as const, visible: true }, ...hiddenBuiltins],
 		};
 		const rows = contentRows(renderSidebarLines(snapshot(), emptyConfig, theme, 44, 20));
@@ -1971,7 +1969,13 @@ describe("sidebar snapshot and layout", () => {
 	});
 
 	it("hides Agent while retaining every populated sibling panel", () => {
-		const configWithoutAgent = { ...DEFAULT_CONFIG, showSidebarAgent: false };
+		const configWithoutAgent = {
+			...DEFAULT_CONFIG,
+			sidebarPanelLayout: DEFAULT_CONFIG.sidebarPanelLayout.map((entry) => ({
+				...entry,
+				visible: entry.id !== "agent",
+			})),
+		};
 		const populated = {
 			...snapshot(),
 			todos: [
@@ -1987,8 +1991,8 @@ describe("sidebar snapshot and layout", () => {
 		expect(rows.some((row) => row.includes("Visible TODO"))).toBe(true);
 	});
 
-	it("shows the Agent panel when showSidebarAgent is true", () => {
-		const configWithAgent = { ...DEFAULT_CONFIG, showSidebarAgent: true };
+	it("shows the Agent panel when enabled in the layout", () => {
+		const configWithAgent = DEFAULT_CONFIG;
 		const rows = contentRows(renderSidebarLines(snapshot(), configWithAgent, theme, 44, 36, false, 0));
 		expect(rows).toContain("AGENT");
 	});
@@ -2503,7 +2507,7 @@ describe("todos panel", () => {
 		expect(rows).toContain("○ #3 Commit changes");
 	});
 
-	it("hides todos panel when config disables showSidebarTodos", () => {
+	it("hides todos panel when disabled in the layout", () => {
 		const snapWithTodos = buildSidebarSnapshot({
 			state,
 			cwd: "/Users/example/projects/pi-atelier",
@@ -2516,7 +2520,13 @@ describe("todos panel", () => {
 			runActivity: EMPTY_RUN_ACTIVITY,
 			todos: [{ id: 1, text: "Task", status: "pending" }],
 		});
-		const config = { ...DEFAULT_CONFIG, showSidebarTodos: false };
+		const config = {
+			...DEFAULT_CONFIG,
+			sidebarPanelLayout: DEFAULT_CONFIG.sidebarPanelLayout.map((entry) => ({
+				...entry,
+				visible: entry.id !== "todos",
+			})),
+		};
 		const rows = contentRows(renderSidebarLines(snapWithTodos, config, theme, 44, 36, false));
 		expect(rows).not.toContain("TODOS");
 	});

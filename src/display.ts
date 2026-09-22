@@ -57,22 +57,8 @@ export const isSegmentId = (value: unknown): value is SegmentId =>
 export const cloneSegmentLayout = (value: readonly { id: SegmentId; visible: boolean }[]): SegmentLayout =>
 	value.map((entry) => ({ ...entry }));
 
-export const legacySegmentsToLayout = (segments: readonly SegmentId[]): SegmentLayout => {
-	const seen = new Set<SegmentId>();
-	const result: SegmentLayout = [];
-	for (const id of segments) {
-		if (seen.has(id)) continue;
-		seen.add(id);
-		result.push({ id, visible: true });
-	}
-	for (const id of PRODUCT_SEGMENT_ORDER) {
-		if (!seen.has(id)) result.push({ id, visible: false });
-	}
-	for (const entry of result) {
-		if ((REQUIRED_SEGMENT_IDS as readonly SegmentId[]).includes(entry.id)) entry.visible = true;
-	}
-	return result;
-};
+export const legacySegmentsToLayout = (segments: readonly SegmentId[]): SegmentLayout =>
+	normalizeSegmentLayout(segments.map((id) => ({ id, visible: true })));
 
 /** Completes already-validated entries without changing their relative order. */
 export const normalizeSegmentLayout = (

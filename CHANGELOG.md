@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fix Display Revert followed by Undo restoring an earlier Sidebar edit instead of the Display override.
+- Consolidate configuration resolution and dialog lifecycle handling, use one internal Sidebar visibility layout, and remove unused runtime options and redundant snapshot copying. Legacy persisted Sidebar visibility settings remain supported.
+
 ## 0.10.2 — 2026-09-21
 
 - Preserve Sidebar text and borders beside inline images in regular and fullscreen mode ([#53](https://github.com/michaelmjhhhh/pi-atelier/issues/53)).

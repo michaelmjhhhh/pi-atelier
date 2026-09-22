@@ -200,7 +200,7 @@ describe("AtelierRuntime", () => {
 		});
 		requestRender.mockClear();
 
-		runtime.setSessionDisplayPatch({
+		runtime.replaceSessionDisplayOverride({
 			segmentLayout: DEFAULT_CONFIG.segmentLayout.map((entry) =>
 				entry.id === "performance" ? { ...entry, visible: true } : { ...entry },
 			),
@@ -212,7 +212,7 @@ describe("AtelierRuntime", () => {
 		expect(runtime.getDisplayProvenance().visibility.performance).toBe("session");
 		expect(requestRender).toHaveBeenCalledOnce();
 
-		runtime.setSessionDisplayPatch(undefined);
+		runtime.clearSessionDisplayOverride();
 		expect(runtime.getDisplaySettings()).toMatchObject({ density: "compact" });
 		expect(runtime.getDisplaySettings().segmentLayout[3]).toEqual({ id: "performance", visible: false });
 		expect(runtime.getDisplayProvenance()).toMatchObject({ density: "user", order: "product" });

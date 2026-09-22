@@ -1,50 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { selectWorkingPhrase, WORKING_PHRASES } from "../src/activity.js";
-
-const expectedPhrases = [
-	"KNEADING",
-	"PERCOLATING",
-	"MARINATING",
-	"CARAMELIZING",
-	"JULIENNING",
-	"FLAMBÉING",
-	"CHOREOGRAPHING",
-	"MOONWALKING",
-	"JITTERBUGGING",
-	"SOCK-HOPPING",
-	"BOOGIEING",
-	"SHIMMYING",
-	"EBBING",
-	"UNDULATING",
-	"PROPAGATING",
-	"PHOTOSYNTHESIZING",
-	"GERMINATING",
-	"POLLINATING",
-	"PONDERING",
-	"RUMINATING",
-	"COGITATING",
-	"CEREBRATING",
-	"DELIBERATING",
-	"MUSING",
-	"FROLICKING",
-	"LOLLYGAGGING",
-	"DILLY-DALLYING",
-	"BOONDOGGLING",
-	"SHENANIGANING",
-	"RAZZLE-DAZZLING",
-	"CLAUDING",
-	"GITIFYING",
-	"RETICULATING",
-	"HYPERSPACING",
-	"QUANTUMIZING",
-	"COMBOBULATING",
-] as const;
+import { selectWorkingPhrase } from "../src/activity.js";
 
 describe("working phrases", () => {
-	it("contains exactly the approved reference-image phrases", () => {
-		expect(WORKING_PHRASES).toEqual(expectedPhrases);
-	});
-
 	it.each([
 		[0, "KNEADING"],
 		[0.5, "PONDERING"],

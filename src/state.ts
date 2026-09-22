@@ -165,46 +165,29 @@ export class AtelierRuntime {
 		this.replaceSessionDisplayOverride(undefined);
 	}
 
-	setSessionDisplayPatch(patch: DisplayPatch | undefined): void {
-		if (!patch) {
-			this.clearSessionDisplayOverride();
-			return;
-		}
-		this.replaceSessionDisplayOverride({ ...this.getSessionDisplayOverride(), ...structuredClone(patch) });
-	}
-
 	/** Applies a successfully persisted User patch, then safely drops redundant Session fields. */
-	applySavedUserDisplayPatch(patch: DisplayPatch, canonicalizeSession = true): void {
+	applySavedUserDisplayPatch(patch: DisplayPatch): void {
 		this.#displayLayers = {
 			...this.#displayLayers,
 			user: { ...this.#displayLayers.user, ...structuredClone(patch) },
 		};
 		if (patch.sidebarPanelLayout) {
 			const sidebarPanelLayout = patch.sidebarPanelLayout.map((entry) => ({ ...entry }));
-			this.#config = {
-				...this.#config,
-				sidebarPanelLayout,
-				showSidebarAgent:
-					sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible ?? this.#config.showSidebarAgent,
-				showSidebarTodos:
-					sidebarPanelLayout.find((entry) => entry.id === "todos")?.visible ?? this.#config.showSidebarTodos,
-			};
+			this.#config = { ...this.#config, sidebarPanelLayout };
 		}
-		if (canonicalizeSession) {
-			const target = resolveDisplayLayers(this.#displayLayers).display;
-			let session = { ...this.#displayLayers.session };
-			for (const key of ["preset", "density", "segmentLayout"] as const) {
-				if (!(key in session)) continue;
-				const candidate = { ...session };
-				delete candidate[key];
-				const { session: _oldSession, ...lower } = this.#displayLayers;
-				const layers: DisplayLayerState =
-					Object.keys(candidate).length > 0 ? { ...lower, session: candidate } : lower;
-				if (isDeepStrictEqual(resolveDisplayLayers(layers).display, target)) session = candidate;
-			}
+		const target = resolveDisplayLayers(this.#displayLayers).display;
+		let session = { ...this.#displayLayers.session };
+		for (const key of ["preset", "density", "segmentLayout"] as const) {
+			if (!(key in session)) continue;
+			const candidate = { ...session };
+			delete candidate[key];
 			const { session: _oldSession, ...lower } = this.#displayLayers;
-			this.#displayLayers = Object.keys(session).length > 0 ? { ...lower, session } : lower;
+			const layers: DisplayLayerState =
+				Object.keys(candidate).length > 0 ? { ...lower, session: candidate } : lower;
+			if (isDeepStrictEqual(resolveDisplayLayers(layers).display, target)) session = candidate;
 		}
+		const { session: _oldSession, ...lower } = this.#displayLayers;
+		this.#displayLayers = Object.keys(session).length > 0 ? { ...lower, session } : lower;
 		this.#resolveDisplay();
 	}
 

@@ -1,3 +1,5 @@
+import { applyDisplayTemplate } from "./display.js";
+import { DEFAULT_SIDEBAR_PANEL_LAYOUT } from "./sidebar-panels.js";
 import type { WorkspacePulseData } from "./workspace-pulse.js";
 
 export type TemplateName = "editorial" | "minimal" | "classic";
@@ -106,8 +108,6 @@ export interface AtelierConfig extends DisplaySettings {
 	currencyDecimals: number;
 	showSessionActions: boolean;
 	showSidebarToolNames: boolean;
-	showSidebarAgent: boolean;
-	showSidebarTodos: boolean;
 	showSidebarOnStartup: boolean;
 	sidebarPanelLayout: SidebarPanelLayout;
 	completionNotifications: boolean;
@@ -153,37 +153,14 @@ export interface FooterState extends AtelierState {
 }
 
 export const DEFAULT_CONFIG: AtelierConfig = {
-	preset: "editorial",
+	...applyDisplayTemplate("editorial"),
 	shortcut: "alt+a",
-	segmentLayout: [
-		{ id: "brand", visible: false },
-		{ id: "activity", visible: true },
-		{ id: "metrics", visible: true },
-		{ id: "performance", visible: false },
-		{ id: "context", visible: true },
-		{ id: "model", visible: true },
-		{ id: "git", visible: true },
-		{ id: "statuses", visible: true },
-		{ id: "menu", visible: true },
-	],
-	density: "comfortable",
 	contextWarning: 70,
 	contextDanger: 90,
 	currencyDecimals: 3,
 	showSessionActions: true,
 	showSidebarToolNames: false,
-	showSidebarAgent: true,
-	showSidebarTodos: true,
 	showSidebarOnStartup: true,
-	sidebarPanelLayout: [
-		{ id: "agent", visible: true },
-		{ id: "activity", visible: true },
-		{ id: "alerts", visible: true },
-		{ id: "todos", visible: true },
-		{ id: "context", visible: true },
-		{ id: "workspace", visible: true },
-		{ id: "usage", visible: true },
-		{ id: "tools", visible: true },
-	],
+	sidebarPanelLayout: DEFAULT_SIDEBAR_PANEL_LAYOUT.map((entry) => ({ ...entry })),
 	completionNotifications: true,
 };
