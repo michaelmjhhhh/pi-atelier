@@ -4,7 +4,7 @@ This note records the source and asset review for the session ribbon introduced 
 
 ## Reference and implementation
 
-The user supplied a screenshot and link to [pi-powerline-footer](https://github.com/nicobailon/pi-powerline-footer) as visual inspiration, alongside a request for familiar Starship/zsh-style prompt icons and an independently implemented design.
+The visual direction draws on [pi-powerline-footer](https://github.com/nicobailon/pi-powerline-footer) and familiar Starship/zsh-style prompt icons. The implementation builds independently on Atelier's existing components.
 
 The implementation was written using Atelier's existing prioritized footer items, palette, rounded editor frame, and session lifecycle. The reference screenshot and README informed the visual direction; its TypeScript source was inspected afterward for comparison. Atelier retains its own activity display, places session information in its existing editor border, and separates usage/timing below it. Its preexisting palette is unchanged.
 
@@ -21,7 +21,7 @@ The later narrow-width correction only returns an empty header when essential co
 
 Icon characters use the standard [Nerd Fonts glyph vocabulary](https://github.com/ryanoasis/nerd-fonts/blob/master/glyphnames.json), also used by [Starship's Nerd Font preset](https://starship.rs/presets/nerd-font). Terminal users supply their own installed font; this change bundles no font binaries or standalone icon assets. Shared codepoints are standard prompt symbols, while principal model, folder, branch, input/output, and context icon choices differ from the reference.
 
-[The result screenshot](images/composer-session-ribbon.png) was supplied by the user with an explicit request to upload it as a PR reference. It depicts Atelier's implementation and is not the reference project's screenshot.
+[The screenshot](images/composer-session-ribbon.png) shows Atelier's session ribbon and lower telemetry in use. It was captured from Atelier, rather than taken from the reference project.
 
 ## License findings and limits
 
