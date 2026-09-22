@@ -477,6 +477,9 @@ function compose(items: FooterItem[], width: number, palette: AtelierPalette, fl
 		if (item.full !== item.compact) compactIds.add(item.id);
 	}
 
+	// A clipped header would hide essential state from the complete footer below.
+	if (flow && measured() > width) return "";
+
 	const leftText = left();
 	const rightText = right();
 	if (flow) {
