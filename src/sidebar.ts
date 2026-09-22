@@ -837,15 +837,25 @@ function activitySidebarGroups(
 	].filter((group) => group.rows.length > 0);
 }
 
-function composeGroups(
-	groups: SidebarGroup[],
-	height: number,
-	width: number,
-	palette: AtelierPalette,
-	theme: ThemeLike,
-): SidebarGroup[] {
+/** Content rows do not wrap; each contiguous panel adds a header, bottom border, and spacer. */
+function measureGroups(groups: readonly SidebarGroup[]): number {
+	let height = 0;
+	let previous: SidebarGroup | undefined;
+	for (const group of groups) {
+		height += group.rows.length;
+		if (group.panel && (group.panel !== previous?.panel || group.panelId !== previous?.panelId)) {
+			height += 3;
+		}
+		previous = group;
+	}
+	return height;
+}
+
+function composeGroups(groups: readonly SidebarGroup[], height: number): SidebarGroup[] {
 	let candidate = groups.filter((group) => group.rows.length > 0);
-	while (renderGroups(candidate, width, palette, theme).length > height) {
+	// Recount cheap row metadata after removal so newly adjacent groups share panel chrome.
+	// Painting happens only after selection, never for the discarded candidates.
+	while (measureGroups(candidate) > height) {
 		let dropIndex = -1;
 		let dropRank = Number.POSITIVE_INFINITY;
 		for (const [index, group] of candidate.entries()) {
@@ -1058,12 +1068,7 @@ export function renderSidebarLines(
 		});
 	}
 	return renderDock(
-		renderGroups(
-			composeGroups(ordered, safeHeight, contentWidth, palette, theme),
-			contentWidth,
-			palette,
-			theme,
-		),
+		renderGroups(composeGroups(ordered, safeHeight), contentWidth, palette, theme),
 		safeWidth,
 		safeHeight,
 		palette,
