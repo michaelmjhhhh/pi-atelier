@@ -219,13 +219,6 @@ function sidebarLayout(width: number, config: AtelierConfig): SidebarLayout {
 	};
 }
 
-function activityRole(activity: SidebarSnapshot["activity"]): PaletteRole {
-	if (activity === "error") return "error";
-	if (activity === "warning") return "warning";
-	if (activity === "working") return "working";
-	return "ready";
-}
-
 function activitySymbol(activity: SidebarSnapshot["activity"]): string {
 	if (activity === "error") return "✕";
 	if (activity === "warning") return "▲";
@@ -247,10 +240,7 @@ function agentRows(
 			: "";
 	const activityText = workingLabel ? `${activity} · ${workingLabel}` : activity;
 	const status = theme.bold(
-		palette.paint(
-			activityRole(snapshot.activity),
-			`${activitySymbol(snapshot.activity)} ${activityText || "—"}`,
-		),
+		palette.paint(snapshot.activity, `${activitySymbol(snapshot.activity)} ${activityText || "—"}`),
 	);
 	const model = valueRow(snapshot.modelId, palette, "primary");
 	const provider = snapshot.provider ? palette.paint("muted", display(snapshot.provider).toUpperCase()) : "";
@@ -814,7 +804,7 @@ function activitySidebarGroups(
 			panelRole,
 			rows: [active.row],
 			required: false,
-			dropRank: 35 + (rows.length - index) / 100,
+			dropRank: 35 + (rows.length - index) / 100 + 40,
 		})),
 		...groups.recent.map((recent, index) => ({
 			name: `activityRecent:${recent.id}`,
@@ -823,7 +813,7 @@ function activitySidebarGroups(
 			panelRole,
 			rows: [recent.row],
 			required: false,
-			dropRank: index === 0 ? 30 : 10 + (recentCount - index - 1),
+			dropRank: (index === 0 ? 30 : 10 + (recentCount - index - 1)) + 40,
 		})),
 		{
 			name: "activityAggregate",
@@ -832,7 +822,7 @@ function activitySidebarGroups(
 			panelRole,
 			rows: groups.aggregate,
 			required: false,
-			dropRank: 20,
+			dropRank: 60,
 		},
 	].filter((group) => group.rows.length > 0);
 }
@@ -906,17 +896,13 @@ export function renderSidebarLines(
 			name: "agent",
 			panel: "AGENT",
 			panelId: "agent",
-			panelRole: activityRole(snapshot.activity),
+			panelRole: snapshot.activity,
 			panelJewel: snapshot.activity === "working" && Math.floor(now / 400) % 2 === 1 ? "✧" : "✦",
 			rows: agentRows(snapshot, layout, panelContentWidth, palette, theme),
 			required: true,
 			dropRank: Number.POSITIVE_INFINITY,
 		},
-		...activitySidebarGroups(snapshot, panelContentWidth, palette, now).map((group) => ({
-			...group,
-			required: group.name === "activityCore",
-			dropRank: group.name === "activityCore" ? Number.POSITIVE_INFINITY : group.dropRank + 40,
-		})),
+		...activitySidebarGroups(snapshot, panelContentWidth, palette, now),
 		{
 			name: "statusDetails",
 			panel: "ALERTS",

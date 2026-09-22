@@ -140,17 +140,13 @@ function fit(text: string, width: number): string {
 }
 
 function panel(title: string, lines: string[], width: number, theme: ThemeLike, accent = false): string[] {
-	if (width < 4) return lines.map((line) => fit(line, width));
-	const inner = width - 2;
-	const color = accent ? "borderAccent" : "muted";
-	const edge = (text: string) => theme.fg(color, text);
-	const heading = ` ${title} `;
-	const rule = Math.max(0, inner - visibleWidth(heading));
-	return [
-		`${edge("┌")}${theme.bold(theme.fg(accent ? "accent" : "muted", heading))}${edge("─".repeat(rule))}${edge("┐")}`,
-		...lines.map((line) => `${edge("│")}${fit(line, inner)}${edge("│")}`),
-		`${edge("└")}${edge("─".repeat(inner))}${edge("┘")}`,
-	];
+	return panelWithFocus(
+		title,
+		lines.map((line) => ({ line })),
+		width,
+		theme,
+		accent,
+	).map(({ line }) => line);
 }
 
 interface LayoutLine {
@@ -164,17 +160,18 @@ function panelWithFocus(
 	lines: readonly LayoutLine[],
 	width: number,
 	theme: ThemeLike,
+	accent = false,
 ): LayoutLine[] {
 	const withFocus = (line: string, focused: boolean | undefined): LayoutLine =>
 		focused === undefined ? { line } : { line, focused };
 	if (width < 4) return lines.map(({ line, focused }) => withFocus(fit(line, width), focused));
 	const inner = width - 2;
-	const edge = (text: string) => theme.fg("muted", text);
+	const edge = (text: string) => theme.fg(accent ? "borderAccent" : "muted", text);
 	const heading = ` ${title} `;
 	const rule = Math.max(0, inner - visibleWidth(heading));
 	return [
 		{
-			line: `${edge("┌")}${theme.bold(theme.fg("muted", heading))}${edge("─".repeat(rule))}${edge("┐")}`,
+			line: `${edge("┌")}${theme.bold(theme.fg(accent ? "accent" : "muted", heading))}${edge("─".repeat(rule))}${edge("┐")}`,
 		},
 		...lines.map(({ line, focused }) => withFocus(`${edge("│")}${fit(line, inner)}${edge("│")}`, focused)),
 		{ line: `${edge("└")}${edge("─".repeat(inner))}${edge("┘")}` },
@@ -638,9 +635,6 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 				if (selectedCentralLine <= 0) {
 					scrollOffset = 0;
 					centralLines = [central[0] ?? { line: "" }, { line: fit("↓ more", outerInner) }];
-				} else if (selectedCentralLine >= central.length - 1) {
-					scrollOffset = central.length - 1;
-					centralLines = [{ line: fit("↑ more", outerInner) }, central[scrollOffset] ?? { line: "" }];
 				} else {
 					scrollOffset = selectedCentralLine;
 					centralLines = [{ line: fit("↑ more", outerInner) }, central[scrollOffset] ?? { line: "" }];

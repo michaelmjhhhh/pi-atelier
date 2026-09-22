@@ -105,15 +105,7 @@ function activityText(
 	const label = state.activity === "working" && !compact ? (state.workingLabel ?? fallback) : fallback;
 	const dots =
 		state.activity === "working" && !compact ? workingDots.padEnd(WORKING_DOT_FRAMES[0].length, " ") : "";
-	const role: PaletteRole =
-		state.activity === "ready"
-			? "ready"
-			: state.activity === "working"
-				? "working"
-				: state.activity === "warning"
-					? "warning"
-					: "error";
-	return palette.paint(role, theme.bold(`● ${sanitize(label)}${dots}`));
+	return palette.paint(state.activity, theme.bold(`● ${sanitize(label)}${dots}`));
 }
 
 function buildItems(
@@ -349,7 +341,11 @@ function compose(items: FooterItem[], width: number, leftSeparator: string): str
 			compactIds,
 			"  ",
 		);
-	const measured = () => visibleWidth(left()) + visibleWidth(right()) + (left() && right() ? 2 : 0);
+	const measured = () => {
+		const leftText = left();
+		const rightText = right();
+		return visibleWidth(leftText) + visibleWidth(rightText) + (leftText && rightText ? 2 : 0);
+	};
 
 	const droppable = active.filter((item) => !item.required).sort((a, b) => a.dropRank - b.dropRank);
 	for (const item of droppable) {

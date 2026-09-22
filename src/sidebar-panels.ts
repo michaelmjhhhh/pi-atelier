@@ -56,7 +56,7 @@ export const DEFAULT_SIDEBAR_PANEL_LAYOUT: SidebarPanelLayout = BUILTIN_SIDEBAR_
 const BUILTIN_IDS = new Set<string>(BUILTIN_SIDEBAR_PANEL_IDS);
 // Use a strict end-of-input assertion; JavaScript's `$` also matches before a final line terminator.
 const NAMESPACED_ID = /^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*(?![\s\S])/;
-const PANEL_ROLES = new Set([
+const PANEL_ROLE_VALUES = [
 	"primary",
 	"accent",
 	"muted",
@@ -69,21 +69,10 @@ const PANEL_ROLES = new Set([
 	"output",
 	"cache",
 	"context",
-]);
+] as const;
+const PANEL_ROLES = new Set<string>(PANEL_ROLE_VALUES);
 
-export type SidebarPanelRole =
-	| "primary"
-	| "accent"
-	| "muted"
-	| "dim"
-	| "ready"
-	| "working"
-	| "warning"
-	| "error"
-	| "input"
-	| "output"
-	| "cache"
-	| "context";
+export type SidebarPanelRole = (typeof PANEL_ROLE_VALUES)[number];
 
 export interface SidebarPanelRow {
 	text: string;
@@ -388,6 +377,13 @@ function sidebarPanelDataEqual(first: SidebarPanelData, second: SidebarPanelData
 	);
 }
 
+function cloneSidebarPanelData(panel: SidebarPanelData): SidebarPanelData {
+	return {
+		...panel,
+		rows: panel.rows.map((row) => ({ text: row.text, ...(row.role ? { role: row.role } : {}) })),
+	};
+}
+
 /** Create a lifecycle-safe registry backed only by Pi's public event bus. */
 export function createSidebarPanelRegistry(options: SidebarPanelRegistryOptions = {}): SidebarPanelRegistry {
 	const panels = new Map<string, SidebarPanelData>();
@@ -504,19 +500,10 @@ export function createSidebarPanelRegistry(options: SidebarPanelRegistryOptions 
 		unregister,
 		handleEvent,
 		requestDiscovery,
-		getAvailable: () =>
-			[...panels.values()].map((panel) => ({
-				...panel,
-				rows: panel.rows.map((row) => ({ text: row.text, ...(row.role ? { role: row.role } : {}) })),
-			})),
+		getAvailable: () => [...panels.values()].map(cloneSidebarPanelData),
 		get: (id) => {
 			const panel = panels.get(id);
-			return panel
-				? {
-						...panel,
-						rows: panel.rows.map((row) => ({ text: row.text, ...(row.role ? { role: row.role } : {}) })),
-					}
-				: undefined;
+			return panel ? cloneSidebarPanelData(panel) : undefined;
 		},
 		dispose: () => {
 			if (disposed) return;
