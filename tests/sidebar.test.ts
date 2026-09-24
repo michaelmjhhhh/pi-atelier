@@ -957,9 +957,9 @@ describe("sidebar snapshot and layout", () => {
 	});
 
 	it("renders a full-height dock with elegant terminal-native panels", () => {
-		const lines = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false, 0);
+		const lines = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 60, false, 0);
 		const text = lines.join("\n");
-		expect(lines).toHaveLength(36);
+		expect(lines).toHaveLength(60);
 		expect(lines.every((line) => visibleWidth(line) <= 44)).toBe(true);
 		expect(lines.every((line) => stripAnsi(line).startsWith("  "))).toBe(true);
 		expect(lines.every((line) => !stripAnsi(line).startsWith("│ "))).toBe(true);
@@ -969,20 +969,18 @@ describe("sidebar snapshot and layout", () => {
 		expect(text).not.toContain("ATELIER");
 		expect(text).not.toMatch(/PI ATELIER|ATELIER|▛▀▜/);
 		expect(contentRows(lines)[0]).toBe("AGENT");
-		expect(contentRows(lines)).toContain("pi-atelier · feature/sidebar ▲");
-		expect(contentRows(lines)).toContainEqual(
-			expect.stringMatching(/^◆ Working · gitifying\s+gpt-5\.6-sol$/),
-		);
+		expect(contentRows(lines)).toContainEqual(expect.stringMatching(/^Branch\s+feature\/sidebar$/));
+		expect(contentRows(lines)).toContainEqual(expect.stringMatching(/^gpt-5\.6-sol$/));
 	});
 
 	it("renders a scan-first Workspace Pulse without repeating the repository root path", () => {
-		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false, 0));
+		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 60, false, 0));
 
-		expect(rows).toContain("5 tracked  +182  −47");
-		expect(rows).toContain("2 untracked");
+		expect(rows).toContainEqual(expect.stringMatching(/^Changed\s+5 tracked$/));
+		expect(rows).toContainEqual(expect.stringMatching(/^Untracked\s+2$/));
 		expect(rows).not.toContain("/Users/example/projects/pi-atelier");
-		expect(rows).toContain("Sidebar implementation");
-		expect(rows).toContain("38 entries · persisted");
+		expect(rows).toContainEqual(expect.stringMatching(/^Session\s+Sidebar implementation$/));
+		expect(rows).toContainEqual(expect.stringMatching(/^History\s+38 entries$/));
 	});
 
 	it.each([
@@ -997,7 +995,7 @@ describe("sidebar snapshot and layout", () => {
 				DEFAULT_CONFIG,
 				theme,
 				44,
-				36,
+				60,
 				false,
 				0,
 			),
@@ -1023,14 +1021,14 @@ describe("sidebar snapshot and layout", () => {
 				DEFAULT_CONFIG,
 				theme,
 				44,
-				36,
+				60,
 				false,
 				0,
 			),
 		);
 		expect(conflictRows).toContain("./packages/api");
-		expect(conflictRows).toContain("2 conflicts");
-		expect(conflictRows).toContain("2 untracked · 1 binary · 1 submodule");
+		expect(conflictRows).toContainEqual(expect.stringMatching(/^Conflicts\s+2$/));
+		expect(conflictRows).toContainEqual(expect.stringMatching(/^Submodules\s+1$/));
 
 		const staleRows = contentRows(
 			renderSidebarLines(
@@ -1038,12 +1036,12 @@ describe("sidebar snapshot and layout", () => {
 				DEFAULT_CONFIG,
 				theme,
 				44,
-				36,
+				60,
 				false,
 				0,
 			),
 		);
-		expect(staleRows).toContain("~ stale · 5 tracked  +182  −47");
+		expect(staleRows).toContainEqual(expect.stringMatching(/^Git\s+Stale$/));
 
 		const compactRows = contentRows(
 			renderSidebarLines(
@@ -1051,30 +1049,30 @@ describe("sidebar snapshot and layout", () => {
 				DEFAULT_CONFIG,
 				theme,
 				28,
-				36,
+				60,
 				false,
 				0,
 			),
 		);
-		expect(compactRows).toContain("~ stale · 5 tracked");
-		expect(compactRows).toContain("+182  −47");
-		expect(compactRows).toContain("?2 · bin1 · sub1");
+		expect(compactRows).toContainEqual(expect.stringMatching(/^Git\s+Stale$/));
+		expect(compactRows).toContainEqual(expect.stringMatching(/^Lines\s+\+182  −47$/));
+		expect(compactRows).toContainEqual(expect.stringMatching(/^Binary\s+1$/));
 	});
 
 	it("drops Session and optional Pulse detail before the Workspace identity and core summary", () => {
-		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 20, false, 0));
+		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 27, false, 0));
 
 		expect(rows).toContain("WORKSPACE");
-		expect(rows).toContain("pi-atelier · feature/sidebar ▲");
-		expect(rows).toContain("5 tracked  +182  −47");
-		expect(rows).not.toContain("2 untracked");
-		expect(rows).not.toContain("Sidebar implementation");
-		expect(rows).not.toContain("38 entries · persisted");
+		expect(rows).toContainEqual(expect.stringMatching(/^Branch\s+feature\/sidebar$/));
+		expect(rows).toContainEqual(expect.stringMatching(/^Changed\s+5 tracked$/));
+		expect(rows).not.toContainEqual(expect.stringMatching(/^Untracked\s+2$/));
+		expect(rows).not.toContainEqual(expect.stringMatching(/^Session\s+Sidebar implementation$/));
+		expect(rows).not.toContainEqual(expect.stringMatching(/^History\s+38 entries$/));
 	});
 
 	it("pulses only the working Agent jewel while keeping other crowns stable", () => {
-		const bright = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false, 0).join("\n");
-		const soft = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false, 400).join("\n");
+		const bright = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 60, false, 0).join("\n");
+		const soft = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 60, false, 400).join("\n");
 		expect(bright).toContain("╭─ ✦ AGENT ");
 		expect(soft).toContain("╭─ ✧ AGENT ");
 		expect(bright).toContain("╭─ ✦ CONTEXT ");
@@ -1088,7 +1086,7 @@ describe("sidebar snapshot and layout", () => {
 			DEFAULT_CONFIG,
 			{ fg, bold: theme.bold, italic: theme.italic },
 			44,
-			36,
+			60,
 			true,
 			0,
 		);
@@ -1098,7 +1096,7 @@ describe("sidebar snapshot and layout", () => {
 		expect(fg).toHaveBeenCalledWith("syntaxType", "╭─ ✦ ");
 	});
 
-	it("matches the representative 44x36 no-color docked rail", () => {
+	it("matches the representative 44x60 no-color docked rail", () => {
 		const noSession = buildSidebarSnapshot({
 			state: { ...state, extensionStatuses: [] },
 			cwd: "/Users/example/projects/pi-atelier",
@@ -1108,39 +1106,63 @@ describe("sidebar snapshot and layout", () => {
 			extensionStatuses: [],
 		});
 		expect(
-			contentRows(renderSidebarLines(noSession, DEFAULT_CONFIG, theme, 44, 36, false)),
+			contentRows(renderSidebarLines(noSession, DEFAULT_CONFIG, theme, 44, 60, false)),
 		).toMatchInlineSnapshot(`
 			[
 			  "AGENT",
-			  "◆ Working · gitifying      gpt-5.6-sol",
-			  "OPENAI-CODEX · MEDIUM · SUBSCRIPTION",
+			  "◆ Working · GITIFYING",
+			  "gpt-5.6-sol",
+			  "openai-codex",
+			  "Thinking                        medium",
+			  "Billing                   Subscription",
 			  "",
 			  "",
 			  "ACTIVITY",
-			  "Ready",
-			  "TTFT ~ · TPS ~",
+			  "First token                          —",
+			  "Output speed                         —",
 			  "",
 			  "",
 			  "CONTEXT",
-			  "32k / 400k                        8.1%",
-			  "[■·········]",
+			  "██░░░░░░░░░░░░░░░░░░░░░░░░░░░░    8.1%",
+			  "Tokens                      32k / 400k",
 			  "",
 			  "",
 			  "WORKSPACE",
-			  "pi-atelier · feature/sidebar ▲",
-			  "5 tracked  +182  −47",
-			  "2 untracked",
-			  "6 entries · ephemeral",
+			  "pi-atelier",
+			  "Branch                 feature/sidebar",
+			  "Git                           Modified",
+			  "Changed                      5 tracked",
+			  "Lines                        +182  −47",
+			  "Untracked                            2",
+			  "History                      6 entries",
+			  "Storage                      Temporary",
 			  "",
 			  "",
 			  "USAGE",
-			  "In 50.0k  Out 1.9k",
-			  "Cache 100.0k  Hit 96.0%",
-			  "Cost $0.479",
+			  "Input                            50.0k",
+			  "Output                            1.9k",
+			  "Cache read                      100.0k",
+			  "Cache hit                        96.0%",
+			  "Cost                            $0.479",
 			  "",
 			  "",
 			  "TOOLS",
-			  "8 / 12 active                        ▸",
+			  "Enabled                         8 / 12",
+			  "",
+			  "",
+			  "",
+			  "",
+			  "",
+			  "",
+			  "",
+			  "",
+			  "",
+			  "",
+			  "",
+			  "",
+			  "",
+			  "",
+			  "",
 			  "",
 			  "",
 			  "",
@@ -1153,70 +1175,70 @@ describe("sidebar snapshot and layout", () => {
 
 	it("renders organized sections without exceeding width", () => {
 		for (const width of [32, 40, 44]) {
-			const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, width, 36, false));
+			const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, width, 60, false));
 			expect(rows.join("\n")).not.toContain("ATELIER");
 			expect(rows.join("\n")).toContain("WORKSPACE");
 			expect(rows.join("\n")).toContain("CONTEXT");
 			expect(rows).toContain("TOOLS");
 			expect(rows.every((row) => !row.startsWith("STATUS "))).toBe(true);
 			expect(
-				renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, width, 36, false).every(
+				renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, width, 60, false).every(
 					(line) => visibleWidth(line) <= width,
 				),
 			).toBe(true);
 		}
 	});
 
-	it("switches all dense sections to compact rows below 40 columns", () => {
+	it("keeps labeled metrics readable in narrow and wide panels", () => {
 		const expandedConfig = { ...DEFAULT_CONFIG, showSidebarToolNames: true };
-		const compact = contentRows(renderSidebarLines(snapshot(), expandedConfig, theme, 28, 36, false));
-		expect(compact).toContain("◆ Working · gitifying");
+		const compact = contentRows(renderSidebarLines(snapshot(), expandedConfig, theme, 28, 60, false));
+		expect(compact).toContain("◆ Working · GITIFYING");
 		expect(compact).toContain("gpt-5.6-sol");
-		expect(compact).toContain("OPENAI-CODEX");
-		expect(compact).toContain("MEDIUM · SUBSCRIPTION");
+		expect(compact).toContain("openai-codex");
+		expect(compact).toContainEqual(expect.stringMatching(/^Thinking\s+medium$/));
 		const compactContext = compact.indexOf("CONTEXT");
-		expect(compact[compactContext + 1]).toMatch(/^32k \/ 400k\s+8\.1%$/);
-		expect(compact[compactContext + 2]).toMatch(/^\[■·+\]$/);
+		expect(compact[compactContext + 1]).toMatch(/^[█░]+\s+8\.1%$/);
+		expect(compact[compactContext + 2]).toMatch(/^Tokens\s+32k \/ 400k$/);
 		expect(compact).toContain("pi-atelier");
-		expect(compact).toContain("feature/sidebar ▲");
-		expect(compact).toContain("In 50.0k · Out 1.9k");
-		expect(compact).toContain("Cache 100.0k · 96.0%");
-		expect(compact).toContainEqual(expect.stringMatching(/^8 \/ 12 active\s+▸$/));
+		expect(compact).toContainEqual(expect.stringMatching(/^Branch\s+feature\/sidebar$/));
+		expect(compact).toContainEqual(expect.stringMatching(/^Input\s+50\.0k$/));
+		expect(compact).toContainEqual(expect.stringMatching(/^Cache read\s+100\.0k$/));
+		expect(compact).toContainEqual(expect.stringMatching(/^Enabled\s+8 \/ 12$/));
 		expect(compact).toEqual(expect.not.arrayContaining([expect.stringMatching(/subs$/)]));
 
-		const regular = contentRows(renderSidebarLines(snapshot(), expandedConfig, theme, 44, 36, false));
-		expect(regular).toContainEqual(expect.stringMatching(/^◆ Working · gitifying\s+gpt-5\.6-sol$/));
-		expect(regular).toContain("OPENAI-CODEX · MEDIUM · SUBSCRIPTION");
-		expect(regular).toContain("pi-atelier · feature/sidebar ▲");
-		expect(regular).toContainEqual(expect.stringMatching(/^8 \/ 12 active\s+▾$/));
+		const regular = contentRows(renderSidebarLines(snapshot(), expandedConfig, theme, 44, 60, false));
+		expect(regular).toContainEqual(expect.stringMatching(/^gpt-5\.6-sol$/));
+		expect(regular).toContainEqual(expect.stringMatching(/^Billing\s+Subscription$/));
+		expect(regular).toContainEqual(expect.stringMatching(/^Branch\s+feature\/sidebar$/));
+		expect(regular).toContainEqual(expect.stringMatching(/^Enabled\s+8 \/ 12$/));
 	});
 
-	it("uses compact layout only below 40 frame-inclusive sidebar columns", () => {
+	it("preserves the labeled hierarchy across the compact threshold", () => {
 		const expandedConfig = { ...DEFAULT_CONFIG, showSidebarToolNames: true };
-		const compact = contentRows(renderSidebarLines(snapshot(), expandedConfig, theme, 39, 36, false));
-		expect(compact).toContain("◆ Working · gitifying");
+		const compact = contentRows(renderSidebarLines(snapshot(), expandedConfig, theme, 39, 60, false));
+		expect(compact).toContain("◆ Working · GITIFYING");
 		expect(compact).toContain("gpt-5.6-sol");
-		expect(compact).not.toContainEqual(expect.stringMatching(/^◆ Working · gitifying\s+gpt-5\.6-sol$/));
+		expect(compact).not.toContainEqual(expect.stringMatching(/^◆ Working.*gpt-5\.6-sol$/));
 
 		for (const width of [40, 43, 44]) {
-			const regular = contentRows(renderSidebarLines(snapshot(), expandedConfig, theme, width, 36, false));
-			expect(regular).toContainEqual(expect.stringMatching(/^◆ Working · gitifying\s+gpt-5\.6-sol$/));
-			expect(regular).toContainEqual(expect.stringMatching(/^OPENAI-CODEX/));
-			expect(regular).toContainEqual(expect.stringMatching(/^8 \/ 12 active\s+▾$/));
+			const regular = contentRows(renderSidebarLines(snapshot(), expandedConfig, theme, width, 60, false));
+			expect(regular).toContainEqual(expect.stringMatching(/^gpt-5\.6-sol$/));
+			expect(regular).toContainEqual(expect.stringMatching(/^openai-codex/));
+			expect(regular).toContainEqual(expect.stringMatching(/^Enabled\s+8 \/ 12$/));
 		}
 	});
 
-	it("renders a compact segmented context meter that adapts to width", () => {
-		const narrow = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 28, 36, false));
+	it("renders a context meter and labeled token count that adapt to width", () => {
+		const narrow = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 28, 60, false));
 		const narrowContext = narrow.indexOf("CONTEXT");
-		expect(narrow[narrowContext + 1]).toMatch(/^32k \/ 400k\s+8\.1%$/);
-		expect(narrow[narrowContext + 2]).toMatch(/^\[■·+\]$/);
+		expect(narrow[narrowContext + 1]).toMatch(/^[█░]+\s+8\.1%$/);
+		expect(narrow[narrowContext + 2]).toMatch(/^Tokens\s+32k \/ 400k$/);
 
 		for (const width of [40, 44, 72]) {
-			const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, width, 36, false));
+			const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, width, 60, false));
 			const contextIndex = rows.indexOf("CONTEXT");
-			expect(rows[contextIndex + 1]).toMatch(/^32k \/ 400k\s+8\.1%$/);
-			expect(rows[contextIndex + 2]).toMatch(/^\[■·+\]$/);
+			expect(rows[contextIndex + 1]).toMatch(/^[█░]+\s+8\.1%$/);
+			expect(rows[contextIndex + 2]).toMatch(/^Tokens\s+32k \/ 400k$/);
 			expect(visibleWidth(rows[contextIndex + 1] ?? "")).toBeLessThanOrEqual(width - 6);
 		}
 	});
@@ -1230,23 +1252,23 @@ describe("sidebar snapshot and layout", () => {
 			availableToolCount: 12,
 			extensionStatuses: [],
 		});
-		const rows = contentRows(renderSidebarLines(missingSession, DEFAULT_CONFIG, theme, 44, 36, false));
+		const rows = contentRows(renderSidebarLines(missingSession, DEFAULT_CONFIG, theme, 44, 60, false));
 		const workspaceIndex = rows.indexOf("WORKSPACE");
 		const usageIndex = rows.indexOf("USAGE");
 		expect(workspaceIndex).toBeGreaterThanOrEqual(0);
 		expect(usageIndex).toBeGreaterThan(workspaceIndex);
 		const workspaceRows = rows.slice(workspaceIndex + 1, usageIndex);
 		expect(workspaceRows).not.toContain("—");
-		expect(workspaceRows).toContain("6 entries · ephemeral");
+		expect(workspaceRows).toContainEqual(expect.stringMatching(/^Storage\s+Temporary$/));
 	});
 
 	it("does not render the session file path", () => {
-		const text = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false).join("\n");
+		const text = renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 60, false).join("\n");
 		expect(text).not.toContain("/tmp/session.jsonl");
 		expect(text).not.toContain("session.jsonl");
 	});
 
-	it("renders session entry count and persistence on one row", () => {
+	it("renders labeled session persistence", () => {
 		const persisted = buildSidebarSnapshot({
 			state,
 			cwd: "/tmp/project",
@@ -1257,27 +1279,27 @@ describe("sidebar snapshot and layout", () => {
 			availableToolCount: 12,
 			extensionStatuses: [],
 		});
-		expect(contentRows(renderSidebarLines(persisted, DEFAULT_CONFIG, theme, 44, 36, false))).toContain(
-			"6 entries · persisted",
+		expect(contentRows(renderSidebarLines(persisted, DEFAULT_CONFIG, theme, 44, 60, false))).toContainEqual(
+			expect.stringMatching(/^Storage\s+Saved$/),
 		);
 	});
 
-	it("renders populated usage as compact inline metric rows", () => {
+	it("renders populated usage as aligned labeled rows", () => {
 		const fg = vi.fn((_color: string, text: string) => text);
 		const unnamedTheme = { fg, bold: theme.bold, italic: theme.italic };
-		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, unnamedTheme, 44, 36, true));
+		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, unnamedTheme, 44, 60, true));
 		const usageIndex = rows.indexOf("USAGE");
-		expect(rows[usageIndex + 1]).toBe("In 50.0k  Out 1.9k");
-		expect(rows[usageIndex + 2]).toBe("Cache 100.0k  Hit 96.0%");
-		expect(rows[usageIndex + 3]).toBe("Cost $0.479");
-		for (const label of ["In", "Out", "Cache", "Hit", "Cost"]) {
+		expect(rows[usageIndex + 1]).toMatch(/^Input\s+50\.0k$/);
+		expect(rows[usageIndex + 2]).toMatch(/^Output\s+1\.9k$/);
+		expect(rows[usageIndex + 3]).toMatch(/^Cache read\s+100\.0k$/);
+		for (const label of ["Input", "Output", "Cache read", "Cache hit", "Cost"]) {
 			expect(fg).toHaveBeenCalledWith("muted", label);
 		}
 		for (const width of [44, 56, 72]) {
-			const wideRows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, width, 36, false));
+			const wideRows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, width, 60, false));
 			const wideUsage = wideRows.indexOf("USAGE");
-			expect(wideRows[wideUsage + 1]).toBe("In 50.0k  Out 1.9k");
-			expect(wideRows[wideUsage + 2]).toBe("Cache 100.0k  Hit 96.0%");
+			expect(wideRows[wideUsage + 1]).toMatch(/^Input\s+50\.0k$/);
+			expect(wideRows[wideUsage + 2]).toMatch(/^Output\s+1\.9k$/);
 		}
 	});
 
@@ -1294,14 +1316,14 @@ describe("sidebar snapshot and layout", () => {
 				cost: 0,
 			},
 		};
-		const rows = contentRows(renderSidebarLines(unavailable, DEFAULT_CONFIG, theme, 44, 36, false));
+		const rows = contentRows(renderSidebarLines(unavailable, DEFAULT_CONFIG, theme, 44, 60, false));
 		expect(rows).not.toContain("USAGE");
-		expect(rows).toContain("OPENAI-CODEX · MEDIUM · SUBSCRIPTION");
+		expect(rows).toContainEqual(expect.stringMatching(/^Billing\s+Subscription$/));
 	});
 
 	it("keeps a live Turn's ACTIVITY to current work without tool history", () => {
 		const rows = contentRows(
-			renderSidebarLines(withActivity(activeActivity()), DEFAULT_CONFIG, theme, 44, 36, false, 20_000),
+			renderSidebarLines(withActivity(activeActivity()), DEFAULT_CONFIG, theme, 44, 60, false, 20_000),
 		);
 		expect(rows).toContain("ACTIVITY");
 		expect(rows).toContain("Turn 3 · running 19s");
@@ -1328,7 +1350,7 @@ describe("sidebar snapshot and layout", () => {
 				DEFAULT_CONFIG,
 				theme,
 				44,
-				36,
+				60,
 				false,
 				20_000,
 			),
@@ -1336,7 +1358,7 @@ describe("sidebar snapshot and layout", () => {
 		expect(rows).toContain(expected);
 	});
 
-	it("renders response performance as a compact optional Activity row", () => {
+	it("renders labeled response performance in Activity", () => {
 		const ttftOnly = contentRows(
 			renderSidebarLines(
 				withActivity({
@@ -1352,12 +1374,12 @@ describe("sidebar snapshot and layout", () => {
 				DEFAULT_CONFIG,
 				theme,
 				44,
-				36,
+				60,
 				false,
 				2_000,
 			),
 		);
-		expect(ttftOnly).toContain("TTFT 820ms · TPS ~");
+		expect(ttftOnly).toContainEqual(expect.stringMatching(/^First token\s+820ms$/));
 
 		const estimated = contentRows(
 			renderSidebarLines(
@@ -1373,12 +1395,12 @@ describe("sidebar snapshot and layout", () => {
 				DEFAULT_CONFIG,
 				theme,
 				44,
-				36,
+				60,
 				false,
 				2_000,
 			),
 		);
-		expect(estimated).toContain("TTFT 820ms · TPS ~42.3");
+		expect(estimated).toContainEqual(expect.stringMatching(/^Output speed\s+~42\.3 tok\/s$/));
 
 		const completed = contentRows(
 			renderSidebarLines(
@@ -1395,12 +1417,12 @@ describe("sidebar snapshot and layout", () => {
 				DEFAULT_CONFIG,
 				theme,
 				44,
-				36,
+				60,
 				false,
 				5_000,
 			),
 		);
-		expect(completed).toContain("TTFT 1.4s · TPS 47.3");
+		expect(completed).toContainEqual(expect.stringMatching(/^Output speed\s+47\.3 tok\/s$/));
 	});
 
 	it("keeps the run summary and response placeholders when height drops tool activity", () => {
@@ -1408,7 +1430,7 @@ describe("sidebar snapshot and layout", () => {
 			...activeActivity(),
 			performance: { ttftMs: 820, tokensPerSecond: 48 },
 		});
-		const constrainedRows = Array.from({ length: 36 }, (_value, index) => 36 - index)
+		const constrainedRows = Array.from({ length: 60 }, (_value, index) => 60 - index)
 			.map((height) =>
 				contentRows(
 					renderSidebarLines(performanceActivity, DEFAULT_CONFIG, theme, 44, height, false, 20_000),
@@ -1416,7 +1438,7 @@ describe("sidebar snapshot and layout", () => {
 			)
 			.find(
 				(rows) =>
-					rows.includes("TTFT 820ms · TPS 48.0") &&
+					rows.some((row) => /^Output speed\s+48\.0 tok\/s$/.test(row)) &&
 					rows.some((row) => row.includes("Turn 3")) &&
 					!rows.some((row) => /^read\s+src\/state\.ts/.test(row)),
 			);
@@ -1426,11 +1448,11 @@ describe("sidebar snapshot and layout", () => {
 
 	it("always renders idle placeholders and preserves settled activity", () => {
 		const idleRows = contentRows(
-			renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false, 20_000),
+			renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 60, false, 20_000),
 		);
 		expect(idleRows).toContain("ACTIVITY");
-		expect(idleRows).toContain("Ready");
-		expect(idleRows).toContain("TTFT ~ · TPS ~");
+		expect(idleRows).not.toContain("Ready");
+		expect(idleRows).toContainEqual(expect.stringMatching(/^First token\s+—$/));
 
 		const settledRows = contentRows(
 			renderSidebarLines(
@@ -1456,7 +1478,7 @@ describe("sidebar snapshot and layout", () => {
 				DEFAULT_CONFIG,
 				theme,
 				44,
-				36,
+				60,
 				false,
 				20_000,
 			),
@@ -1488,7 +1510,7 @@ describe("sidebar snapshot and layout", () => {
 				DEFAULT_CONFIG,
 				theme,
 				44,
-				36,
+				60,
 				false,
 				20_000,
 			),
@@ -1514,7 +1536,7 @@ describe("sidebar snapshot and layout", () => {
 				DEFAULT_CONFIG,
 				theme,
 				44,
-				36,
+				60,
 				false,
 				20_000,
 			),
@@ -1536,7 +1558,7 @@ describe("sidebar snapshot and layout", () => {
 				DEFAULT_CONFIG,
 				theme,
 				44,
-				36,
+				60,
 				false,
 				20_000,
 			),
@@ -1573,7 +1595,7 @@ describe("sidebar snapshot and layout", () => {
 				DEFAULT_CONFIG,
 				theme,
 				44,
-				36,
+				60,
 				false,
 				20_000,
 			),
@@ -1670,7 +1692,7 @@ describe("sidebar snapshot and layout", () => {
 			DEFAULT_CONFIG,
 			{ fg: liveFg, bold: theme.bold, italic: theme.italic },
 			44,
-			36,
+			60,
 			true,
 			20_000,
 		);
@@ -1693,7 +1715,7 @@ describe("sidebar snapshot and layout", () => {
 			DEFAULT_CONFIG,
 			{ fg: settledFg, bold: theme.bold, italic: theme.italic },
 			44,
-			36,
+			60,
 			true,
 			20_000,
 		);
@@ -1749,28 +1771,28 @@ describe("sidebar snapshot and layout", () => {
 		);
 
 		const withoutSession = contentRows(
-			renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 32, false, 20_000),
+			renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 40, false, 20_000),
 		);
 		expect(withoutSession).toContain("TOOLS");
 		expect(withoutSession).toContain("USAGE");
 		expect(withoutSession).toContain("WORKSPACE");
-		expect(withoutSession).not.toContain("Sidebar implementation");
-		expect(withoutSession).not.toContain("38 entries · persisted");
+		expect(withoutSession).not.toContainEqual(expect.stringMatching(/^Session\s+Sidebar implementation$/));
+		expect(withoutSession).not.toContainEqual(expect.stringMatching(/^History\s+38 entries$/));
 
 		const withoutTools = contentRows(
-			renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 28, false, 20_000),
+			renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 36, false, 20_000),
 		);
 		expect(withoutTools).not.toContain("TOOLS");
 		expect(withoutTools).toContain("USAGE");
 		expect(withoutTools).toContain("WORKSPACE");
 
-		const coreOnly = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 22, false, 20_000));
+		const coreOnly = contentRows(renderSidebarLines(ranked, DEFAULT_CONFIG, theme, 44, 30, false, 20_000));
 		expect(coreOnly).not.toContain("TOOLS");
 		expect(coreOnly).not.toContain("USAGE");
 		expect(coreOnly).toContain("WORKSPACE");
-		expect(coreOnly).toContain("5 tracked  +182  −47");
-		expect(coreOnly).not.toContain("Sidebar implementation");
-		expect(coreOnly).not.toContain("38 entries · persisted");
+		expect(coreOnly).toContainEqual(expect.stringMatching(/^Changed\s+5 tracked$/));
+		expect(coreOnly).not.toContainEqual(expect.stringMatching(/^Session\s+Sidebar implementation$/));
+		expect(coreOnly).not.toContainEqual(expect.stringMatching(/^History\s+38 entries$/));
 		expect(coreOnly).toContain("AGENT");
 		expect(coreOnly).toContain("CONTEXT");
 	});
@@ -1787,30 +1809,30 @@ describe("sidebar snapshot and layout", () => {
 		});
 		expect(toolsSnapshot.activeToolNames).toEqual(["bash", "edit", "read"]);
 
-		const collapsed = contentRows(renderSidebarLines(toolsSnapshot, DEFAULT_CONFIG, theme, 44, 36, false));
+		const collapsed = contentRows(renderSidebarLines(toolsSnapshot, DEFAULT_CONFIG, theme, 44, 60, false));
 		const collapsedIndex = collapsed.indexOf("TOOLS");
-		expect(collapsed[collapsedIndex + 1]).toMatch(/^3 \/ 7 active\s+▸$/);
+		expect(collapsed[collapsedIndex + 1]).toMatch(/^Enabled\s+3 \/ 7$/);
 		expect(collapsed).not.toContain("bash  edit");
 
 		const expandedConfig = { ...DEFAULT_CONFIG, showSidebarToolNames: true };
-		const expanded = contentRows(renderSidebarLines(toolsSnapshot, expandedConfig, theme, 44, 36, false));
+		const expanded = contentRows(renderSidebarLines(toolsSnapshot, expandedConfig, theme, 44, 60, false));
 		const expandedIndex = expanded.indexOf("TOOLS");
-		expect(expanded[expandedIndex + 1]).toMatch(/^3 \/ 7 active\s+▾$/);
+		expect(expanded[expandedIndex + 1]).toMatch(/^Enabled\s+3 \/ 7$/);
 		expect(expanded[expandedIndex + 2]).toBe("bash  edit");
 		expect(expanded[expandedIndex + 3]).toBe("read");
 		expect(expanded.join("\n")).not.toContain("[31m");
 
 		for (const width of [44, 56, 72]) {
-			const wide = contentRows(renderSidebarLines(toolsSnapshot, expandedConfig, theme, width, 36, false));
+			const wide = contentRows(renderSidebarLines(toolsSnapshot, expandedConfig, theme, width, 60, false));
 			const wideIndex = wide.indexOf("TOOLS");
 			expect(wide[wideIndex + 2]).toBe("bash  edit");
 			expect(wide[wideIndex + 3]).toBe("read");
 		}
 
 		for (const width of [28, 39]) {
-			const narrow = contentRows(renderSidebarLines(toolsSnapshot, expandedConfig, theme, width, 36, false));
+			const narrow = contentRows(renderSidebarLines(toolsSnapshot, expandedConfig, theme, width, 60, false));
 			const narrowIndex = narrow.indexOf("TOOLS");
-			expect(narrow[narrowIndex + 1]).toMatch(/^3 \/ 7 active\s+▸$/);
+			expect(narrow[narrowIndex + 1]).toMatch(/^Enabled\s+3 \/ 7$/);
 			expect(narrow).not.toContain("bash  edit");
 			expect(narrow).not.toContain("read");
 		}
@@ -1833,7 +1855,7 @@ describe("sidebar snapshot and layout", () => {
 		const constrained = contentRows(
 			renderSidebarLines(toolsSnapshot, expandedConfig, theme, 44, fullHeight - 1, false),
 		);
-		expect(constrained).toContainEqual(expect.stringMatching(/^4 \/ 7 active\s+▾$/));
+		expect(constrained).toContainEqual(expect.stringMatching(/^Enabled\s+4 \/ 7$/));
 		expect(constrained).toContain("bash  edit");
 		expect(constrained).not.toContain("read  write");
 	});
@@ -1848,9 +1870,9 @@ describe("sidebar snapshot and layout", () => {
 			activeToolNames: [],
 			extensionStatuses: [],
 		});
-		const rows = contentRows(renderSidebarLines(toolsSnapshot, DEFAULT_CONFIG, theme, 44, 36, false));
+		const rows = contentRows(renderSidebarLines(toolsSnapshot, DEFAULT_CONFIG, theme, 44, 60, false));
 		const toolsIndex = rows.indexOf("TOOLS");
-		expect(rows[toolsIndex + 1]).toMatch(/^0 \/ 7 active\s+▸$/);
+		expect(rows[toolsIndex + 1]).toMatch(/^Enabled\s+0 \/ 7$/);
 		expect(rows[toolsIndex + 2]).toBe("");
 	});
 
@@ -1863,10 +1885,10 @@ describe("sidebar snapshot and layout", () => {
 			availableToolCount: 12,
 			extensionStatuses: [],
 		});
-		const rows = contentRows(renderSidebarLines(emptyStatuses, DEFAULT_CONFIG, theme, 44, 36, false));
+		const rows = contentRows(renderSidebarLines(emptyStatuses, DEFAULT_CONFIG, theme, 44, 60, false));
 		const toolsIndex = rows.indexOf("TOOLS");
 		expect(toolsIndex).toBeGreaterThan(-1);
-		expect(rows[toolsIndex + 1]).toMatch(/^8 \/ 12 active\s+▸$/);
+		expect(rows[toolsIndex + 1]).toMatch(/^Enabled\s+8 \/ 12$/);
 		expect(rows.slice(toolsIndex + 2)).not.toContain("—");
 		expect(rows).toEqual(expect.not.arrayContaining([expect.stringMatching(/^STATUS /)]));
 	});
@@ -1880,7 +1902,7 @@ describe("sidebar snapshot and layout", () => {
 			availableToolCount: 12,
 			extensionStatuses: ["tests \u001b[31mpassing", "api\nready", "sync warning", "index failed", "   "],
 		});
-		const rows = contentRows(renderSidebarLines(statusSnapshot, DEFAULT_CONFIG, theme, 44, 36, false));
+		const rows = contentRows(renderSidebarLines(statusSnapshot, DEFAULT_CONFIG, theme, 44, 60, false));
 		expect(rows).toContain("ALERTS");
 		expect(rows).toContain("▲ sync warning");
 		expect(rows).toContain("✕ index failed");
@@ -1890,8 +1912,8 @@ describe("sidebar snapshot and layout", () => {
 	});
 
 	it("suppresses routine healthy extension statuses", () => {
-		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 36, false));
-		expect(rows).toContainEqual(expect.stringMatching(/^8 \/ 12 active\s+▸$/));
+		const rows = contentRows(renderSidebarLines(snapshot(), DEFAULT_CONFIG, theme, 44, 60, false));
+		expect(rows).toContainEqual(expect.stringMatching(/^Enabled\s+8 \/ 12$/));
 		expect(rows).not.toContain("tests passing");
 		expect(rows).not.toContain("ALERTS");
 	});
@@ -1926,9 +1948,9 @@ describe("sidebar snapshot and layout", () => {
 			availableToolCount: 0,
 			extensionStatuses: [],
 		});
-		const lines = renderSidebarLines(missing, DEFAULT_CONFIG, theme, 32, 36, false);
+		const lines = renderSidebarLines(missing, DEFAULT_CONFIG, theme, 32, 60, false);
 		expect(lines.join("\n")).toContain("—");
-		expect(lines.join("\n")).toContain("ephemeral");
+		expect(lines.join("\n")).toContain("Temporary");
 		expect(lines.every((line) => visibleWidth(line) <= 32)).toBe(true);
 	});
 

@@ -1709,8 +1709,8 @@ describe("extension registration", () => {
 		await command(h, "sidebar on");
 
 		const text = h.overlays[0]?.component.render(39).join("\n") ?? "";
-		expect(text).toContain("4 / 5 active");
-		expect(text).toContain("▸");
+		expect(text).toMatch(/Enabled\s+4 \/ 5/);
+		expect(text).not.toContain("▸");
 		expect(text).not.toContain("bash");
 		expect(text).not.toContain("edit");
 		expect(text).not.toContain("read");
@@ -1936,7 +1936,7 @@ describe("extension registration", () => {
 			);
 
 			const streamingText = h.overlays[0]?.component.render(44).join("\n") ?? "";
-			expect(streamingText).toContain("TTFT 820ms · TPS ~");
+			expect(streamingText).toMatch(/First token\s+820ms/);
 
 			vi.setSystemTime(2_920);
 			await h.handlers.get("message_update")?.(
@@ -1948,7 +1948,7 @@ describe("extension registration", () => {
 				h.ctx,
 			);
 			const estimatedText = h.overlays[0]?.component.render(44).join("\n") ?? "";
-			expect(estimatedText).toContain("TTFT 820ms · TPS ~20.0");
+			expect(estimatedText).toMatch(/Output speed\s+~20\.0 tok\/s/);
 
 			vi.setSystemTime(4_420);
 			await h.handlers.get("message_end")?.(
@@ -1960,7 +1960,7 @@ describe("extension registration", () => {
 			);
 
 			const completedText = h.overlays[0]?.component.render(44).join("\n") ?? "";
-			expect(completedText).toContain("TTFT 820ms · TPS 48.0");
+			expect(completedText).toMatch(/Output speed\s+48\.0 tok\/s/);
 		} finally {
 			vi.useRealTimers();
 		}
@@ -2158,7 +2158,7 @@ describe("extension registration", () => {
 		await command(h, "sidebar on");
 		const replacementText = h.overlays[1]?.component.render(44).join("\n") ?? "";
 		expect(replacementText).toContain("ACTIVITY");
-		expect(replacementText).toContain("TTFT ~ · TPS ~");
+		expect(replacementText).toMatch(/First token\s+—/);
 		expect(replacementText).not.toContain("old.ts");
 
 		const replacementRenderCount = h.overlays[1]?.requestRender.mock.calls.length ?? 0;
