@@ -5,6 +5,7 @@ import { type Component, type OverlayHandle, truncateToWidth, visibleWidth } fro
 import type { ThemeLike } from "./footer.js";
 import { aggregateMetrics, formatTokens } from "./metrics.js";
 import { type AtelierPalette, createPalette, type PaletteRole } from "./palette.js";
+import { renderSidebarDesign, sidebarDesign } from "./sidebar-design-prototype.js";
 import {
 	EMPTY_RUN_ACTIVITY,
 	formatDuration,
@@ -1054,7 +1055,9 @@ export function renderSidebarLines(
 		});
 	}
 	return renderDock(
-		renderGroups(composeGroups(ordered, safeHeight), contentWidth, palette, theme),
+		["A", "B", "C"].includes(sidebarDesign())
+			? renderSidebarDesign(ordered, snapshot, config, contentWidth, safeHeight, palette, theme)
+			: renderGroups(composeGroups(ordered, safeHeight), contentWidth, palette, theme),
 		safeWidth,
 		safeHeight,
 		palette,

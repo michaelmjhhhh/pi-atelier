@@ -41,7 +41,8 @@
 		"format": "biome format --write .",
 		"format:check": "biome format .",
 		"check:pack": "node scripts/verify-pack.mjs",
-		"check": "npm run typecheck && npm run format:check && npm test && npm run check:pack"
+		"check": "npm run typecheck && npm run format:check && npm test && npm run check:pack",
+		"prototype:sidebar": "node scripts/prototype-sidebar.mjs"
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-coding-agent": ">=0.84.0",

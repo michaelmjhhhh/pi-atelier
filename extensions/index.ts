@@ -624,6 +624,23 @@ export default function atelierExtension(
 		}
 	}
 
+	// Throwaway branch-only design switch. No settings are persisted.
+	pi.registerCommand("atelier-design", {
+		description: "Preview sidebar design A, B, C, or original",
+		handler: async (args, ctx) => {
+			const design = args.trim().toLowerCase() === "original" ? "original" : args.trim().toUpperCase();
+			if (!["A", "B", "C", "original"].includes(design)) {
+				ctx.ui.notify("Usage: /atelier-design A|B|C|original", "info");
+				return;
+			}
+			process.env.PI_ATELIER_SIDEBAR_DESIGN = design;
+			const current = getActiveSession(ctx);
+			if (enabled && ctx.mode === "tui") current?.sidebar.show();
+			current?.sidebar.requestRender();
+			ctx.ui.notify(`Sidebar prototype: ${design}`, "info");
+		},
+	});
+
 	pi.registerCommand("atelier", {
 		description: "Open or control the Pi Atelier status menu",
 		handler: async (args, ctx) => {
