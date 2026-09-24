@@ -46,16 +46,20 @@ const escape = (text) =>
 	text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 function ansiHtml(text) {
 	let color = "inherit";
+	let background = "transparent";
 	let bold = false;
 	let html = "";
 	for (const part of text.split(/(\x1b\[[0-9;]*m)/)) {
 		if (part.startsWith("\x1b[")) {
 			const code = part.slice(2, -1);
 			if (code.startsWith("38;2;")) color = `rgb(${code.slice(5).replaceAll(";", ",")})`;
+			if (code.startsWith("48;2;")) background = `rgb(${code.slice(5).replaceAll(";", ",")})`;
+			if (code === "49" || code === "0") background = "transparent";
 			if (code === "39" || code === "0") color = "inherit";
 			if (code === "1") bold = true;
 			if (code === "22" || code === "0") bold = false;
-		} else html += `<span style="color:${color};font-weight:${bold ? 600 : 400}">${escape(part)}</span>`;
+		} else
+			html += `<span style="color:${color};background:${background};font-weight:${bold ? 600 : 400}">${escape(part)}</span>`;
 	}
 	return html;
 }

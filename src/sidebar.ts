@@ -1074,6 +1074,7 @@ export function renderSidebarLines(
 							group.panelRole ?? "accent",
 							group.panelJewel ?? "✦",
 						),
+					colorEnabled,
 				)
 			: renderGroups(composeGroups(ordered, safeHeight), contentWidth, palette, theme),
 		safeWidth,

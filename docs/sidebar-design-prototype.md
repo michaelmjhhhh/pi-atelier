@@ -4,7 +4,7 @@ Branch: `prototype/sidebar-hierarchy`. Throwaway exploration; no winning design 
 
 Question: how can the contents become easier to scan while retaining the original separate, colorful, rounded panels?
 
-User feedback rejected removing borders and colors. All current variants reuse the original panel renderer, including colored titles, jewels, rounded borders, padding, and separate panel identities.
+User feedback rejected removing borders and colors. The context meter uses a background behind its fractional fill so low usage does not appear detached from the remaining track. All current variants reuse the original panel renderer, including colored titles, jewels, rounded borders, padding, and separate panel identities.
 
 | Variant | Internal organization | Tradeoff |
 | --- | --- | --- |
@@ -13,7 +13,7 @@ User feedback rejected removing borders and colors. All current variants reuse t
 | C — Compact metrics | The same panels with condensed metadata and timing when they fit | Higher density; timing abbreviations require familiarity |
 | original | Existing contents and renderer | Baseline for comparison |
 
-Common changes: one Ready status; explicit Thinking and Billing labels; named Git fields instead of `?5`; semantic metric colors; a fractional-block context meter with a textured track, right-aligned bold percentage, and muted token counts; no misleading tool disclosure arrow. Empty response metrics use a muted dash. Values keep units, with narrow layouts using separate rows when needed.
+Common changes: one Ready status; explicit Thinking and Billing labels; named Git fields instead of `?5`; semantic metric colors; a fractional-block context meter with a continuous background track, right-aligned bold percentage, and muted token counts; no misleading tool disclosure arrow. Empty response metrics use a muted dash. Values keep units, with narrow layouts using separate rows when needed.
 
 Existing panel visibility, saved order, contribution data, tool-name setting, and overflow removal priorities remain in use. Panels stay separate. Very short terminals still omit lower-priority content; they do not add scrolling. Long names truncate with an ellipsis. No settings schema or persistent variant preference is introduced.
 

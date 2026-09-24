@@ -37,6 +37,7 @@ export function renderSidebarDesign(
 	palette: AtelierPalette,
 	theme: ThemeLike,
 	renderPanel: (group: DesignGroup, rows: string[]) => string[],
+	colorEnabled = true,
 ): string[] {
 	const variant = sidebarDesign();
 	const inner = Math.max(0, width - 4);
@@ -121,8 +122,8 @@ export function renderSidebarDesign(
 							: "context";
 				const used = `${formatTokens(metrics.contextTokens)} / ${formatTokens(metrics.contextWindow)}`;
 				const meterWidth = Math.max(1, inner - 8);
-				// Eighth-cell precision keeps small nonzero usage visible. A textured
-				// track reads as capacity rather than a horizontal section divider.
+				// Paint the track behind the partial cell too: separate glyphs leave
+				// the unfilled part of that cell blank, making low usage look detached.
 				const units = Math.min(
 					meterWidth * 8,
 					Math.max(percent > 0 ? 1 : 0, Math.round((percent * meterWidth * 8) / 100)),
@@ -130,7 +131,10 @@ export function renderSidebarDesign(
 				const full = Math.floor(units / 8);
 				const fraction = units % 8;
 				const fill = "█".repeat(full) + (fraction ? "▏▎▍▌▋▊▉"[fraction - 1] : "");
-				const meter = `${paint(role, fill)}${paint("dim", "░".repeat(meterWidth - full - (fraction ? 1 : 0)))}`;
+				const remaining = meterWidth - full - (fraction ? 1 : 0);
+				const meter = colorEnabled
+					? `\u001b[48;2;48;53;56m${paint(role, fill)}${" ".repeat(remaining)}\u001b[49m`
+					: `${paint(role, "█".repeat(full))}${paint("dim", "░".repeat(meterWidth - full))}`;
 				const percentLabel = theme.bold(paint(role, `${percent.toFixed(1)}%`.padStart(6)));
 				group.rows =
 					variant === "C" && visibleWidth(`${percent.toFixed(1)}% used ${used}`) <= inner
