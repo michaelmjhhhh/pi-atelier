@@ -13,7 +13,7 @@ User feedback rejected removing borders and colors. All current variants reuse t
 | C — Compact metrics | The same panels with condensed metadata and timing when they fit | Higher density; timing abbreviations require familiarity |
 | original | Existing contents and renderer | Baseline for comparison |
 
-Common changes: one Ready status; explicit Thinking and Billing labels; named Git fields instead of `?5`; semantic metric colors; a context meter that follows sidebar width; no misleading tool disclosure arrow. Empty response metrics use a muted dash. Values keep units, with narrow layouts using separate rows when needed.
+Common changes: one Ready status; explicit Thinking and Billing labels; named Git fields instead of `?5`; semantic metric colors; a fractional-block context meter with a textured track, right-aligned bold percentage, and muted token counts; no misleading tool disclosure arrow. Empty response metrics use a muted dash. Values keep units, with narrow layouts using separate rows when needed.
 
 Existing panel visibility, saved order, contribution data, tool-name setting, and overflow removal priorities remain in use. Panels stay separate. Very short terminals still omit lower-priority content; they do not add scrolling. Long names truncate with an ellipsis. No settings schema or persistent variant preference is introduced.
 
@@ -23,7 +23,7 @@ Existing panel visibility, saved order, contribution data, tool-name setting, an
 npm run prototype:sidebar
 ```
 
-Open <http://127.0.0.1:4319/?variant=A>. Use the bottom switcher or Left/Right arrows; the URL keeps the selected design, fixture state, and dimensions. Ready, Working, and Warnings fixtures are available. Preview text comes from the actual TUI renderer; the surrounding conversation is a static mockup. Stop the server with Ctrl-C.
+Open <http://127.0.0.1:4319/?variant=A>. Use the bottom switcher or Left/Right arrows; the URL keeps the selected design, fixture state, and dimensions. Ready, Low context (1.3%), Working, and Warnings fixtures are available. Preview text comes from the actual TUI renderer; the surrounding conversation is a static mockup. Stop the server with Ctrl-C.
 
 ## Try with live data
 
@@ -50,6 +50,7 @@ Manual TODO:
 - [ ] Compare A/B/C/original with `/atelier-design` in the ephemeral session.
 - [ ] Send a prompt and inspect working status, first-token latency, output speed, and tool activity.
 - [ ] Resize the sidebar and terminal; check long model/branch names, context percentage, units, and omitted low-priority rows.
+- [ ] Check the context meter at zero, 1.3%, and high usage, including fractional block rendering in your terminal font.
 - [ ] Check high context, Git conflicts, alerts, and unavailable metrics in the browser fixtures or live data.
 - [ ] Toggle tool names and reorder/hide panels; check contributed panels if used.
 - [ ] Check light/dark terminal themes and no-color readability.

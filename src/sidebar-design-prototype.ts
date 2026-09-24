@@ -121,12 +121,21 @@ export function renderSidebarDesign(
 							: "context";
 				const used = `${formatTokens(metrics.contextTokens)} / ${formatTokens(metrics.contextWindow)}`;
 				const meterWidth = Math.max(1, inner - 8);
-				const filled = Math.max(0, Math.min(meterWidth, Math.round((percent * meterWidth) / 100)));
-				const meter = `${paint(role, "━".repeat(filled))}${paint("dim", "─".repeat(meterWidth - filled))}`;
+				// Eighth-cell precision keeps small nonzero usage visible. A textured
+				// track reads as capacity rather than a horizontal section divider.
+				const units = Math.min(
+					meterWidth * 8,
+					Math.max(percent > 0 ? 1 : 0, Math.round((percent * meterWidth * 8) / 100)),
+				);
+				const full = Math.floor(units / 8);
+				const fraction = units % 8;
+				const fill = "█".repeat(full) + (fraction ? "▏▎▍▌▋▊▉"[fraction - 1] : "");
+				const meter = `${paint(role, fill)}${paint("dim", "░".repeat(meterWidth - full - (fraction ? 1 : 0)))}`;
+				const percentLabel = theme.bold(paint(role, `${percent.toFixed(1)}%`.padStart(6)));
 				group.rows =
 					variant === "C" && visibleWidth(`${percent.toFixed(1)}% used ${used}`) <= inner
 						? [pair(`${percent.toFixed(1)}% used`, used, role)]
-						: [`${meter} ${paint(role, `${percent.toFixed(1)}%`)}`, pair("Tokens", used, role)];
+						: [`${meter}  ${percentLabel}`, pair("Tokens", used, "muted")];
 				break;
 			}
 			case "workspaceCore": {

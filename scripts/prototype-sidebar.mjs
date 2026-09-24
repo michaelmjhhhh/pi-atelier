@@ -60,7 +60,8 @@ function ansiHtml(text) {
 	return html;
 }
 function fixture(stateName) {
-	const active = stateName !== "idle";
+	const active = stateName === "active" || stateName === "warning";
+	const low = stateName === "low";
 	const warning = stateName === "warning";
 	const state = createInertAtelierState();
 	Object.assign(state, {
@@ -89,9 +90,9 @@ function fixture(stateName) {
 	});
 	Object.assign(state.metrics, {
 		subscription: true,
-		contextTokens: warning ? 250240 : active ? 48320 : 0,
+		contextTokens: warning ? 250240 : active ? 48320 : low ? 3536 : 0,
 		contextWindow: 272000,
-		contextPercent: warning ? 92 : active ? 17.8 : 0,
+		contextPercent: warning ? 92 : active ? 17.8 : low ? 1.3 : 0,
 		usageAvailable: active,
 		input: 1820,
 		output: 864,
