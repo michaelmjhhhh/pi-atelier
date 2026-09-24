@@ -1056,7 +1056,25 @@ export function renderSidebarLines(
 	}
 	return renderDock(
 		["A", "B", "C"].includes(sidebarDesign())
-			? renderSidebarDesign(ordered, snapshot, config, contentWidth, safeHeight, palette, theme)
+			? renderSidebarDesign(
+					ordered,
+					snapshot,
+					config,
+					contentWidth,
+					safeHeight,
+					palette,
+					theme,
+					(group, rows) =>
+						panelRows(
+							group.panel ?? "",
+							rows,
+							contentWidth,
+							palette,
+							theme,
+							group.panelRole ?? "accent",
+							group.panelJewel ?? "✦",
+						),
+				)
 			: renderGroups(composeGroups(ordered, safeHeight), contentWidth, palette, theme),
 		safeWidth,
 		safeHeight,

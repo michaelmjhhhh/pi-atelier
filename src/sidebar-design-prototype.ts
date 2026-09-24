@@ -1,7 +1,7 @@
 /**
  * THROWAWAY UI exploration on prototype/sidebar-hierarchy.
- * Question: do quiet sections, grouped cards, or a compact ledger make live
- * sidebar information easier to scan? PI_ATELIER_SIDEBAR_DESIGN=A|B|C|original.
+ * Question: which internal grouping makes the existing colorful, rounded
+ * panels easier to scan? PI_ATELIER_SIDEBAR_DESIGN=A|B|C|original.
  * Keep the existing data, visibility, order, and overflow priorities.
  */
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
@@ -18,6 +18,7 @@ export interface DesignGroup {
 	panel?: string;
 	panelId?: string;
 	panelRole?: PaletteRole;
+	panelJewel?: "✦" | "✧";
 	rows: string[];
 	required: boolean;
 	dropRank: number;
@@ -35,9 +36,10 @@ export function renderSidebarDesign(
 	height: number,
 	palette: AtelierPalette,
 	theme: ThemeLike,
+	renderPanel: (group: DesignGroup, rows: string[]) => string[],
 ): string[] {
 	const variant = sidebarDesign();
-	const inner = Math.max(0, width - (variant === "B" ? 4 : 2));
+	const inner = Math.max(0, width - 4);
 	const paint = (role: PaletteRole, text: string) => palette.paint(role, text);
 	const clean = (text: string | undefined) => sanitizeSidebarPanelText(text ?? "") || "—";
 	const cut = (text: string, size = inner) => truncateToWidth(text, Math.max(0, size), "…");
@@ -54,7 +56,6 @@ export function renderSidebarDesign(
 	for (const group of groups) {
 		switch (group.name) {
 			case "agent":
-				group.panel = "Session";
 				group.rows = [
 					theme.bold(
 						paint(
@@ -65,7 +66,11 @@ export function renderSidebarDesign(
 					theme.bold(paint("primary", clean(snapshot.modelId))),
 					paint("muted", clean(snapshot.provider)),
 					pair("Thinking", clean(snapshot.thinkingLevel)),
-					pair("Billing", metrics.subscription ? "Subscription" : "Metered"),
+					pair(
+						"Billing",
+						metrics.subscription ? "Subscription" : "Metered",
+						metrics.subscription ? "ready" : "muted",
+					),
 				];
 				if (variant === "C" && inner >= visibleWidth(`${clean(snapshot.provider)} · subscription`)) {
 					group.rows = [
@@ -85,12 +90,12 @@ export function renderSidebarDesign(
 					pair(
 						"First token",
 						performance.ttft.available ? performance.ttft.text : "—",
-						performance.ttft.available ? "primary" : "dim",
+						performance.ttft.available ? "output" : "dim",
 					),
 					pair(
 						inner < 25 ? "Speed" : "Output speed",
 						performance.tps.available ? `${performance.tps.text} tok/s` : "—",
-						performance.tps.available ? "primary" : "dim",
+						performance.tps.available ? "output" : "dim",
 					),
 				];
 				if (
@@ -113,15 +118,15 @@ export function renderSidebarDesign(
 						? "error"
 						: percent >= config.contextWarning
 							? "warning"
-							: "primary";
+							: "context";
 				const used = `${formatTokens(metrics.contextTokens)} / ${formatTokens(metrics.contextWindow)}`;
 				const meterWidth = Math.max(1, inner - 8);
 				const filled = Math.max(0, Math.min(meterWidth, Math.round((percent * meterWidth) / 100)));
-				const meter = `${paint(role === "primary" ? "context" : role, "━".repeat(filled))}${paint("dim", "─".repeat(meterWidth - filled))}`;
+				const meter = `${paint(role, "━".repeat(filled))}${paint("dim", "─".repeat(meterWidth - filled))}`;
 				group.rows =
-					variant === "C"
+					variant === "C" && visibleWidth(`${percent.toFixed(1)}% used ${used}`) <= inner
 						? [pair(`${percent.toFixed(1)}% used`, used, role)]
-						: [`${meter} ${paint(role, `${percent.toFixed(1)}%`)}`, pair("Tokens", used)];
+						: [`${meter} ${paint(role, `${percent.toFixed(1)}%`)}`, pair("Tokens", used, role)];
 				break;
 			}
 			case "workspaceCore": {
@@ -130,7 +135,7 @@ export function renderSidebarDesign(
 				if (group === first) {
 					group.rows = [
 						theme.bold(paint("primary", clean(snapshot.projectName))),
-						...(snapshot.branch ? [pair("Branch", clean(snapshot.branch))] : []),
+						...(snapshot.branch ? [pair("Branch", clean(snapshot.branch), "accent")] : []),
 					];
 				} else if ("data" in snapshot.workspacePulse) {
 					const pulse = snapshot.workspacePulse;
@@ -182,9 +187,9 @@ export function renderSidebarDesign(
 				group.rows = [
 					...(metrics.usageAvailable
 						? [
-								pair("Input", formatTokens(metrics.input)),
-								pair("Output", formatTokens(metrics.output)),
-								pair("Cache read", formatTokens(metrics.cacheRead)),
+								pair("Input", formatTokens(metrics.input), "input"),
+								pair("Output", formatTokens(metrics.output), "output"),
+								pair("Cache read", formatTokens(metrics.cacheRead), "cache"),
 								pair(
 									"Cache hit",
 									metrics.cacheHitPercent === undefined ? "—" : `${metrics.cacheHitPercent.toFixed(1)}%`,
@@ -202,16 +207,18 @@ export function renderSidebarDesign(
 				];
 				break;
 		}
-		if (group.panel) group.panel = group.panel[0] + group.panel.slice(1).toLowerCase();
+		// B explores subgroups inside the same original panels, never merged cards.
+		if (variant === "B") {
+			if (group.name === "agent") group.rows.splice(3, 0, "");
+			if (group.name === "workspaceSession" && group.rows.length) {
+				group.rows.unshift("", paint("muted", "Session"));
+			}
+			if (group.name === "workspaceCore" && group !== groups.find((item) => item.name === "workspaceCore")) {
+				group.rows.unshift("", paint("muted", "Changes"));
+			}
+		}
 	}
 
-	// Adjacent panels can share a card without overriding the user's saved order.
-	const sectionKey = (group: DesignGroup) => {
-		if (variant !== "B") return group.panelId;
-		if (group.panelId === "agent" || group.panelId === "activity") return "Live session";
-		if (group.panelId === "context" || group.panelId === "usage") return "Resources";
-		return group.panelId;
-	};
 	const render = (selected: DesignGroup[]) => {
 		const rows: string[] = [];
 		for (let index = 0; index < selected.length; ) {
@@ -221,41 +228,18 @@ export function renderSidebarDesign(
 				index++;
 				continue;
 			}
-			const key = sectionKey(group);
 			const body: string[] = [];
-			const panelIds = new Set<string | undefined>();
-			let previousId = group.panelId;
 			do {
-				const next = selected[index]!;
-				panelIds.add(next.panelId);
-				if (variant === "B" && next.panelId !== previousId) body.push("");
-				body.push(...next.rows);
-				previousId = next.panelId;
+				body.push(...selected[index]!.rows);
 				index++;
-			} while (index < selected.length && selected[index]!.panel && sectionKey(selected[index]!) === key);
-			const title =
-				variant === "B" && panelIds.size > 1 && (key === "Live session" || key === "Resources")
-					? key
-					: group.panel;
-			if (variant === "B") {
-				const heading = ` ${cut(title, Math.max(0, width - 5))} `;
-				rows.push(paint("dim", `╭${heading}${"─".repeat(Math.max(0, width - visibleWidth(heading) - 2))}╮`));
-				rows.push(
-					...body.map(
-						(row) =>
-							`${paint("dim", "│")} ${cut(row)}${" ".repeat(Math.max(0, inner - visibleWidth(cut(row))))} ${paint("dim", "│")}`,
-					),
-				);
-				rows.push(paint("dim", `╰${"─".repeat(Math.max(0, width - 2))}╯`), "");
-			} else if (variant === "C") {
-				rows.push(
-					paint("dim", ` ${title.toUpperCase()} ${"─".repeat(Math.max(0, inner - visibleWidth(title) - 1))}`),
-				);
-				rows.push(...body.map((row) => ` ${cut(row)}`));
-			} else {
-				rows.push(` ${theme.bold(paint("muted", title))}`);
-				rows.push(...body.map((row) => ` ${cut(row)}`), "");
-			}
+			} while (
+				index < selected.length &&
+				selected[index]!.panel === group.panel &&
+				selected[index]!.panelId === group.panelId
+			);
+			// Reuse the actual original chrome: colored title/jewel, rounded border,
+			// side padding, and spacing. Only the contents are under exploration.
+			rows.push(...renderPanel(group, body));
 		}
 		return rows;
 	};

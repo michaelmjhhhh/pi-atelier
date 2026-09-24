@@ -2,18 +2,20 @@
 
 Branch: `prototype/sidebar-hierarchy`. Throwaway exploration; no winning design has been selected for main.
 
-Question: which hierarchy makes the existing sidebar information easier to scan?
+Question: how can the contents become easier to scan while retaining the original separate, colorful, rounded panels?
 
-| Variant | Structure | Tradeoff |
+User feedback rejected removing borders and colors. All current variants reuse the original panel renderer, including colored titles, jewels, rounded borders, padding, and separate panel identities.
+
+| Variant | Internal organization | Tradeoff |
 | --- | --- | --- |
-| A — Quiet sections (default) | Borderless sections, subdued headings, aligned labels and values | Best starting point for everyday use; more explicit labels use more rows |
-| B — Grouped cards | Neutral cards; adjacent Session/Activity and Context/Usage share a card | Strong boundaries; most vertical space |
-| C — Compact ledger | Continuous divider rules; condensed metadata and timing when they fit | Highest density; timing abbreviations require familiarity |
-| original | Existing renderer | Baseline for comparison |
+| A — Labeled metrics (default) | Explicit labels, aligned values, no duplicate Ready | More rows, less interpretation |
+| B — Internal groups | The same panels with internal separation for configuration, Git changes, and session details | Clearer internal grouping; more vertical space |
+| C — Compact metrics | The same panels with condensed metadata and timing when they fit | Higher density; timing abbreviations require familiarity |
+| original | Existing contents and renderer | Baseline for comparison |
 
-Common changes: one Ready status; explicit Thinking and Billing labels; named Git fields instead of `?5`; neutral metric values; semantic status/warning colors; a context meter that follows sidebar width; no misleading tool disclosure arrow. Empty response metrics use a muted dash. Values keep units, with narrow layouts using separate rows when needed.
+Common changes: one Ready status; explicit Thinking and Billing labels; named Git fields instead of `?5`; semantic metric colors; a context meter that follows sidebar width; no misleading tool disclosure arrow. Empty response metrics use a muted dash. Values keep units, with narrow layouts using separate rows when needed.
 
-Existing panel visibility, saved order, contribution data, tool-name setting, and overflow removal priorities remain in use. Cards merge adjacent related panels only. Very short terminals still omit lower-priority content; they do not add scrolling. Long names truncate with an ellipsis. No settings schema or persistent variant preference is introduced.
+Existing panel visibility, saved order, contribution data, tool-name setting, and overflow removal priorities remain in use. Panels stay separate. Very short terminals still omit lower-priority content; they do not add scrolling. Long names truncate with an ellipsis. No settings schema or persistent variant preference is introduced.
 
 ## Compare in a browser
 
@@ -52,4 +54,4 @@ Manual TODO:
 - [ ] Toggle tool names and reorder/hide panels; check contributed panels if used.
 - [ ] Check light/dark terminal themes and no-color readability.
 
-Provisional recommendation: A. It removes repeated frames and unnecessary color while keeping familiar panel order. User evaluation is pending; keep all variants on this prototype branch until a direction is selected.
+Design constraint confirmed: keep the existing colorful, rounded panels. The first exploration changed the wrong aspect of the design and was rejected. Evaluation of the revised internal organization is pending.
