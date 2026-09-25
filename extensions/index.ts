@@ -23,6 +23,7 @@ import {
 	type OverlayLifetime,
 	openAtelierControlCenter,
 	openDisplaySettingsWorkspace,
+	sidebarStatusLabel,
 } from "../src/menu.js";
 import { createRunActivityTracker, type RunActivityTracker } from "../src/run-activity.js";
 import type { SidebarPanelSetting } from "../src/settings-workspace.js";
@@ -467,9 +468,9 @@ export default function atelierExtension(
 			targetRuntime,
 			join(getAgentDir(), "pi-atelier.json"),
 			{
-				isVisible: () => activeSession === current && targetSidebar.isVisible(),
-				toggle: () => {
-					if (enabled && activeSession === current) targetSidebar.toggle();
+				getStatus: () => targetSidebar.getStatus(),
+				setMode: (mode) => {
+					if (enabled && activeSession === current) targetSidebar.setMode(mode);
 				},
 				isToolListExpanded: () => activeSession === current && targetRuntime.getConfig().showSidebarToolNames,
 				toggleToolList: async () => {
@@ -666,14 +667,23 @@ export default function atelierExtension(
 				}
 				if (
 					extra.length > 0 ||
-					(sidebarAction !== undefined && sidebarAction !== "on" && sidebarAction !== "off")
+					(sidebarAction !== undefined &&
+						sidebarAction !== "on" &&
+						sidebarAction !== "off" &&
+						sidebarAction !== "auto")
 				) {
-					ctx.ui.notify("Usage: /atelier sidebar [on|off]", "warning");
+					ctx.ui.notify("Usage: /atelier sidebar [auto|on|off]", "warning");
 					return;
 				}
-				if (sidebarAction === "on") current.sidebar.show();
-				else if (sidebarAction === "off") current.sidebar.hide();
+				const previousMode = current.sidebar.getStatus().mode;
+				if (sidebarAction) current.sidebar.setMode(sidebarAction);
 				else current.sidebar.toggle();
+				const status = current.sidebar.getStatus();
+				const autoHint =
+					previousMode === "auto" && status.mode !== "auto"
+						? " · /atelier sidebar auto restores automatic mode"
+						: "";
+				ctx.ui.notify(`Sidebar: ${sidebarStatusLabel(status)}${autoHint}`, "info");
 				return;
 			}
 			if (action === "disable") {
@@ -893,8 +903,15 @@ export default function atelierExtension(
 					description: "Resize Pi Atelier sidebar",
 					handler: (shortcutContext) => {
 						const current = getActiveSession(shortcutContext);
-						if (!current?.sidebar.isVisible()) {
+						if (!current || current.sidebar.getStatus().mode === "off") {
 							shortcutContext.ui.notify("Show the Pi Atelier sidebar before resizing it", "warning");
+							return;
+						}
+						if (!current.sidebar.isVisible()) {
+							shortcutContext.ui.notify(
+								"Sidebar is hidden by terminal width; widen the terminal or use /atelier sidebar on",
+								"warning",
+							);
 							return;
 						}
 						current.sidebar.beginResize();
@@ -904,7 +921,7 @@ export default function atelierExtension(
 			}
 			if (enabled && isFresh() && activeSession === nextSession) {
 				installFooter(nextSession);
-				if (loaded.config.showSidebarOnStartup) nextSession.sidebar.show();
+				if (loaded.config.showSidebarOnStartup) nextSession.sidebar.setMode("auto");
 			}
 			void candidateRuntime.flushWorkspacePulseRefresh();
 		} catch (error) {
@@ -1004,7 +1021,7 @@ export default function atelierExtension(
 		// Keep state updates independent from whether the TODO panel is currently presented.
 		current.todos = todoList;
 		const sidebarVisible = current.sidebar.isVisible();
-		if (sidebarVisible) current.sidebar.requestRender();
+		current.sidebar.requestRender();
 		const sidebarTodoLayout = current.runtime
 			.getConfig()
 			.sidebarPanelLayout.find((entry) => entry.id === "todos");

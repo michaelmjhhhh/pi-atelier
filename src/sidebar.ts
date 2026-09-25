@@ -22,7 +22,12 @@ import {
 	type SidebarPanelRole,
 	sanitizeSidebarPanelText,
 } from "./sidebar-panels.js";
-import { createSplitPaneController, type SplitPaneController } from "./split-pane.js";
+import {
+	createSplitPaneController,
+	type SplitPaneController,
+	type SidebarMode,
+	type SidebarStatus,
+} from "./split-pane.js";
 import {
 	DEFAULT_CONFIG,
 	type AtelierConfig,
@@ -1106,6 +1111,8 @@ export function createSidebarComponent(options: SidebarComponentOptions): Compon
 
 export interface SidebarController {
 	show(): void;
+	setMode(mode: SidebarMode): void;
+	getStatus(): SidebarStatus;
 	hide(): void;
 	toggle(): void;
 	isVisible(): boolean;
@@ -1222,6 +1229,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 
 	const split: SplitPaneController = createSplitPaneController({
 		subscribeInput: (handler) => options.ctx.ui.onTerminalInput(handler),
+		onVisibilityChange: () => syncAnimation(),
 		onResizeChange: () => {
 			safely(() => requestOverlayRender?.());
 		},
@@ -1238,7 +1246,12 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	};
 
 	const syncAnimation = () => {
-		if (!enabled || options.shouldAnimate?.() !== true || !requestOverlayRender) {
+		if (
+			!enabled ||
+			split.getStatus().presentation !== "shown" ||
+			options.shouldAnimate?.() !== true ||
+			!requestOverlayRender
+		) {
 			stopAnimation();
 			return;
 		}
@@ -1272,8 +1285,13 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		if (restoreCursor) safely(restoreCursor);
 	};
 
-	const show = () => {
-		if (disposed || enabled) return;
+	const show = (mode: Exclude<SidebarMode, "off"> = "on") => {
+		if (disposed) return;
+		if (enabled) {
+			safely(() => split.show(mode));
+			syncAnimation();
+			return;
+		}
 		if (options.ctx.mode !== "tui") {
 			reportError(new Error("Pi Atelier sidebar requires TUI mode"));
 			return;
@@ -1281,7 +1299,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 
 		enabled = true;
 		const currentGeneration = ++generation;
-		if (!safely(split.show)) {
+		if (!safely(() => split.show(mode))) {
 			enabled = false;
 			stopAnimation();
 			clearOverlayCallbacks();
@@ -1365,14 +1383,19 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	};
 
 	return {
-		show,
+		show: () => show(),
 		hide,
+		setMode(mode) {
+			if (mode === "off") hide();
+			else show(mode);
+		},
+		getStatus: split.getStatus,
 		toggle() {
-			if (enabled) hide();
+			if (split.getStatus().presentation === "shown") hide();
 			else show();
 		},
 		isVisible() {
-			return enabled;
+			return enabled && split.getStatus().presentation === "shown";
 		},
 		beginResize: split.beginResize,
 		isResizing: split.isResizing,

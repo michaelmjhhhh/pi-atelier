@@ -119,8 +119,8 @@ describe("Control Center presentation", () => {
 	it("partitions Settings, Controls, and Actions at the root with current Sidebar state", async () => {
 		rootMenuItems.length = 0;
 		const sidebar: SidebarControls = {
-			isVisible: vi.fn(() => true),
-			toggle: vi.fn(),
+			getStatus: vi.fn(() => ({ mode: "on" as const, presentation: "shown" as const })),
+			setMode: vi.fn(),
 			isToolListExpanded: vi.fn(() => false),
 			toggleToolList: vi.fn().mockResolvedValue(undefined),
 		};
@@ -141,7 +141,7 @@ describe("Control Center presentation", () => {
 			[
 				"Display: editorial",
 				"Font mode: Nerd Font",
-				"Sidebar on startup: On",
+				"Sidebar on startup: Auto",
 				"Completion notifications: On",
 				"Sidebar tool list: Collapsed",
 				"Back",
@@ -151,8 +151,8 @@ describe("Control Center presentation", () => {
 	] as const)("routes the %s root category to its destination", async (category, expectedLabels) => {
 		rootMenuItems.length = 0;
 		const sidebar: SidebarControls = {
-			isVisible: vi.fn(() => true),
-			toggle: vi.fn(),
+			getStatus: vi.fn(() => ({ mode: "on" as const, presentation: "shown" as const })),
+			setMode: vi.fn(),
 			isToolListExpanded: vi.fn(() => false),
 			toggleToolList: vi.fn().mockResolvedValue(undefined),
 		};
@@ -251,8 +251,8 @@ describe("Control Center presentation", () => {
 		);
 		const requestAllRenders = vi.fn();
 		const sidebar: SidebarControls = {
-			isVisible: vi.fn(() => true),
-			toggle: vi.fn(),
+			getStatus: vi.fn(() => ({ mode: "on" as const, presentation: "shown" as const })),
+			setMode: vi.fn(),
 			isToolListExpanded: vi.fn(() => false),
 			toggleToolList: vi.fn().mockResolvedValue(undefined),
 		};
@@ -276,8 +276,8 @@ describe("Control Center presentation", () => {
 		rootMenuItems.length = 0;
 		const h = harness();
 		const sidebar: SidebarControls = {
-			isVisible: vi.fn(() => true),
-			toggle: vi.fn(),
+			getStatus: vi.fn(() => ({ mode: "on" as const, presentation: "shown" as const })),
+			setMode: vi.fn(),
 			isToolListExpanded: vi.fn(() => false),
 			toggleToolList: vi.fn().mockResolvedValue(undefined),
 		};
@@ -300,8 +300,8 @@ describe("Control Center presentation", () => {
 		rootMenuItems.length = 0;
 		const ctx = contextWithSelections(["settings", "display", "workspace-close", "back", "close"]);
 		const sidebar: SidebarControls = {
-			isVisible: vi.fn(() => true),
-			toggle: vi.fn(),
+			getStatus: vi.fn(() => ({ mode: "on" as const, presentation: "shown" as const })),
+			setMode: vi.fn(),
 			isToolListExpanded: vi.fn(() => false),
 			toggleToolList: vi.fn().mockResolvedValue(undefined),
 		};
@@ -329,8 +329,8 @@ describe("Control Center presentation", () => {
 			customComponents,
 		);
 		const sidebar: SidebarControls = {
-			isVisible: vi.fn(() => true),
-			toggle: vi.fn(),
+			getStatus: vi.fn(() => ({ mode: "on" as const, presentation: "shown" as const })),
+			setMode: vi.fn(),
 			isToolListExpanded: vi.fn(() => false),
 			toggleToolList: vi.fn().mockResolvedValue(undefined),
 		};
@@ -359,8 +359,8 @@ describe("Control Center presentation", () => {
 	it("keeps Sidebar visibility in Controls and session-scoped", async () => {
 		rootMenuItems.length = 0;
 		const sidebar: SidebarControls = {
-			isVisible: vi.fn(() => true),
-			toggle: vi.fn(),
+			getStatus: vi.fn(() => ({ mode: "on" as const, presentation: "shown" as const })),
+			setMode: vi.fn(),
 			isToolListExpanded: vi.fn(() => false),
 			toggleToolList: vi.fn().mockResolvedValue(undefined),
 		};
@@ -369,12 +369,12 @@ describe("Control Center presentation", () => {
 				getThinkingLevel: vi.fn().mockReturnValue("medium"),
 				getActiveTools: vi.fn().mockReturnValue([]),
 			} as never,
-			contextWithSelections(["controls", "sidebar", "back", "close"]) as never,
+			contextWithSelections(["controls", "sidebar", "off", "back", "close"]) as never,
 			harness().runtime as never,
 			"/tmp/user.json",
 			sidebar,
 		);
-		expect(sidebar.toggle).toHaveBeenCalledOnce();
+		expect(sidebar.setMode).toHaveBeenCalledOnce();
 	});
 
 	it("frames every content row with heavy vertical borders and corners", () => {

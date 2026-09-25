@@ -915,6 +915,7 @@ describe("extension registration", () => {
 			onHandle: expect.any(Function),
 		});
 		expect(h.overlays[0]?.options.overlayOptions()).toMatchObject({ nonCapturing: true });
+		await command(h, "sidebar on");
 		await command(h, "sidebar");
 		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
 		await command(h, "sidebar");
@@ -957,7 +958,7 @@ describe("extension registration", () => {
 		const h = harness();
 		await start(h);
 		await command(h, args);
-		expect(h.ctx.ui.notify).toHaveBeenCalledWith("Usage: /atelier sidebar [on|off]", "warning");
+		expect(h.ctx.ui.notify).toHaveBeenCalledWith("Usage: /atelier sidebar [auto|on|off]", "warning");
 		expect(h.custom).toHaveBeenCalledOnce();
 	});
 
@@ -984,6 +985,7 @@ describe("extension registration", () => {
 	it("enters Resize mode with Ctrl+Shift+R only for the active visible sidebar", async () => {
 		const h = harness();
 		await start(h);
+		await command(h, "sidebar on");
 		await h.shortcutHandlers.get("ctrl+shift+r")?.(h.ctx);
 		expect(h.terminalWrite).toHaveBeenCalledWith("\u001b[?1002h\u001b[?1006h");
 
