@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Remove the Control Center Actions page, including session details, rename and compaction prompts, and the unused `showSessionActions` setting.
+- Add a graph-only SUBAGENTS panel and framed `/atelier usage` view, with distinct per-child colors, numbered paginated legends, real observation markers and keyboard focus. Plot every readable child history without a six-curve display cap. Kitty-compatible terminals render anti-aliased curves; other terminals retain a text fallback ([#69](https://github.com/michaelmjhhhh/pi-atelier/issues/69)).
+- Read owner-validated pi-subagents accounting events for reply-level cost history, reconcile completed curves against saved metadata, deduplicate repeated references and refresh only while background work is active. Main-agent usage stays separate.
 
 ## 0.11.2 — 2026-09-25
 

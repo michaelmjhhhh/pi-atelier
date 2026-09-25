@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type Component, type OverlayHandle, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { ThemeLike } from "./footer.js";
+import { hasCapturingOverlay } from "./image-compositor.js";
 import { aggregateMetrics, formatTokens } from "./metrics.js";
 import { type AtelierPalette, createPalette, type PaletteRole } from "./palette.js";
 import {
@@ -22,6 +23,7 @@ import {
 	type SidebarPanelRole,
 	sanitizeSidebarPanelText,
 } from "./sidebar-panels.js";
+import { subagentCostChart } from "./subagent-cost-chart.js";
 import { createSplitPaneController, type SplitPaneController } from "./split-pane.js";
 import {
 	DEFAULT_CONFIG,
@@ -463,6 +465,26 @@ function usageRows(
 	return rows;
 }
 
+function subagentGroups(
+	snapshot: SidebarSnapshot,
+	config: AtelierConfig,
+	width: number,
+	palette: AtelierPalette,
+	imageOwner?: object,
+): SidebarGroup[] {
+	const usage = snapshot.subagentUsage;
+	if (!usage || (!usage.runs.length && !usage.unavailable && !usage.pending && !usage.limited)) return [];
+	const decimals = currencyDecimals(config.currencyDecimals);
+	const panel = { panel: "SUBAGENTS", panelId: "subagents", panelRole: "output" as const, required: false };
+	const chart = subagentCostChart(usage, width, decimals, config.nerdFont, palette, { imageOwner });
+	const footer: string[] = [];
+	if (usage.pending) footer.push(palette.paint("dim", "Running · curves update on reply"));
+	if (usage.unavailable || usage.limited)
+		footer.push(palette.paint("warning", "Partial · metadata unavailable"));
+	footer.push(palette.paint("dim", "/atelier usage · expand graph"));
+	return [{ ...panel, name: "subagentCostChart", rows: [...chart, ...footer], dropRank: 18 }];
+}
+
 function toolsStatusRows(snapshot: SidebarSnapshot, width: number, palette: AtelierPalette): string[] {
 	return [
 		labeledRow(
@@ -861,6 +883,7 @@ export function renderSidebarLines(
 	colorEnabled = true,
 	now = Date.now(),
 	resizing = false,
+	imageOwner?: object,
 ): string[] {
 	const palette = createPalette(theme, colorEnabled);
 	const safeWidth = Math.max(0, Math.trunc(width));
@@ -974,6 +997,7 @@ export function renderSidebarLines(
 			required: false,
 			dropRank: 20,
 		},
+		...subagentGroups(snapshot, config, panelContentWidth, palette, imageOwner),
 		{
 			name: "toolsStatus",
 			panel: "TOOLS",
@@ -1057,6 +1081,7 @@ export interface SidebarComponentOptions {
 	getConfig(): AtelierConfig;
 	getHeight(): number;
 	isResizing?(): boolean;
+	canRenderImages?(): boolean;
 	theme: ThemeLike;
 	colorEnabled?: boolean;
 }
@@ -1080,6 +1105,7 @@ function renderSidebarError(error: unknown, width: number, height: number, resiz
 }
 
 export function createSidebarComponent(options: SidebarComponentOptions): Component {
+	const imageOwner = {};
 	return {
 		render(width) {
 			const height = options.getHeight();
@@ -1095,6 +1121,7 @@ export function createSidebarComponent(options: SidebarComponentOptions): Compon
 					options.colorEnabled ?? true,
 					Date.now(),
 					resizing,
+					options.canRenderImages?.() ? imageOwner : undefined,
 				);
 			} catch (error) {
 				return renderSidebarError(error, width, height, resizing);
@@ -1325,6 +1352,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 						getConfig: binding.getConfig,
 						getHeight: () => tui.terminal.rows,
 						isResizing: binding.isResizing,
+						canRenderImages: () => !hasCapturingOverlay(tui),
 						theme: theme as unknown as ThemeLike,
 						...(options.colorEnabled === undefined ? {} : { colorEnabled: options.colorEnabled }),
 					});

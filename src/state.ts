@@ -3,6 +3,13 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { selectWorkingPhrase } from "./activity.js";
 import { resolveDisplayLayers } from "./config.js";
 import { aggregateMetrics, type UsageMessage } from "./metrics.js";
+import {
+	emptySubagentUsage,
+	isSubagentUsageEventForSession,
+	readSubagentUsage,
+	subagentMetadataReferences,
+	SUBAGENT_METADATA_ENTRY,
+} from "./subagent-usage.js";
 import type {
 	ActivityState,
 	AtelierConfig,
@@ -67,6 +74,12 @@ export class AtelierRuntime {
 	#enabled: boolean;
 	#lastWorkspaceData: WorkspacePulseData | undefined;
 	#state: AtelierState;
+	#subagentRefresh: Promise<void> | undefined;
+	#subagentRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+	#subagentDirty = false;
+	#subagentEntries: readonly unknown[] = [];
+	#subagentAbort = new AbortController();
+	#subagentUnsubscribe: (() => void) | undefined;
 
 	constructor(dependencies: RuntimeDependencies) {
 		this.#pi = dependencies.pi;
@@ -102,6 +115,59 @@ export class AtelierRuntime {
 			this.#state = { ...this.#state, workspacePulse: { status: "unavailable" } };
 		}
 		this.refreshUsage();
+		const unsubscribe = ["subagent:async-complete", "subagent:async-started", "subagent:child-status"].map(
+			(channel) =>
+				this.#pi.events?.on(channel, (data: unknown) => {
+					if (!this.#canInspectWorkspace()) return;
+					if (
+						!isSubagentUsageEventForSession(
+							data,
+							this.#ctx.sessionManager.getEntries(),
+							this.#subagentSessionIdentity(),
+						)
+					)
+						return;
+					if ((data as { sessionId?: unknown }).sessionId === undefined) this.#scheduleSubagentRefresh();
+					else this.observeSubagentMetadata(data);
+				}),
+		);
+		this.#subagentUnsubscribe = () => {
+			for (const off of unsubscribe) off?.();
+		};
+	}
+
+	/** Save only pointers; totals and curves are read from the producer's own accounting records. */
+	observeSubagentMetadata(data: unknown): void {
+		if (!this.#canInspectWorkspace()) return;
+		const refs = subagentMetadataReferences(data);
+		if (!refs.runIds.length) return;
+		const entries = this.#ctx.sessionManager.getEntries();
+		const serialized = JSON.stringify(refs);
+		if (
+			!entries.some(
+				(entry) =>
+					entry.type === "custom" &&
+					entry.customType === SUBAGENT_METADATA_ENTRY &&
+					JSON.stringify(entry.data) === serialized,
+			)
+		) {
+			try {
+				this.#pi.appendEntry(SUBAGENT_METADATA_ENTRY, refs);
+			} catch {
+				return;
+			}
+		}
+		this.#scheduleSubagentRefresh();
+	}
+
+	#scheduleSubagentRefresh(delay = 100): void {
+		if (!this.#subagentRefreshTimer) {
+			this.#subagentRefreshTimer = setTimeout(() => {
+				this.#subagentRefreshTimer = undefined;
+				void this.refreshSubagentUsage();
+			}, delay);
+			this.#subagentRefreshTimer.unref();
+		}
 	}
 
 	/** Suspend producers without losing the session's small activity/configuration state. */
@@ -109,7 +175,13 @@ export class AtelierRuntime {
 		if (this.#disposed || this.#enabled === enabled) return;
 		this.#enabled = enabled;
 		this.#workspacePulseRefresh.setEnabled(enabled);
-		if (!enabled) return;
+		if (!enabled) {
+			this.#subagentAbort.abort();
+			clearTimeout(this.#subagentRefreshTimer);
+			this.#subagentRefreshTimer = undefined;
+			return;
+		}
+		this.#subagentAbort = new AbortController();
 		this.#state = {
 			...this.#state,
 			workspacePulse: !this.#ctx.isProjectTrusted()
@@ -234,7 +306,8 @@ export class AtelierRuntime {
 	refreshUsage(): void {
 		if (this.#disposed || !this.#enabled) return;
 		const messages: UsageMessage[] = [];
-		for (const entry of this.#ctx.sessionManager.getEntries()) {
+		const entries = this.#ctx.sessionManager.getEntries();
+		for (const entry of entries) {
 			if (entry.type === "message" && entry.message.role === "assistant") {
 				messages.push(entry.message as UsageMessage);
 			}
@@ -254,6 +327,51 @@ export class AtelierRuntime {
 			}),
 		};
 		this.#invalidate();
+		void this.refreshSubagentUsage(entries);
+	}
+
+	#subagentSessionIdentity(): { sessionFile?: string; sessionId?: string } {
+		const sessionFile = this.#ctx.sessionManager.getSessionFile?.();
+		const sessionId = this.#ctx.sessionManager.getSessionId?.();
+		return { ...(sessionFile ? { sessionFile } : {}), ...(sessionId ? { sessionId } : {}) };
+	}
+
+	/** Serialized accounting reads; active background work refreshes until it settles. */
+	async refreshSubagentUsage(entries?: readonly unknown[]): Promise<void> {
+		if (!this.#canInspectWorkspace()) return;
+		clearTimeout(this.#subagentRefreshTimer);
+		this.#subagentRefreshTimer = undefined;
+		this.#subagentEntries = entries ?? this.#ctx.sessionManager.getEntries();
+		this.#subagentDirty = true;
+		if (this.#subagentRefresh) return this.#subagentRefresh;
+		this.#subagentRefresh = (async () => {
+			while (this.#subagentDirty && this.#canInspectWorkspace()) {
+				this.#subagentDirty = false;
+				const signal = this.#subagentAbort.signal;
+				const session = this.#subagentSessionIdentity();
+				try {
+					const subagentUsage = await readSubagentUsage({
+						entries: this.#subagentEntries,
+						cwd: this.#ctx.cwd,
+						...session,
+						signal,
+					});
+					if (!signal.aborted && this.#canInspectWorkspace())
+						this.#replaceState({ ...this.#state, subagentUsage });
+				} catch {
+					if (!signal.aborted && this.#canInspectWorkspace())
+						this.#replaceState({
+							...this.#state,
+							subagentUsage: { ...emptySubagentUsage(), unavailable: 1 },
+						});
+				}
+			}
+		})().finally(() => {
+			this.#subagentRefresh = undefined;
+			if (this.#canInspectWorkspace() && this.#state.subagentUsage?.pending)
+				this.#scheduleSubagentRefresh(1500);
+		});
+		return this.#subagentRefresh;
 	}
 
 	#canInspectWorkspace(): boolean {
@@ -312,6 +430,10 @@ export class AtelierRuntime {
 	 */
 	dispose(): void {
 		this.#disposed = true;
+		this.#subagentAbort.abort();
+		clearTimeout(this.#subagentRefreshTimer);
+		this.#subagentRefreshTimer = undefined;
+		this.#subagentUnsubscribe?.();
 		this.#workspacePulseRefresh.dispose();
 		this.#lastWorkspaceData = undefined;
 		this.#state = { ...this.#inertState(), workspacePulse: { status: "unavailable" } };

@@ -12,7 +12,9 @@ export type PaletteRole =
 	| "context"
 	| "menu"
 	| "warning"
-	| "error";
+	| "error"
+	| "chartPink"
+	| "chartGreen";
 
 interface PaletteTheme {
 	readonly name?: string;
@@ -36,6 +38,8 @@ const FIXED_DARK: Record<PaletteRole, Rgb> = {
 	menu: [177, 140, 255],
 	warning: [255, 159, 67],
 	error: [255, 93, 115],
+	chartPink: [244, 114, 182],
+	chartGreen: [74, 222, 128],
 };
 
 const UNNAMED_THEME: Record<PaletteRole, string> = {
@@ -53,6 +57,8 @@ const UNNAMED_THEME: Record<PaletteRole, string> = {
 	menu: "thinkingHigh",
 	warning: "warning",
 	error: "error",
+	chartPink: "syntaxString",
+	chartGreen: "success",
 };
 
 const NO_COLOR: Record<PaletteRole, string> = {
@@ -70,9 +76,12 @@ const NO_COLOR: Record<PaletteRole, string> = {
 	menu: "text",
 	warning: "warning",
 	error: "error",
+	chartPink: "text",
+	chartGreen: "text",
 };
 
 export interface AtelierPalette {
+	readonly colorEnabled?: boolean;
 	paint(role: PaletteRole, text: string): string;
 }
 
@@ -82,6 +91,7 @@ function rgb([red, green, blue]: Rgb, text: string): string {
 
 export function createPalette(theme: PaletteTheme, colorEnabled: boolean): AtelierPalette {
 	return {
+		colorEnabled,
 		paint(role, text) {
 			if (!colorEnabled) return theme.fg(NO_COLOR[role], text);
 			if (!theme.name) return theme.fg(UNNAMED_THEME[role], text);
