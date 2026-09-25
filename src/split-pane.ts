@@ -77,11 +77,12 @@ export const MIN_MAIN_WIDTH = 64;
 const AUTO_MAIN_WIDTH = 80;
 const AUTO_REOPEN_MARGIN = 8;
 
-export type SidebarMode = "auto" | "on" | "off";
+export type SidebarMode = "auto" | "manual";
 export type SidebarPresentation = "shown" | "auto-collapsed" | "too-narrow" | "off";
 
 export interface SidebarStatus {
 	mode: SidebarMode;
+	enabled: boolean;
 	presentation: SidebarPresentation;
 }
 
@@ -99,7 +100,8 @@ export interface SplitPaneControllerOptions {
 
 export interface SplitPaneController {
 	attach(tui: TUI): void;
-	show(mode?: Exclude<SidebarMode, "off">): void;
+	show(): void;
+	setMode(mode: SidebarMode): void;
 	hide(): void;
 	getStatus(): SidebarStatus;
 	setSidebarWidth(width: number): void;
@@ -143,14 +145,13 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 	);
 	let tui: TUI | undefined;
 	let enabled = false;
-	let mode: Exclude<SidebarMode, "off"> = "on";
+	let mode: SidebarMode = "manual";
 	let autoExpanded: boolean | undefined;
 	let lastPresentation: SidebarPresentation = "off";
 	let visibilityNotificationPending = false;
 	let disposed = false;
 	let resizing = false;
 	let resizeStartWidth = sidebarWidth;
-	let resizeStartAutoExpanded: boolean | undefined;
 	let dragging = false;
 	let unsubscribeInput: (() => void) | undefined;
 	let resizeMouseTerminal: TUI["terminal"] | undefined;
@@ -438,7 +439,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 	// Invalid resize dimensions must not change the automatic expansion history.
 	const resolveLayout = (terminalWidth: number) => {
 		const validWidth = Number.isFinite(terminalWidth) && terminalWidth > 0;
-		if (enabled && mode === "auto" && !resizing && validWidth) {
+		if (enabled && mode === "auto" && validWidth) {
 			const threshold = Math.max(AUTO_MAIN_WIDTH, minimumMain) + sidebarWidth;
 			autoExpanded = terminalWidth >= threshold + (autoExpanded === false ? AUTO_REOPEN_MARGIN : 0);
 		}
@@ -446,7 +447,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			? "off"
 			: !validWidth || terminalWidth < minimumMain + minimumSidebar
 				? "too-narrow"
-				: mode === "auto" && !resizing && !autoExpanded
+				: mode === "auto" && !autoExpanded
 					? "auto-collapsed"
 					: "shown";
 		const effectiveWidth =
@@ -501,7 +502,6 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		if (!resizing && !resizeMouseTerminal && !unsubscribeInput) return;
 		if (restore) {
 			sidebarWidth = resizeStartWidth;
-			autoExpanded = resizeStartAutoExpanded;
 		}
 		// Clear first: geometry reconciliation can run during layout updates.
 		resizing = false;
@@ -597,11 +597,8 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 
 	controller = {
 		attach,
-		show(nextMode = "on") {
-			if (disposed) return;
-			stopResize(true);
-			if (enabled && mode === nextMode && nextMode !== "auto") return;
-			mode = nextMode;
+		show() {
+			if (disposed || enabled) return;
 			autoExpanded = undefined;
 			enabled = true;
 			syncOverlayWidth();
@@ -617,8 +614,17 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			syncFullscreenLayoutAdapter();
 			requestRender();
 		},
+		setMode(nextMode) {
+			if (disposed) return;
+			stopResize(true);
+			mode = nextMode;
+			autoExpanded = undefined;
+			syncOverlayWidth();
+			requestRender();
+		},
 		getStatus: () => ({
-			mode: enabled ? mode : "off",
+			mode,
+			enabled,
 			presentation: resolveLayout(tui?.terminal.columns ?? 0).presentation,
 		}),
 		setSidebarWidth(width) {
@@ -632,6 +638,10 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		},
 		getSidebarWidth: () => sidebarWidth,
 		beginResize() {
+			if (mode === "auto") {
+				options.onWarning?.("Switch to Manual mode with /atelier sidebar manual before resizing");
+				return false;
+			}
 			if (resizing) return true;
 			if (!tui || !enabled) {
 				options.onWarning?.("Atelier sidebar is not ready to resize");
@@ -646,8 +656,6 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 				return false;
 			}
 			resizeStartWidth = sidebarWidth;
-			resizeStartAutoExpanded = autoExpanded;
-			// Keep the mode; suspend automatic collapse only during the gesture.
 			resizing = true;
 			syncOverlayWidth();
 			syncFullscreenLayoutAdapter();

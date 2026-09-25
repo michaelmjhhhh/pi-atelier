@@ -94,7 +94,7 @@ function harness(
 		const requestRender = vi.fn();
 		const tui = {
 			render: baseRender,
-			terminal: { columns: 120, rows: 36, width: 120, write: terminalWrite },
+			terminal: { columns: 140, rows: 36, width: 140, write: terminalWrite },
 			requestRender,
 		};
 		let resolve!: (value: any) => void;
@@ -958,7 +958,7 @@ describe("extension registration", () => {
 		const h = harness();
 		await start(h);
 		await command(h, args);
-		expect(h.ctx.ui.notify).toHaveBeenCalledWith("Usage: /atelier sidebar [auto|on|off]", "warning");
+		expect(h.ctx.ui.notify).toHaveBeenCalledWith("Usage: /atelier sidebar [auto|manual|on|off]", "warning");
 		expect(h.custom).toHaveBeenCalledOnce();
 	});
 
@@ -985,6 +985,7 @@ describe("extension registration", () => {
 	it("enters Resize mode with Ctrl+Shift+R only for the active visible sidebar", async () => {
 		const h = harness();
 		await start(h);
+		await command(h, "sidebar manual");
 		await command(h, "sidebar on");
 		await h.shortcutHandlers.get("ctrl+shift+r")?.(h.ctx);
 		expect(h.terminalWrite).toHaveBeenCalledWith("\u001b[?1002h\u001b[?1006h");
@@ -1010,6 +1011,7 @@ describe("extension registration", () => {
 	it("disable closes the sidebar and restores render and mouse state", async () => {
 		const h = harness();
 		await start(h);
+		await command(h, "sidebar manual");
 		await command(h, "sidebar on");
 		await h.shortcutHandlers.get("ctrl+shift+r")?.(h.ctx);
 
@@ -1044,6 +1046,7 @@ describe("extension registration", () => {
 	it("closes an enabled sidebar and resize input during shutdown", async () => {
 		const h = harness();
 		await start(h);
+		await command(h, "sidebar manual");
 		await command(h, "sidebar on");
 		await h.shortcutHandlers.get("ctrl+shift+r")?.(h.ctx);
 		expect(h.terminalWrite).toHaveBeenLastCalledWith("\u001b[?1002h\u001b[?1006h");
@@ -1571,7 +1574,7 @@ describe("extension registration", () => {
 		const opening = command(h, "");
 		await vi.waitFor(() => expect(h.overlays).toHaveLength(2));
 		const menu = h.overlays[1]?.component.render(80).join("\n");
-		expect(menu).toContain("Sidebar: On");
+		expect(menu).toContain("Sidebar: Auto");
 		h.overlays[1]?.component.handleInput("\u001b");
 		await opening;
 	});

@@ -1285,13 +1285,8 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		if (restoreCursor) safely(restoreCursor);
 	};
 
-	const show = (mode: Exclude<SidebarMode, "off"> = "on") => {
-		if (disposed) return;
-		if (enabled) {
-			safely(() => split.show(mode));
-			syncAnimation();
-			return;
-		}
+	const show = () => {
+		if (disposed || enabled) return;
 		if (options.ctx.mode !== "tui") {
 			reportError(new Error("Pi Atelier sidebar requires TUI mode"));
 			return;
@@ -1299,7 +1294,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 
 		enabled = true;
 		const currentGeneration = ++generation;
-		if (!safely(() => split.show(mode))) {
+		if (!safely(split.show)) {
 			enabled = false;
 			stopAnimation();
 			clearOverlayCallbacks();
@@ -1386,12 +1381,12 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		show: () => show(),
 		hide,
 		setMode(mode) {
-			if (mode === "off") hide();
-			else show(mode);
+			safely(() => split.setMode(mode));
+			syncAnimation();
 		},
 		getStatus: split.getStatus,
 		toggle() {
-			if (split.getStatus().presentation === "shown") hide();
+			if (enabled) hide();
 			else show();
 		},
 		isVisible() {

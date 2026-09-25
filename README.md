@@ -60,13 +60,14 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 
 ```text
 /atelier display            # display settings
-/atelier sidebar            # toggle sidebar
-/atelier sidebar auto|on|off # set sidebar mode
+/atelier sidebar             # toggle sidebar visibility
+/atelier sidebar auto|manual # choose sidebar mode
+/atelier sidebar on|off      # show/hide without changing mode
 /atelier sidebar tools      # toggle tool names
 /atelier enable|disable     # set extension state
 ```
 
-The sidebar starts in **Auto** mode: it collapses when space is tight and reopens when there is room. At the default width, it collapses below 124 terminal columns and reopens at 132. Use **On** or **Off** to override it for this session, or **Auto** to restore automatic behavior. Press `Ctrl+Shift+R` to resize a visible sidebar; resizing preserves the current Auto or On mode. See the [usage guide](docs/usage.md#sidebar-selection-and-images) for details. Its TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension.
+The sidebar starts in **Auto** mode: it collapses when space is tight and reopens when there is room. At the default width, it collapses below 124 terminal columns and reopens at 132. Auto disables manual width adjustment. Choose **Manual** to adjust a visible sidebar with `Ctrl+Shift+R`. Showing or hiding the sidebar is independent of its mode; a manually hidden sidebar stays hidden when the terminal grows. See the [usage guide](docs/usage.md#sidebar-selection-and-images) for details. Its TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension.
 
 Choose a status rail preset in the display settings:
 

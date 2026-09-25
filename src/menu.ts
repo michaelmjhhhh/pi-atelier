@@ -31,7 +31,8 @@ export type { OverlayLifetime } from "./overlay-lifecycle.js";
 export type SaveConfigPatch = typeof saveUserConfigPatch;
 
 export function sidebarStatusLabel(status: SidebarStatus): string {
-	const label = { auto: "Auto", on: "On", off: "Off" }[status.mode];
+	const label = status.mode === "auto" ? "Auto" : "Manual";
+	if (!status.enabled) return `${label} · hidden`;
 	return status.presentation === "auto-collapsed" || status.presentation === "too-narrow"
 		? `${label} · hidden: narrow terminal`
 		: label;
@@ -51,6 +52,7 @@ function isOverlayLifetimeActive(lifetime: OverlayLifetime | undefined): boolean
 export interface SidebarControls {
 	getStatus(): SidebarStatus;
 	setMode(mode: SidebarMode): void;
+	toggle(): void;
 	isToolListExpanded(): boolean;
 	toggleToolList(): Promise<void>;
 	getSidebarPanelSettings?(): readonly SidebarPanelSetting[];
@@ -553,7 +555,7 @@ export async function openAtelierControlCenter(
 						{
 							value: "sidebar",
 							label: `Sidebar: ${sidebarStatusLabel(sidebar.getStatus())}`,
-							description: "Choose Auto, On, or Off for this session",
+							description: "Choose Auto or Manual; show or hide independently",
 						},
 						{
 							value: "model",
@@ -577,14 +579,23 @@ export async function openAtelierControlCenter(
 						"Sidebar mode",
 						[
 							{ value: "auto", label: "Auto", description: "Show when there is comfortable reading space" },
-							{ value: "on", label: "On", description: "Keep shown whenever the minimum layout fits" },
-							{ value: "off", label: "Off", description: "Keep hidden until you change the mode" },
+							{
+								value: "manual",
+								label: "Manual",
+								description: "Adjust width manually; hide only when too narrow to fit",
+							},
+							{
+								value: "toggle",
+								label: sidebar.getStatus().enabled ? "Hide sidebar" : "Show sidebar",
+								description: "Keep the current mode",
+							},
 							{ value: "back", label: "Back" },
 						],
 						lifetime,
 					);
 					if (!isOverlayLifetimeActive(lifetime)) return;
-					if (mode === "auto" || mode === "on" || mode === "off") sidebar.setMode(mode);
+					if (mode === "auto" || mode === "manual") sidebar.setMode(mode);
+					else if (mode === "toggle") sidebar.toggle();
 				} else if (choice === "tools") await showToolSettings(ctx, pi, actions.setTools, lifetime);
 				else {
 					const selected = await showSelection(

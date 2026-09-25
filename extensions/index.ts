@@ -472,6 +472,9 @@ export default function atelierExtension(
 				setMode: (mode) => {
 					if (enabled && activeSession === current) targetSidebar.setMode(mode);
 				},
+				toggle: () => {
+					if (enabled && activeSession === current) targetSidebar.toggle();
+				},
 				isToolListExpanded: () => activeSession === current && targetRuntime.getConfig().showSidebarToolNames,
 				toggleToolList: async () => {
 					if (activeSession === current) await setSidebarToolNames(ctx, undefined, current);
@@ -670,20 +673,17 @@ export default function atelierExtension(
 					(sidebarAction !== undefined &&
 						sidebarAction !== "on" &&
 						sidebarAction !== "off" &&
-						sidebarAction !== "auto")
+						sidebarAction !== "auto" &&
+						sidebarAction !== "manual")
 				) {
-					ctx.ui.notify("Usage: /atelier sidebar [auto|on|off]", "warning");
+					ctx.ui.notify("Usage: /atelier sidebar [auto|manual|on|off]", "warning");
 					return;
 				}
-				const previousMode = current.sidebar.getStatus().mode;
-				if (sidebarAction) current.sidebar.setMode(sidebarAction);
+				if (sidebarAction === "auto" || sidebarAction === "manual") current.sidebar.setMode(sidebarAction);
+				else if (sidebarAction === "on") current.sidebar.show();
+				else if (sidebarAction === "off") current.sidebar.hide();
 				else current.sidebar.toggle();
-				const status = current.sidebar.getStatus();
-				const autoHint =
-					previousMode === "auto" && status.mode !== "auto"
-						? " · /atelier sidebar auto restores automatic mode"
-						: "";
-				ctx.ui.notify(`Sidebar: ${sidebarStatusLabel(status)}${autoHint}`, "info");
+				ctx.ui.notify(`Sidebar: ${sidebarStatusLabel(current.sidebar.getStatus())}`, "info");
 				return;
 			}
 			if (action === "disable") {
@@ -903,15 +903,8 @@ export default function atelierExtension(
 					description: "Resize Pi Atelier sidebar",
 					handler: (shortcutContext) => {
 						const current = getActiveSession(shortcutContext);
-						if (!current || current.sidebar.getStatus().mode === "off") {
+						if (!current || !current.sidebar.getStatus().enabled) {
 							shortcutContext.ui.notify("Show the Pi Atelier sidebar before resizing it", "warning");
-							return;
-						}
-						if (!current.sidebar.isVisible()) {
-							shortcutContext.ui.notify(
-								"Sidebar is hidden by terminal width; widen the terminal or use /atelier sidebar on",
-								"warning",
-							);
 							return;
 						}
 						current.sidebar.beginResize();
@@ -919,9 +912,12 @@ export default function atelierExtension(
 				});
 				resizeShortcutRegistered = true;
 			}
-			if (enabled && isFresh() && activeSession === nextSession) {
-				installFooter(nextSession);
-				if (loaded.config.showSidebarOnStartup) nextSession.sidebar.setMode("auto");
+			if (isFresh() && activeSession === nextSession) {
+				nextSession.sidebar.setMode("auto");
+				if (enabled) {
+					installFooter(nextSession);
+					if (loaded.config.showSidebarOnStartup) nextSession.sidebar.show();
+				}
 			}
 			void candidateRuntime.flushWorkspacePulseRefresh();
 		} catch (error) {
