@@ -2,6 +2,7 @@ import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/p
 import { formatTokens } from "./metrics.js";
 import { type AtelierPalette, createPalette, type PaletteRole } from "./palette.js";
 import { responsePerformanceValues } from "./run-activity.js";
+import { DEFAULT_CONFIG } from "./types.js";
 import type { AtelierConfig, AtelierMetrics, AtelierState, DisplayValue, FooterState } from "./types.js";
 
 export interface ThemeLike {
@@ -414,10 +415,11 @@ function buildItems(
 
 		if (segment === "menu") {
 			const configuredShortcut = sanitize(config.shortcut);
+			const configuredLabel = configuredShortcut.toUpperCase();
 			const shortcut =
-				config.nerdFont && configuredShortcut.toLowerCase() === "alt+a"
-					? "⌥A"
-					: configuredShortcut.toUpperCase();
+				configuredShortcut && configuredShortcut.toLowerCase() !== DEFAULT_CONFIG.shortcut
+					? `${DEFAULT_CONFIG.shortcut.toUpperCase()} / ${configuredLabel}`
+					: DEFAULT_CONFIG.shortcut.toUpperCase();
 			if (shortcut) {
 				const rendered = palette.paint("menu", shortcut);
 				add({

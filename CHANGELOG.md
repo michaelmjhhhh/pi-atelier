@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use F6 as the default Control Center shortcut on macOS and Windows, avoiding Option-key text input on macOS. Keyboards with media keys may require Fn+F6 on either platform. Migrate saved Alt+A settings to F6 when loading configuration and stop registering Alt+A. Other custom shortcuts remain available alongside F6 ([#73](https://github.com/michaelmjhhhh/pi-atelier/issues/73)).
+
 ## 0.11.1 — 2026-09-24
 
 - Clarify Sidebar metrics with aligned labels and values while retaining separate colored, rounded panels. Remove duplicate idle status, label Git/session/tool details, and show context usage with a continuous fractional-fill meter. Trim metadata before clipping core panels in very short terminals ([#70](https://github.com/michaelmjhhhh/pi-atelier/issues/70)).

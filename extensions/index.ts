@@ -39,6 +39,7 @@ import {
 	type SidebarPanelRegistry,
 } from "../src/sidebar-panels.js";
 import { AtelierRuntime, createInertAtelierState } from "../src/state.js";
+import { DEFAULT_CONFIG } from "../src/types.js";
 import type {
 	AtelierConfig,
 	AtelierState,
@@ -868,20 +869,22 @@ export default function atelierExtension(
 			if (previousSession) disposeSession(previousSession, { clearFooter: true });
 
 			if (isFresh() && !shortcutRegistered) {
-				try {
-					pi.registerShortcut(loaded.config.shortcut as KeyId, {
+				const registerMenuShortcut = (key: string): void => {
+					pi.registerShortcut(key as KeyId, {
 						description: "Open Pi Atelier",
 						handler: async (shortcutContext) => openMenu(shortcutContext),
 					});
-				} catch {
-					pi.registerShortcut("alt+a" as KeyId, {
-						description: "Open Pi Atelier",
-						handler: async (shortcutContext) => openMenu(shortcutContext),
-					});
-					initializationContext.ui.notify(
-						`Invalid Atelier shortcut "${loaded.config.shortcut}"; using alt+a`,
-						"warning",
-					);
+				};
+				registerMenuShortcut(DEFAULT_CONFIG.shortcut);
+				if (loaded.config.shortcut.toLowerCase() !== DEFAULT_CONFIG.shortcut) {
+					try {
+						registerMenuShortcut(loaded.config.shortcut);
+					} catch {
+						initializationContext.ui.notify(
+							`Cannot register Atelier shortcut "${loaded.config.shortcut}"; ${DEFAULT_CONFIG.shortcut} remains available`,
+							"warning",
+						);
+					}
 				}
 				shortcutRegistered = true;
 			}
