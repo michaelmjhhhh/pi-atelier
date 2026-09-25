@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Remove the Control Center Actions page, including session details, rename and compaction prompts, and the unused `showSessionActions` setting.
+- Open the subagent graph directly from Control Center → Subagent usage, with the same session and trust checks as `/atelier usage`.
 - Inspect individual reply points in `/atelier usage` with `[` / `]`: highlight the selected observation and show elapsed time, cumulative cost and that reply’s cost.
 
 - Add a graph-only SUBAGENTS panel and framed `/atelier usage` view, with distinct per-child colors, numbered paginated legends, real observation markers and keyboard focus. Plot every readable child history without a six-curve display cap. Kitty-compatible terminals render anti-aliased curves; other terminals retain a text fallback ([#69](https://github.com/michaelmjhhhh/pi-atelier/issues/69)).

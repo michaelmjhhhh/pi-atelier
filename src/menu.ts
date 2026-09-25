@@ -32,7 +32,9 @@ export interface DisplaySettingsWorkspaceOptions {
 	lifetime?: OverlayLifetime;
 }
 
-export interface ControlCenterOptions extends DisplaySettingsWorkspaceOptions {}
+export interface ControlCenterOptions extends DisplaySettingsWorkspaceOptions {
+	openUsage?(): Promise<void>;
+}
 export interface MenuActionsOptions extends DisplaySettingsWorkspaceOptions {}
 
 function isOverlayLifetimeActive(lifetime: OverlayLifetime | undefined): boolean {
@@ -383,11 +385,24 @@ export async function openAtelierControlCenter(
 					label: "Controls",
 					description: `Session controls · Sidebar: ${sidebar.isVisible() ? "On" : "Off"}`,
 				},
+				...(options.openUsage
+					? [
+							{
+								value: "usage",
+								label: "Subagent usage",
+								description: "Cost curves and individual reply costs",
+							},
+						]
+					: []),
 				{ value: "close", label: "Close" },
 			],
 			lifetime,
 		);
 		if (!isOverlayLifetimeActive(lifetime) || !category || category === "close") return;
+		if (category === "usage") {
+			await options.openUsage?.();
+			continue;
+		}
 		if (category === "settings") {
 			for (;;) {
 				if (!isOverlayLifetimeActive(lifetime)) return;

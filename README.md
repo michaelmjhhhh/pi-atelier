@@ -47,7 +47,7 @@ See the [font setup guide and Plain text preview](https://github.com/michaelmjhh
 
 ## Features
 
-- **Subagent costs:** colored per-child cost curves from pi-subagents accounting events, with matching legends and real observation markers. Open `/atelier usage` for a framed, larger graph and keyboard focus. Kitty-compatible terminals display smooth native graphics; other terminals use text strokes.
+- **Subagent costs:** colored per-child cost curves from pi-subagents accounting events, with matching legends and real observation markers. Open `/atelier` → **Subagent usage** (or `/atelier usage`) for a framed, larger graph, keyboard focus and individual reply costs. Kitty-compatible terminals display smooth native graphics; other terminals use text strokes.
 - **Session visibility:** model, thinking level, context, token usage, cost, and session details in a compact status rail and sidebar.
 - **Live activity:** agent and tool activity, TODOs, response timing, and completion notifications on macOS and Windows.
 - **Workspace context:** workspace identity and read-only Git status alongside your session.

@@ -456,6 +456,26 @@ export default function atelierExtension(
 		];
 	}
 
+	async function openUsage(ctx: ExtensionContext, expected?: ActiveSession): Promise<void> {
+		const current = getActiveSession(ctx);
+		if (ctx.mode !== "tui" || !current || !enabled || (expected && current !== expected)) {
+			ctx.ui.notify("Enable Pi Atelier in a TUI session to view usage", "info");
+			return;
+		}
+		if (!ctx.isProjectTrusted()) {
+			ctx.ui.notify("Subagent metadata requires a trusted project", "info");
+			return;
+		}
+		await current.runtime.refreshSubagentUsage();
+		if (activeSession !== current || !enabled || !ctx.isProjectTrusted()) return;
+		await openSubagentUsage(
+			ctx,
+			current.runtime.getState().subagentUsage ?? emptySubagentUsage(),
+			Math.min(6, Math.max(0, Math.trunc(current.runtime.getConfig().currencyDecimals))),
+			createOverlayLifetime(current.token, current.overlayCancellations),
+		);
+	}
+
 	async function openMenu(ctx: ExtensionContext): Promise<void> {
 		const current = getActiveSession(ctx);
 		if (!current) {
@@ -481,7 +501,10 @@ export default function atelierExtension(
 			},
 			() => requestAllRenders(current),
 			lifecycleGuardedSavePatch(current),
-			{ lifetime: createOverlayLifetime(current.token, current.overlayCancellations) },
+			{
+				lifetime: createOverlayLifetime(current.token, current.overlayCancellations),
+				openUsage: () => openUsage(ctx, current),
+			},
 		);
 	}
 
@@ -637,23 +660,7 @@ export default function atelierExtension(
 					ctx.ui.notify("Usage: /atelier usage", "warning");
 					return;
 				}
-				const current = getActiveSession(ctx);
-				if (ctx.mode !== "tui" || !current || !enabled) {
-					ctx.ui.notify("Enable Pi Atelier in a TUI session to view usage", "info");
-					return;
-				}
-				if (!ctx.isProjectTrusted()) {
-					ctx.ui.notify("Subagent metadata requires a trusted project", "info");
-					return;
-				}
-				await current.runtime.refreshSubagentUsage();
-				if (activeSession !== current || !enabled) return;
-				await openSubagentUsage(
-					ctx,
-					current.runtime.getState().subagentUsage ?? emptySubagentUsage(),
-					Math.min(6, Math.max(0, Math.trunc(current.runtime.getConfig().currencyDecimals))),
-					createOverlayLifetime(current.token, current.overlayCancellations),
-				);
+				await openUsage(ctx);
 				return;
 			}
 			if (action === "display") {

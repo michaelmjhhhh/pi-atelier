@@ -23,7 +23,6 @@ import {
 	type SidebarPanelRole,
 	sanitizeSidebarPanelText,
 } from "./sidebar-panels.js";
-import { subagentCostChart } from "./subagent-cost-chart.js";
 import { createSplitPaneController, type SplitPaneController } from "./split-pane.js";
 import {
 	DEFAULT_CONFIG,
@@ -33,6 +32,7 @@ import {
 	type WorkspacePulseState,
 } from "./types.js";
 import type { WorkspacePulseData } from "./workspace-pulse.js";
+import { subagentCostChart } from "./subagent-cost-chart.js";
 
 export type {
 	SidebarPanelContribution,

@@ -26,6 +26,8 @@ Use Kitty or Ghostty for smooth native graphics. Keep temporary sessions for rel
 
 ## TODO: visual checks
 
+- [ ] Open `/atelier` or F6 → Subagent usage. Confirm it shows the same snapshot and point controls as `/atelier usage`; Escape returns to Control Center. Try an untrusted project, disabled Atelier and session switch during refresh: no stale graph should open.
+
 - [ ] Sidebar and `/atelier usage` contain only a graph, matching numbered color legends and essential status text. No token table, per-agent cost list or saved-total block remains.
 - [ ] In Kitty/Ghostty, curves are thin continuous smooth lines, with small dots at actual observations. There are no Braille gaps, box-character stairs or rungs joining different agents.
 - [ ] Select a child, then press `[` / `]` through every actual observation. Verify the highlighted marker and time/cumulative-cost/reply-cost readout against native events, including the first/last point, one-reply children, zero-cost replies, different history lengths and text fallback. Synthetic zero is not counted as a reply.
@@ -51,3 +53,13 @@ Use Kitty or Ghostty for smooth native graphics. Keep temporary sessions for rel
 - Owner validation accepts pi-subagents' session-file identity and Pi's session UUID. Workflow roots are resolved to their child and continuation run IDs rather than charged as children themselves.
 - Numeric projections discard event content and tool arguments. Accounting coverage includes duplicate events/sources, same-named steps, partial appends, unknown cost, read bounds/cancellation, ownership and final-metadata reconciliation.
 - The native PNG renderer was previewed with the real three-child history. Interactive terminal placement, cleanup and resizing remain manual checks above.
+
+## Review environment and observed evidence
+
+- macOS arm64, repository SDK/Pi baseline 0.84.0; actual interactive host version and terminal cell dimensions were not recorded. The user's 2026-09-25 23:19 screenshot is 1952 × 1275 pixels.
+- That screenshot confirms native sidebar curves, point markers and color legends rendered in the user's terminal. It predates removal of the six-curve cap, point inspection and the Control Center entry; those interactive checks remain pending above.
+- The screenshot is local conversation evidence, not published in the repository. Native PNG rendering was also previewed against the original three-child history. Automated checks do not establish interactive placement/cleanup correctness.
+
+![Native renderer preview with three real child histories](images/subagent-cost-preview.png)
+
+This 1000 × 480 PNG is a renderer artifact, not an interactive terminal screenshot.

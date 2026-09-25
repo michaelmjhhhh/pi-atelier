@@ -2,11 +2,11 @@
 
 Status: original full-scope proposal, superseded for the first implementation by the user's simpler metadata-only scope.
 
-**Implemented scope:** read existing pi-subagents metadata; show separate per-run input/output/cache, reported model and cost; bounded SUBAGENTS sidebar and `/atelier usage` full list. No upstream changes, combined main/child ledger, reasoning reconstruction or per-response attribution. Missing files remain unavailable. The broader contract and implementation gates below are retained as future research, not requirements for this version. See `docs/usage.md` and `docs/issue-69-manual-verification.md`.
+**Implemented scope (after user revisions):** graph-only per-child cumulative cost history from owner-validated native pi-subagents accounting events, reconciled against saved metadata. All readable histories are plotted with colored legends, smooth native images where supported, keyboard point inspection and Control Center/direct-command entry points. Token/model/reasoning tables and saved-total summaries are intentionally omitted. No upstream changes or combined main/child ledger. Missing histories remain unavailable. The broader contract and implementation gates below are retained as future research, not requirements for this version. See `docs/usage.md` and `docs/issue-69-manual-verification.md`.
 
-Worktree: `/Users/michael/pi-atelier-issue-69`  
-Branch: `plan/69-agent-usage-breakdown`  
-Baseline: `main` at `e56e7209fbe0c0b9a1e2b608d4515cfa61a2d81b` (Atelier 0.11.2).  
+Worktree: `/Users/michael/pi-atelier-issue-69`
+Branch: `plan/69-agent-usage-breakdown`
+Baseline: `main` at `e56e7209fbe0c0b9a1e2b608d4515cfa61a2d81b` (Atelier 0.11.2).
 Reviewed: 2026-09-25.
 
 ## Objective and scope
