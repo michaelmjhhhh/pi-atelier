@@ -274,7 +274,11 @@ export async function readSubagentUsage(options: {
 								entry?.latestRunId,
 								...(Array.isArray(continuation?.runIds) ? continuation.runIds : []),
 							]) {
-								if (typeof id === "string" && RUN_ID.test(id) && id !== "." && id !== "..") runIds.add(id);
+								if (typeof id === "string" && RUN_ID.test(id) && id !== "." && id !== "..") {
+									runIds.add(id);
+									if (id !== status.runId && asyncDirs.size < MAX_FILES)
+										asyncDirs.add(join(dirname(asyncDir), id));
+								}
 							}
 						}
 					}

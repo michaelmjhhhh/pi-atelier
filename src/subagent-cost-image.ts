@@ -90,6 +90,7 @@ export function drawCostPlot(
 		pixels[offset + 3] = Math.round(nextAlpha * 255);
 	};
 	let coverage: Float32Array | undefined;
+	let touched: number[] = [];
 	const line = (a: CurvePoint, b: CurvePoint, color: ChartRgb, radius: number, opacity: number): void => {
 		const dx = b.x - a.x,
 			dy = b.y - a.y,
@@ -109,8 +110,11 @@ export function drawCostPlot(
 					: 0;
 				const distance = Math.hypot(x + 0.5 - a.x - t * dx, y + 0.5 - a.y - t * dy);
 				const alpha = Math.min(1, Math.max(0, radius + 0.5 - distance)) * opacity;
-				if (coverage) coverage[y * width + x] = Math.max(coverage[y * width + x] ?? 0, alpha);
-				else blend(x, y, color, alpha);
+				if (coverage) {
+					const offset = y * width + x;
+					if (alpha > 0 && !coverage[offset]) touched.push(offset);
+					coverage[offset] = Math.max(coverage[offset] ?? 0, alpha);
+				} else blend(x, y, color, alpha);
 			}
 		}
 	};
@@ -128,8 +132,10 @@ export function drawCostPlot(
 		...series.map(({ series }) => (series.points.at(-1)?.at ?? series.startedAt) - series.startedAt),
 	);
 	// Draw de-emphasized series first so the selected curve stays fully visible at crossings.
+	const curveCoverage = new Float32Array(width * height);
 	for (const item of [...series].sort((a, b) => a.opacity - b.opacity)) {
-		coverage = new Float32Array(width * height);
+		coverage = curveCoverage;
+		touched = [];
 		const observations = item.series.points.map((point) => ({
 			x: left + ((point.at - item.series.startedAt) / duration) * (right - left),
 			y: bottom - (maxCost > 0 ? point.cost / maxCost : 0) * (bottom - top),
@@ -147,8 +153,10 @@ export function drawCostPlot(
 			const point = observations[index];
 			if (point) line(point, point, item.color, 3.0 * scale, item.opacity);
 		}
-		for (let y = 0; y < height; y++)
-			for (let x = 0; x < width; x++) blend(x, y, item.color, coverage[y * width + x] ?? 0);
+		for (const offset of touched) {
+			blend(offset % width, Math.floor(offset / width), item.color, coverage[offset] ?? 0);
+			coverage[offset] = 0;
+		}
 		coverage = undefined;
 		const activePoint = item.selectedPoint === undefined ? undefined : observations[item.selectedPoint];
 		if (activePoint) {

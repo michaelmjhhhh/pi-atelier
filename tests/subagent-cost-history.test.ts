@@ -56,6 +56,36 @@ describe("native child cost history accounting", () => {
 		expect(JSON.stringify(result)).not.toContain("private content");
 		expect(await readSubagentCostHistory([input])).toEqual(result);
 	});
+	it("preserves replies sharing an observation time, including the synthetic origin", async () => {
+		const first = event(100, 0.1);
+		const second = event(100, 0.2, {
+			message: { role: "assistant", timestamp: 101, usage: { cost: { total: 0.2 } } },
+		});
+		await writeEvents([first, first, second]);
+		const result = await readSubagentCostHistory([source()]);
+		expect(result.series[0]?.points).toEqual([
+			{ at: 100, cost: 0 },
+			{ at: 100, cost: 0.1 },
+			{ at: 100, cost: 0.1 + 0.2 },
+		]);
+	});
+	it("retains more than 32 small histories within the byte budget", async () => {
+		const sources = [];
+		for (let index = 0; index < 40; index++) {
+			const runId = `child-${index}`;
+			const childDirectory = join(directory, runId);
+			await mkdir(childDirectory);
+			await writeFile(
+				join(childDirectory, "events.jsonl"),
+				JSON.stringify(event(200, 0.1, { subagentRunId: runId })) + "\n",
+			);
+			sources.push({ ...source(), runId, directory: childDirectory });
+		}
+		const result = await readSubagentCostHistory(sources);
+		expect(result.series).toHaveLength(40);
+		expect(result.unavailable).toBe(0);
+		expect(result.series.every((run) => run.points.at(-1)?.cost === 0.1)).toBe(true);
+	});
 	it("marks unknown costs partial and recovers an incomplete append on the next read", async () => {
 		const tail = JSON.stringify(event(400, 0.3));
 		await writeEvents([event(200, 0.1), event(300, undefined)], tail);

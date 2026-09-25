@@ -26,7 +26,8 @@ Use Kitty or Ghostty for smooth native graphics. Keep temporary sessions for rel
 
 ## TODO: visual checks
 
-- [ ] Open `/atelier` or F6 → Subagent usage. Confirm it shows the same snapshot and point controls as `/atelier usage`; Escape returns to Control Center. Try an untrusted project, disabled Atelier and session switch during refresh: no stale graph should open.
+- [x] In an isolated Pi 0.87.1 PTY session (macOS arm64, 120 columns × 36 rows), `/atelier` → Subagent usage opened the bordered empty state; Escape returned to Control Center. `/atelier usage` opened the same empty state; Escape and exit completed normally. Only this checkout extension was loaded, with session-only trust and no model request.
+- [ ] Repeat with populated histories and F6; check untrusted/disabled/session-switch paths.
 
 - [ ] Sidebar and `/atelier usage` contain only a graph, matching numbered color legends and essential status text. No token table, per-agent cost list or saved-total block remains.
 - [ ] In Kitty/Ghostty, curves are thin continuous smooth lines, with small dots at actual observations. There are no Braille gaps, box-character stairs or rungs joining different agents.
@@ -57,9 +58,13 @@ Use Kitty or Ghostty for smooth native graphics. Keep temporary sessions for rel
 ## Review environment and observed evidence
 
 - macOS arm64, repository SDK/Pi baseline 0.84.0; actual interactive host version and terminal cell dimensions were not recorded. The user's 2026-09-25 23:19 screenshot is 1952 × 1275 pixels.
-- That screenshot confirms native sidebar curves, point markers and color legends rendered in the user's terminal. It predates removal of the six-curve cap, point inspection and the Control Center entry; those interactive checks remain pending above.
+- That screenshot confirms native sidebar curves, point markers and color legends rendered in the user's terminal. It predates removal of the six-curve cap and point inspection; populated-graph checks remain pending above. Control Center and direct-command navigation were subsequently exercised in the isolated 120 × 36 PTY session.
 - The screenshot is local conversation evidence, not published in the repository. Native PNG rendering was also previewed against the original three-child history. Automated checks do not establish interactive placement/cleanup correctness.
 
 ![Native renderer preview with three real child histories](images/subagent-cost-preview.png)
 
 This 1000 × 480 PNG is a renderer artifact, not an interactive terminal screenshot.
+
+## Final review fixes
+
+Accounting regressions now cover distinct replies sharing the same millisecond (including the origin), receipt-only continuation histories, and 40 small histories without the former 32-source cutoff. Per-file and per-refresh byte limits remain in effect; unavailable or limited graph data is explicitly marked partial. Raster blending visits touched pixels only, avoiding a full image scan per child.

@@ -53,10 +53,13 @@ export function subagentCostChart(
 	const selected = all
 		.map((series, index) => ({ series, index }))
 		.filter(({ series }) => series.points.length > 1);
-	if (!selected.length)
+	const incomplete = Boolean(usage.unavailable || usage.limited || usage.historyUnavailable);
+	if (!selected.length) {
+		if (incomplete) return [palette.paint("warning", "Cost history unavailable · partial")];
 		return usage.pending || usage.runs.length
 			? [palette.paint("dim", usage.pending ? "Cost curves · awaiting usage" : "Cost history unavailable")]
 			: [];
+	}
 	const maximum = Math.max(...selected.flatMap(({ series }) => series.points.map((point) => point.cost)));
 	const duration = Math.max(
 		...selected.map(({ series }) => (series.points.at(-1)?.at ?? series.startedAt) - series.startedAt),
@@ -120,7 +123,7 @@ export function subagentCostChart(
 					: "+";
 		return [" ", "│", "─", "╰", "│", "│", "╭", "├", "─", "╯", "─", "┴", "╮", "┤", "┬", "┼"][mask] ?? "─";
 	};
-	const partial = selected.some(({ series }) => series.partial) || Boolean(usage.historyUnavailable);
+	const partial = selected.some(({ series }) => series.partial) || incomplete;
 	const rows = [
 		palette.paint("muted", `Cost per agent · ${selected.length} curves${partial ? " · partial" : ""}`),
 	];

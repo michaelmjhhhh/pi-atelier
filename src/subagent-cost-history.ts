@@ -34,9 +34,9 @@ export async function readSubagentCostHistory(
 	signal?: AbortSignal,
 ): Promise<{ series: SubagentCostSeries[]; unavailable: number }> {
 	const series: SubagentCostSeries[] = [];
-	let unavailable = Math.max(0, sources.length - 32);
+	let unavailable = 0;
 	let remainingBytes = 8 * 1024 * 1024;
-	for (const source of sources.slice(-32)) {
+	for (const source of sources) {
 		if (signal?.aborted) break;
 		const runs = new Map<number, SubagentCostSeries>();
 		let file: Awaited<ReturnType<typeof open>> | undefined;
@@ -119,8 +119,8 @@ export async function readSubagentCostHistory(
 					run.partial = true;
 					continue;
 				}
-				if (previous.at === at) previous.cost = total;
-				else run.points.push({ at, cost: total });
+				// Distinct replies may share a millisecond; keep every observation and the zero baseline.
+				run.points.push({ at, cost: total });
 			}
 			for (const run of runs.values()) {
 				run.partial ||= corrupt;

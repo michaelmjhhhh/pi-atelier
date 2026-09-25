@@ -158,8 +158,36 @@ describe("subagent metadata accounting", () => {
 				},
 			}),
 		);
+		for (const runId of ["child-previous", "child-latest"]) {
+			const childDir = join(cwd, "async", runId);
+			await mkdir(childDir);
+			await writeFile(
+				join(childDir, "status.json"),
+				JSON.stringify({
+					runId,
+					mode: "single",
+					state: "complete",
+					sessionId: join(cwd, "session.jsonl"),
+					startedAt: 100,
+					steps: [{ agent: "review", status: "completed" }],
+				}),
+			);
+			await writeFile(
+				join(childDir, "events.jsonl"),
+				JSON.stringify({
+					type: "message_end",
+					subagentSource: "child",
+					subagentRunId: runId,
+					subagentStepIndex: 0,
+					subagentAgent: "review",
+					observedAt: 200,
+					message: { role: "assistant", timestamp: 200, usage: { cost: { total: 0.125 } } },
+				}) + "\n",
+			);
+		}
 		const result = await read([tool({ runId: "workflow-root", asyncDir, results: [] })]);
 		expect(result.runs).toHaveLength(2);
+		expect(result.costHistory?.map((run) => run.runId).sort()).toEqual(["child-latest", "child-previous"]);
 		expect(result.totals.cost).toBe(0.25);
 		expect(result.unavailable).toBe(0);
 	});
