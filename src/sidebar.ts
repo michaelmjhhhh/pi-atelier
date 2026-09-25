@@ -1196,6 +1196,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	let disposed = false;
 	let generation = 0;
 	let closeOverlay: (() => void) | undefined;
+	let restoreStoppedCursor: (() => void) | undefined;
 	let requestOverlayRender: (() => void) | undefined;
 	let overlayHandle: OverlayHandle | undefined;
 	let animationTimer: ReturnType<typeof setInterval> | undefined;
@@ -1250,6 +1251,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 
 	const clearOverlayCallbacks = () => {
 		closeOverlay = undefined;
+		restoreStoppedCursor = undefined;
 		requestOverlayRender = undefined;
 		overlayHandle = undefined;
 	};
@@ -1262,10 +1264,12 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		safely(split.cancelResize);
 		const close = closeOverlay;
 		const handle = overlayHandle;
+		const restoreCursor = restoreStoppedCursor;
 		clearOverlayCallbacks();
 		if (close) safely(close);
 		else if (handle) safely(() => handle.hide());
 		safely(split.hide);
+		if (restoreCursor) safely(restoreCursor);
 	};
 
 	const show = () => {
@@ -1303,6 +1307,13 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 					} else {
 						if (enabled && generation === currentGeneration) {
 							closeOverlay = close;
+							restoreStoppedCursor = () => {
+								// Pi can close overlays after stop() restored the terminal (#72).
+								// The internal flag is optional; never change the cursor of a live TUI.
+								if ((tui as unknown as { stopped?: boolean }).stopped === true) {
+									tui.terminal.showCursor();
+								}
+							};
 							requestOverlayRender = () => tui.requestRender();
 							syncAnimation();
 						} else {
