@@ -465,18 +465,23 @@ function usageRows(
 	return rows;
 }
 
+interface SidebarChartGraphics {
+	imageOwner?: object | undefined;
+	suspendPlot?: boolean;
+}
+
 function subagentGroups(
 	snapshot: SidebarSnapshot,
 	config: AtelierConfig,
 	width: number,
 	palette: AtelierPalette,
-	imageOwner?: object,
+	chartGraphics: SidebarChartGraphics = {},
 ): SidebarGroup[] {
 	const usage = snapshot.subagentUsage;
 	if (!usage || (!usage.runs.length && !usage.unavailable && !usage.pending && !usage.limited)) return [];
 	const decimals = currencyDecimals(config.currencyDecimals);
 	const panel = { panel: "SUBAGENTS", panelId: "subagents", panelRole: "output" as const, required: false };
-	const chart = subagentCostChart(usage, width, decimals, config.nerdFont, palette, { imageOwner });
+	const chart = subagentCostChart(usage, width, decimals, config.nerdFont, palette, chartGraphics);
 	const footer: string[] = [];
 	if (usage.pending) footer.push(palette.paint("dim", "Running · curves update on reply"));
 	if (usage.unavailable || usage.limited)
@@ -883,7 +888,7 @@ export function renderSidebarLines(
 	colorEnabled = true,
 	now = Date.now(),
 	resizing = false,
-	imageOwner?: object,
+	chartGraphics: SidebarChartGraphics = {},
 ): string[] {
 	const palette = createPalette(theme, colorEnabled);
 	const safeWidth = Math.max(0, Math.trunc(width));
@@ -997,7 +1002,7 @@ export function renderSidebarLines(
 			required: false,
 			dropRank: 20,
 		},
-		...subagentGroups(snapshot, config, panelContentWidth, palette, imageOwner),
+		...subagentGroups(snapshot, config, panelContentWidth, palette, chartGraphics),
 		{
 			name: "toolsStatus",
 			panel: "TOOLS",
@@ -1121,7 +1126,10 @@ export function createSidebarComponent(options: SidebarComponentOptions): Compon
 					options.colorEnabled ?? true,
 					Date.now(),
 					resizing,
-					options.canRenderImages?.() ? imageOwner : undefined,
+					{
+						imageOwner: options.canRenderImages ? imageOwner : undefined,
+						suspendPlot: options.canRenderImages?.() === false,
+					},
 				);
 			} catch (error) {
 				return renderSidebarError(error, width, height, resizing);

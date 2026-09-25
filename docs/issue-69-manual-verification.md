@@ -35,7 +35,7 @@ Use Kitty or Ghostty for smooth native graphics. Keep temporary sessions for rel
 - [ ] With 13 or more children, cycle Left/Right through every child, including the earliest one. Its legend page follows focus, while Up/Down changes only the legend page and preserves all curves.
 - [ ] The usage dialog has four complete borders and padding. Left/Right dims other curves; A restores them; Escape closes and returns input to the editor.
 - [ ] Resize wide/narrow/tall/short. Curves and legends remain inside their frame; tiny windows show a resize hint. An optional sidebar graph disappears as a whole if it cannot fit.
-- [ ] Open Settings and other capturing dialogs while a sidebar graph is visible. No sidebar image paints over them. Closing restores the graph without ghosts.
+- [ ] Open the usage view, Settings and other capturing dialogs while a sidebar graph is visible. The background plot becomes reserved blank space with a close-dialog hint, never character stairs; title, legend and panel height remain stable. No sidebar image paints over the dialog. Closing restores the original graph without ghosts. Repeat in regular/fullscreen and non-image terminals.
 - [ ] Close/reopen usage, reload, disable/re-enable Atelier and switch sessions. No old image remains. Check both regular and fullscreen layouts.
 - [ ] In a terminal without Kitty graphics, confirm the character fallback. Check Nerd Font off and NO_COLOR, including single-agent keyboard focus.
 
@@ -68,3 +68,7 @@ This 1000 × 480 PNG is a renderer artifact, not an interactive terminal screens
 ## Final review fixes
 
 Accounting regressions now cover distinct replies sharing the same millisecond (including the origin), receipt-only continuation histories, and 40 small histories without the former 32-source cutoff. Per-file and per-refresh byte limits remain in effect; unavailable or limited graph data is explicitly marked partial. Raster blending visits touched pixels only, avoiding a full image scan per child.
+
+## Background graph rendering fix
+
+The user's 2026-09-26 screenshot shows smooth curves in the usage dialog but character stairs in the visible part of the sidebar. The sidebar had represented overlay occlusion by removing its image owner; the chart interpreted that as a reason to draw the text fallback. A separate `suspendPlot` state now reserves exactly the same plot/axis rows without drawing either native graphics or character curves. The stable image owner remains available for restoration. This is a TUI-only change; the screenshot is the failure evidence and the open/close checklist above is the manual regression scenario. No new TUI tests were added.

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep sidebar plot space reserved while a dialog covers it, instead of switching smooth native curves into character staircases. Restore the plot after the dialog closes.
+
 - Remove the Control Center Actions page, including session details, rename and compaction prompts, and the unused `showSessionActions` setting.
 - Open the subagent graph directly from Control Center → Subagent usage, with the same session and trust checks as `/atelier usage`.
 - Inspect individual reply points in `/atelier usage` with `[` / `]`: highlight the selected observation and show elapsed time, cumulative cost and that reply’s cost.

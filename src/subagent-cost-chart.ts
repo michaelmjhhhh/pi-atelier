@@ -44,6 +44,7 @@ export function subagentCostChart(
 		focusedSeries?: string | undefined;
 		focusedPoint?: number | undefined;
 		imageOwner?: object | undefined;
+		suspendPlot?: boolean;
 		legendRows?: number;
 		legendPage?: number;
 	} = {},
@@ -78,14 +79,16 @@ export function subagentCostChart(
 		options.focusedSeries && options.focusedSeries !== id
 			? palette.paint("dim", text)
 			: paintSeries(index, text);
-	const layers = selected.map(() => Array.from({ length: height }, () => Array<number>(columns).fill(0)));
+	const layers = options.suspendPlot
+		? []
+		: selected.map(() => Array.from({ length: height }, () => Array<number>(columns).fill(0)));
 	// Each bit is a connection through a cell edge: up, right, down, left.
 	// Rounded box-drawing glyphs join across character boundaries without dot gaps.
 	const UP = 1,
 		RIGHT = 2,
 		DOWN = 4,
 		LEFT = 8;
-	for (const [layerIndex, { series }] of selected.entries()) {
+	for (const [layerIndex, { series }] of options.suspendPlot ? [] : selected.entries()) {
 		let previous: { x: number; y: number } | undefined;
 		const mark = (x: number, y: number, direction: number): void => {
 			const row = layers[layerIndex]?.[y];
@@ -127,24 +130,25 @@ export function subagentCostChart(
 	const rows = [
 		palette.paint("muted", `Cost per agent · ${selected.length} curves${partial ? " · partial" : ""}`),
 	];
-	const image = options.imageOwner
-		? renderCostImage(
-				options.imageOwner,
-				selected.map(({ series, index }) => {
-					const color = /\u001b\[38;2;(\d+);(\d+);(\d+)m/.exec(paintSeries(index, "x"));
-					return {
-						series,
-						selectedPoint: series.id === options.focusedSeries ? options.focusedPoint : undefined,
-						color: (color
-							? [Number(color[1]), Number(color[2]), Number(color[3])]
-							: [210, 210, 210]) as ChartRgb,
-						opacity: options.focusedSeries && options.focusedSeries !== series.id ? 0.18 : 0.95,
-					};
-				}),
-				columns,
-				height,
-			)
-		: undefined;
+	const image =
+		options.imageOwner && !options.suspendPlot
+			? renderCostImage(
+					options.imageOwner,
+					selected.map(({ series, index }) => {
+						const color = /\u001b\[38;2;(\d+);(\d+);(\d+)m/.exec(paintSeries(index, "x"));
+						return {
+							series,
+							selectedPoint: series.id === options.focusedSeries ? options.focusedPoint : undefined,
+							color: (color
+								? [Number(color[1]), Number(color[2]), Number(color[3])]
+								: [210, 210, 210]) as ChartRgb,
+							opacity: options.focusedSeries && options.focusedSeries !== series.id ? 0.18 : 0.95,
+						};
+					}),
+					columns,
+					height,
+				)
+			: undefined;
 	const focused = selected.find(({ series }) => series.id === options.focusedSeries);
 	const focusedPoint =
 		options.focusedPoint === undefined ? undefined : focused?.series.points[options.focusedPoint];
@@ -157,6 +161,16 @@ export function subagentCostChart(
 				}
 			: undefined;
 	for (let y = 0; y < height; y++) {
+		// Occlusion is temporary, not a terminal capability failure. Keep the
+		// reserved rows without switching the background to character strokes.
+		if (options.suspendPlot) {
+			rows.push(
+				y === Math.floor(height / 2)
+					? palette.paint("dim", truncateToWidth("Close dialog to view graph", width, "…"))
+					: "",
+			);
+			continue;
+		}
 		if (image) {
 			const axis = y === 0 ? label : y === height - 1 ? "$0" : "";
 			rows.push(palette.paint("dim", `${axis.padStart(label.length)}  `) + (image[y] ?? ""));
@@ -191,10 +205,12 @@ export function subagentCostChart(
 	}
 	const end = `${(duration / 1000).toFixed(duration < 10000 ? 1 : 0)}s`;
 	rows.push(
-		palette.paint(
-			"dim",
-			`${" ".repeat(label.length + 2)}0s${" ".repeat(Math.max(1, columns - end.length - 2))}${end}`,
-		),
+		options.suspendPlot
+			? ""
+			: palette.paint(
+					"dim",
+					`${" ".repeat(label.length + 2)}0s${" ".repeat(Math.max(1, columns - end.length - 2))}${end}`,
+				),
 	);
 	const legendColumns = costLegendColumns(width);
 	const pageSize = legendColumns * Math.max(1, Math.floor(options.legendRows ?? 5));
