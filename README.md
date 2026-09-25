@@ -28,7 +28,7 @@ Start Pi, then open the control center:
 /atelier
 ```
 
-You can also press `alt+a`. If icons appear as boxes, select **Settings → Font mode → Plain text**. For icon setup, see [Terminal font](#terminal-font).
+You can also press **F6** on macOS and Windows (**Fn+F6** on keyboards with media keys). If icons appear as boxes, select **Settings → Font mode → Plain text**. For icon setup, see [Terminal font](#terminal-font).
 
 Pi packages run with your system permissions. Review third-party source before installation.
 
@@ -56,7 +56,7 @@ No telemetry or external network requests. See [Privacy](#privacy).
 
 ## Use
 
-Open `/atelier` or press `alt+a` to change display settings, control the sidebar, select models and tools, rename the session, or compact it.
+Open `/atelier` or press **F6** to change display settings, control the sidebar, select models and tools, rename the session, or compact it.
 
 ```text
 /atelier display            # display settings
@@ -100,7 +100,7 @@ Project settings override user settings. Session changes override both. Global f
 {
   "preset": "editorial",
   "nerdFont": true,
-  "shortcut": "alt+a",
+  "shortcut": "f6",
   "density": "comfortable",
   "contextWarning": 70,
   "contextDanger": 90,
@@ -114,7 +114,7 @@ Use **Settings → Display** to reorder or hide status rail segments and sidebar
 
 ## Troubleshooting
 
-- Shortcut unavailable: use `/atelier`, change `shortcut`, then run `/reload`.
+- Shortcut unavailable: use `/atelier`, change `shortcut`, then run `/reload`. The default is `f6` on both macOS and Windows; keyboards with media keys may require Fn+F6 on either platform. Saved `alt+a` settings now resolve to `f6`; Alt+A is no longer registered. Other custom `shortcut` settings add an alternative binding alongside F6. Other extensions or terminal key mappings can still intercept F6.
 - Status rail missing: use TUI mode and check for another custom footer.
 - Missing icon glyphs: choose **Settings → Font mode: Plain text**, or select a Nerd Font in your terminal settings.
 - Metric mismatch: token and cost totals cover the session; context usage covers the current model context.

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Restore the terminal cursor after Sidebar cleanup when Pi has already stopped its renderer ([#72](https://github.com/michaelmjhhhh/pi-atelier/issues/72)).
+- Use F6 as the default Control Center shortcut on macOS and Windows, avoiding Option-key text input on macOS. Keyboards with media keys may require Fn+F6 on either platform. Migrate saved Alt+A settings to F6 when loading configuration and stop registering Alt+A. Other custom shortcuts remain available alongside F6 ([#73](https://github.com/michaelmjhhhh/pi-atelier/issues/73)).
 
 ## 0.11.1 — 2026-09-24
 

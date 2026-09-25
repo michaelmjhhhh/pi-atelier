@@ -373,7 +373,7 @@ describe("extension registration", () => {
 		);
 		expect(editor).toBeInstanceOf(AtelierEditor);
 		expect(editor.render(32)[0]).toMatch(/^╭─+╮$/);
-		expect(h.shortcuts).toContain("alt+a");
+		expect(h.shortcuts).toContain("f6");
 		expect(h.shortcuts).toContain("ctrl+shift+r");
 	});
 
@@ -385,7 +385,7 @@ describe("extension registration", () => {
 			const header = editor.render(80)[0];
 			for (const text of ["● READY", "project", "main", "10.0%"]) expect(header).toContain(text);
 			const telemetry = footer.render(80).join("\n");
-			expect(telemetry).toContain("⌥A");
+			expect(telemetry).toContain("F6");
 			for (const text of ["● READY", "project", "main", "10.0%"]) expect(telemetry).not.toContain(text);
 
 			// Pi selectors replace the editor without disposing it or rendering it again.
@@ -425,12 +425,12 @@ describe("extension registration", () => {
 		}
 	});
 
-	it("routes alt+a to the Control Center", async () => {
+	it("routes f6 to the Control Center", async () => {
 		const h = harness("tui", "linux", true);
 		await start(h);
 		const before = h.custom.mock.calls.length;
 
-		const opening = h.shortcutHandlers.get("alt+a")?.(h.ctx);
+		const opening = h.shortcutHandlers.get("f6")?.(h.ctx);
 		await vi.waitFor(() => expect(h.overlays).toHaveLength(2));
 
 		expect(h.custom.mock.calls.length).toBe(before + 1);

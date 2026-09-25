@@ -338,8 +338,11 @@ function applyNonDisplay(
 		return;
 	}
 	if (typeof input.shortcut === "string") {
-		if (input.shortcut.trim()) config.shortcut = input.shortcut.trim();
-		else warnings.push("Shortcut cannot be empty");
+		const shortcut = input.shortcut.trim();
+		if (shortcut) {
+			// Retire the former default even when an older config saved it explicitly.
+			config.shortcut = shortcut.toLowerCase() === "alt+a" ? DEFAULT_CONFIG.shortcut : shortcut;
+		} else warnings.push("Shortcut cannot be empty");
 	} else if ("shortcut" in input) warnings.push("shortcut must be a string");
 	const invalidThresholdType =
 		("contextWarning" in input && typeof input.contextWarning !== "number") ||

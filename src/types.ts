@@ -157,7 +157,7 @@ export interface FooterState extends AtelierState {
 export const DEFAULT_CONFIG: AtelierConfig = {
 	...applyDisplayTemplate("editorial"),
 	nerdFont: true,
-	shortcut: "alt+a",
+	shortcut: "f6",
 	contextWarning: 70,
 	contextDanger: 90,
 	currencyDecimals: 3,

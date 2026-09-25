@@ -199,13 +199,13 @@ describe("composer header and telemetry", () => {
 			`${icons.cache} 99%`,
 			"$5.041 (sub)",
 			`${icons.latency} 820ms  ${icons.speed} 42.3/s`,
-			`${icons.menu} ⌥A`,
+			`${icons.menu} F6`,
 		]) {
 			expect(telemetry).toContain(marker);
 			expect(header).not.toContain(marker);
 		}
 		expect(telemetry.startsWith(`${icons.input} 324k  ${icons.output} 15k`)).toBe(true);
-		expect(telemetry.endsWith(`${icons.menu} ⌥A`)).toBe(true);
+		expect(telemetry.endsWith(`${icons.menu} F6`)).toBe(true);
 		expect(visibleWidth(telemetry)).toBe(160);
 	});
 
@@ -244,8 +244,8 @@ describe("composer header and telemetry", () => {
 		const telemetry = stripAnsi(
 			renderFooterLine(unmeasured, config, plainTheme, 80, true, "...", "telemetry"),
 		);
-		expect(telemetry.trim()).toBe(`${icons.menu} ⌥A`);
-		expect(telemetry.endsWith(`${icons.menu} ⌥A`)).toBe(true);
+		expect(telemetry.trim()).toBe(`${icons.menu} F6`);
+		expect(telemetry.endsWith(`${icons.menu} F6`)).toBe(true);
 		expect(visibleWidth(telemetry)).toBe(80);
 	});
 
@@ -319,7 +319,7 @@ describe("footer", () => {
 			`${icons.cache} 99%`,
 			"$5.041 (sub)",
 			`${icons.context} 27.0%`,
-			"⌥A",
+			"F6",
 		]) {
 			expect(line).toContain(text);
 		}
@@ -329,7 +329,7 @@ describe("footer", () => {
 
 	it("right-aligns telemetry in the complete footer", () => {
 		const line = stripAnsi(renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 180));
-		expect(line.endsWith("⌥A")).toBe(true);
+		expect(line.endsWith("F6")).toBe(true);
 		expect(line.indexOf("● READY")).toBe(0);
 		expect(line).toContain("main*");
 		expect(line).toContain(`${icons.input} 324k`);
@@ -345,7 +345,7 @@ describe("footer", () => {
 	});
 
 	it("drops secondary detail before workspace identity and required context", () => {
-		const menuGone = firstWidthWithout("⌥A");
+		const menuGone = firstWidthWithout("F6");
 		const thinkingGone = firstWidthWithout("medium");
 		const costGone = firstWidthWithout("$5.041");
 		const inputGone = firstWidthWithout(`${icons.input} 324k`);
@@ -417,7 +417,7 @@ describe("footer", () => {
 			expect(classic).toContain(text);
 		}
 		expect(classic).not.toContain("● READY");
-		expect(classic).not.toContain("⌥A");
+		expect(classic).not.toContain("F6");
 	});
 
 	it("uses fixed dark colors for named custom themes", () => {
@@ -440,7 +440,7 @@ describe("footer", () => {
 		expect(line).toContain(`${darkRgb.cyan}${icons.cache}\u001b[39m ${darkRgb.cyan}99%\u001b[39m`);
 		expect(line).toContain(`${darkRgb.amber}$5.041\u001b[39m${darkRgb.muted} (sub)\u001b[39m`);
 		expect(line).toContain(`${darkRgb.blue}${icons.context}\u001b[39m ${darkRgb.blue}27.0%\u001b[39m`);
-		expect(line).toContain(`${darkRgb.purple}⌥A\u001b[39m`);
+		expect(line).toContain(`${darkRgb.purple}F6\u001b[39m`);
 	});
 
 	it("colors every classic cache value cyan while keeping labels muted", () => {
