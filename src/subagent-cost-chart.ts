@@ -42,6 +42,7 @@ export function subagentCostChart(
 	options: {
 		height?: number;
 		focusedSeries?: string | undefined;
+		focusedPoint?: number | undefined;
 		imageOwner?: object | undefined;
 		legendRows?: number;
 		legendPage?: number;
@@ -130,6 +131,7 @@ export function subagentCostChart(
 					const color = /\u001b\[38;2;(\d+);(\d+);(\d+)m/.exec(paintSeries(index, "x"));
 					return {
 						series,
+						selectedPoint: series.id === options.focusedSeries ? options.focusedPoint : undefined,
 						color: (color
 							? [Number(color[1]), Number(color[2]), Number(color[3])]
 							: [210, 210, 210]) as ChartRgb,
@@ -140,6 +142,17 @@ export function subagentCostChart(
 				height,
 			)
 		: undefined;
+	const focused = selected.find(({ series }) => series.id === options.focusedSeries);
+	const focusedPoint =
+		options.focusedPoint === undefined ? undefined : focused?.series.points[options.focusedPoint];
+	const marker =
+		focusedPoint && focused
+			? {
+					x: Math.round(((focusedPoint.at - focused.series.startedAt) / duration) * (columns - 1)),
+					y: Math.round(height - 1 - (maximum > 0 ? focusedPoint.cost / maximum : 0) * (height - 1)),
+					index: focused.index,
+				}
+			: undefined;
 	for (let y = 0; y < height; y++) {
 		if (image) {
 			const axis = y === 0 ? label : y === height - 1 ? "$0" : "";
@@ -148,6 +161,10 @@ export function subagentCostChart(
 		}
 		let line = "";
 		for (let x = 0; x < columns; x++) {
+			if (marker?.x === x && marker.y === y) {
+				line += paintSeries(marker.index, unicode ? "●" : "o");
+				continue;
+			}
 			let bits = 0,
 				owner = -1,
 				weight = 0;

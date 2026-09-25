@@ -7,6 +7,7 @@ export interface CostImageSeries {
 	series: SubagentCostSeries;
 	color: ChartRgb;
 	opacity: number;
+	selectedPoint?: number | undefined;
 }
 export interface CurvePoint {
 	x: number;
@@ -149,6 +150,11 @@ export function drawCostPlot(
 		for (let y = 0; y < height; y++)
 			for (let x = 0; x < width; x++) blend(x, y, item.color, coverage[y * width + x] ?? 0);
 		coverage = undefined;
+		const activePoint = item.selectedPoint === undefined ? undefined : observations[item.selectedPoint];
+		if (activePoint) {
+			line(activePoint, activePoint, [245, 245, 245], 4.5 * scale, 1);
+			line(activePoint, activePoint, item.color, 2.5 * scale, 1);
+		}
 	}
 	const scanlines = Buffer.alloc((width * 4 + 1) * height);
 	for (let y = 0; y < height; y++)
@@ -184,7 +190,7 @@ export function renderCostImage(
 		rows,
 		width,
 		height,
-		series.map((item) => [item.series.id, item.series.points, item.color, item.opacity]),
+		series.map((item) => [item.series.id, item.series.points, item.color, item.opacity, item.selectedPoint]),
 	]);
 	const previous = cache.get(owner);
 	if (previous?.signature === signature) return previous.lines;

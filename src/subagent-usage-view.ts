@@ -15,6 +15,7 @@ export async function openSubagentUsage(
 		ctx,
 		(tui, theme, finish) => {
 			let focused = -1;
+			let pointIndex = -1;
 			let legendPage = 0;
 			let legendPageSize = 1;
 			const imageOwner = {};
@@ -23,7 +24,7 @@ export async function openSubagentUsage(
 				render(width) {
 					const outerWidth = Math.max(1, Math.floor(width));
 					const height = Math.max(1, Math.floor(tui.terminal.rows * 0.8) - 2);
-					if (outerWidth < 12 || height < 6) return [truncateToWidth("Resize to view usage", outerWidth)];
+					if (outerWidth < 28 || height < 6) return [truncateToWidth("Resize to view usage", outerWidth)];
 					const contentWidth = outerWidth - 4;
 					const border = (text: string) => theme.fg("borderAccent", text);
 					const framed = (text: string): string => {
@@ -41,6 +42,17 @@ export async function openSubagentUsage(
 						focused >= 0 ? Math.floor(focused / legendPageSize) : Math.min(legendPage, pageCount - 1);
 					const visibleLegendRows = Math.ceil(Math.min(series.length, legendPageSize) / legendColumns);
 					const plotHeight = pageSize - visibleLegendRows - awaitingRows - (pageCount > 1 ? 1 : 0) - 4;
+					const activeSeries = series[focused];
+					const activePointIndex = activeSeries
+						? Math.max(
+								1,
+								Math.min(
+									pointIndex < 0 ? activeSeries.points.length - 1 : pointIndex,
+									activeSeries.points.length - 1,
+								),
+							)
+						: undefined;
+					const point = activePointIndex === undefined ? undefined : activeSeries?.points[activePointIndex];
 					const chart =
 						plotHeight < 3
 							? [theme.fg("dim", "Enlarge terminal to view the graph")]
@@ -52,14 +64,32 @@ export async function openSubagentUsage(
 									createPalette(theme, !process.env.NO_COLOR),
 									{
 										height: plotHeight,
-										focusedSeries: series[focused]?.id,
+										focusedSeries: activeSeries?.id,
+										focusedPoint: activePointIndex,
 										imageOwner,
 										legendRows,
 										legendPage,
 									},
 								);
+					const number = activeSeries
+						? (snapshot.costHistory ?? []).findIndex((run) => run.id === activeSeries.id) + 1
+						: 0;
+					const precision = Math.max(6, Math.min(8, decimals));
+					const readout =
+						point && activeSeries && activePointIndex !== undefined
+							? [
+									theme.fg(
+										"accent",
+										`#${number} · Point ${activePointIndex}/${activeSeries.points.length - 1} · ${((point.at - activeSeries.startedAt) / 1000).toFixed(1)}s`,
+									),
+									theme.fg(
+										"text",
+										`${contentWidth >= 40 ? "Total " : ""}$${point.cost.toFixed(precision)} · +$${(point.cost - (activeSeries.points[activePointIndex - 1]?.cost ?? 0)).toFixed(precision)}`,
+									),
+								]
+							: ["", theme.fg("dim", "Elapsed seconds · select an agent to inspect points")];
 					const lines = chart.length
-						? [...chart, "", theme.fg("dim", "Elapsed seconds · recorded reply costs")]
+						? [...chart, ...readout]
 						: [theme.fg("dim", "No subagent cost history yet.")];
 					const title = truncateToWidth(" SUBAGENT COST ", outerWidth - 4, "");
 					const body = lines.slice(0, pageSize);
@@ -71,7 +101,7 @@ export async function openSubagentUsage(
 						framed(""),
 						...body.map(framed),
 						framed(""),
-						framed(theme.fg("dim", "←→ focus · ↑↓ legend · A all · Esc close")),
+						framed(theme.fg("dim", "←→ agent · [ ] point · ↑↓ legend · A all · Esc")),
 						border(`╰${"─".repeat(outerWidth - 2)}╯`),
 					];
 				},
@@ -82,12 +112,24 @@ export async function openSubagentUsage(
 						return;
 					}
 					if (series.length && (matchesKey(data, "left") || matchesKey(data, "right"))) {
+						pointIndex = -1;
 						focused =
 							focused < 0
 								? matchesKey(data, "left")
 									? series.length - 1
 									: 0
 								: (focused + (matchesKey(data, "left") ? -1 : 1) + series.length) % series.length;
+					}
+					if (series.length && (data === "[" || data === "]")) {
+						if (focused < 0) {
+							focused = 0;
+							pointIndex = -1;
+						}
+						const last = (series[focused]?.points.length ?? 2) - 1;
+						pointIndex = Math.max(
+							1,
+							Math.min(last, (pointIndex < 0 ? last : pointIndex) + (data === "[" ? -1 : 1)),
+						);
 					}
 					if (data === "a" || data === "A") focused = -1;
 					if (matchesKey(data, "up") || matchesKey(data, "pageUp")) {

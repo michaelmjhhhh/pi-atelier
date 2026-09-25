@@ -28,6 +28,7 @@ Use Kitty or Ghostty for smooth native graphics. Keep temporary sessions for rel
 
 - [ ] Sidebar and `/atelier usage` contain only a graph, matching numbered color legends and essential status text. No token table, per-agent cost list or saved-total block remains.
 - [ ] In Kitty/Ghostty, curves are thin continuous smooth lines, with small dots at actual observations. There are no Braille gaps, box-character stairs or rungs joining different agents.
+- [ ] Select a child, then press `[` / `]` through every actual observation. Verify the highlighted marker and time/cumulative-cost/reply-cost readout against native events, including the first/last point, one-reply children, zero-cost replies, different history lengths and text fallback. Synthetic zero is not counted as a reply.
 - [ ] With 13 or more children, cycle Left/Right through every child, including the earliest one. Its legend page follows focus, while Up/Down changes only the legend page and preserves all curves.
 - [ ] The usage dialog has four complete borders and padding. Left/Right dims other curves; A restores them; Escape closes and returns input to the editor.
 - [ ] Resize wide/narrow/tall/short. Curves and legends remain inside their frame; tiny windows show a resize hint. An optional sidebar graph disappears as a whole if it cannot fit.
