@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Remove the Control Center Actions page, including session details, rename and compaction prompts, and the unused `showSessionActions` setting.
+
 ## 0.11.2 — 2026-09-25
 
 - Restore the terminal cursor after Sidebar cleanup when Pi has already stopped its renderer ([#72](https://github.com/michaelmjhhhh/pi-atelier/issues/72)).

@@ -107,7 +107,6 @@ export interface AtelierConfig extends DisplaySettings {
 	contextWarning: number;
 	contextDanger: number;
 	currencyDecimals: number;
-	showSessionActions: boolean;
 	showSidebarToolNames: boolean;
 	showSidebarOnStartup: boolean;
 	sidebarPanelLayout: SidebarPanelLayout;
@@ -161,7 +160,6 @@ export const DEFAULT_CONFIG: AtelierConfig = {
 	contextWarning: 70,
 	contextDanger: 90,
 	currencyDecimals: 3,
-	showSessionActions: true,
 	showSidebarToolNames: false,
 	showSidebarOnStartup: true,
 	sidebarPanelLayout: DEFAULT_SIDEBAR_PANEL_LAYOUT.map((entry) => ({ ...entry })),

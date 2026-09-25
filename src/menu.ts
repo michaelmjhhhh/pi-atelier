@@ -5,7 +5,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import {
 	Container,
-	matchesKey,
 	type SelectItem,
 	SelectList,
 	type SettingItem,
@@ -187,79 +186,7 @@ export function createMenuActions(
 				);
 			}
 		},
-		async renameSession(): Promise<void> {
-			if (!isActive()) return;
-			try {
-				const name = (await showTextInput(ctx, "Session name", "Release prep", lifetime))?.trim();
-				if (!isActive() || !name) return;
-				pi.setSessionName(name);
-			} catch (error) {
-				if (!isActive()) return;
-				notify(
-					`Could not rename session: ${error instanceof Error ? error.message : String(error)}`,
-					"error",
-				);
-			}
-		},
-		async compactSession(): Promise<void> {
-			if (!isActive()) return;
-			try {
-				const confirmed = await showSelection(
-					ctx,
-					"Compact session",
-					[
-						{ value: "yes", label: "Compact", description: "Summarize older context now" },
-						{ value: "no", label: "Cancel", description: "Leave the session unchanged" },
-					],
-					lifetime,
-				);
-				if (!isActive() || confirmed !== "yes") return;
-				ctx.compact({
-					onError: (error) => notify(`Compaction failed: ${error.message}`, "error"),
-					onComplete: () => notify("Session compacted", "info"),
-				});
-			} catch (error) {
-				if (!isActive()) return;
-				notify(
-					`Could not compact session: ${error instanceof Error ? error.message : String(error)}`,
-					"error",
-				);
-			}
-		},
 	};
-}
-
-async function showTextInput(
-	ctx: ExtensionContext,
-	title: string,
-	initialValue: string,
-	lifetime?: OverlayLifetime,
-): Promise<string | undefined> {
-	let value = initialValue;
-	return openLifecycleOverlay<string>(
-		ctx,
-		(tui, theme, finish) => ({
-			render: (width) =>
-				renderMenuFrame(
-					theme,
-					[
-						theme.fg("accent", theme.bold(title)),
-						` ${value || theme.fg("dim", "—")}`,
-						theme.fg("dim", "Type name • enter save • esc cancel"),
-					],
-					width,
-				),
-			invalidate: () => undefined,
-			handleInput: (data) => {
-				if (matchesKey(data, "escape")) finish();
-				else if (matchesKey(data, "enter")) finish(value);
-				else if (matchesKey(data, "backspace")) value = value.slice(0, -1);
-				else if (!data.includes("\u001b")) value += data.replace(/[\u0000-\u001f\u007f]/g, "");
-				tui.requestRender();
-			},
-		}),
-		lifetime,
-	);
 }
 
 async function showSelection(
@@ -456,7 +383,6 @@ export async function openAtelierControlCenter(
 					label: "Controls",
 					description: `Session controls · Sidebar: ${sidebar.isVisible() ? "On" : "Off"}`,
 				},
-				{ value: "actions", label: "Actions", description: "Session details, rename, and compaction" },
 				{ value: "close", label: "Close" },
 			],
 			lifetime,
@@ -605,40 +531,6 @@ export async function openAtelierControlCenter(
 						if (level) actions.setThinkingLevel(level as Parameters<ExtensionAPI["setThinkingLevel"]>[0]);
 					}
 				}
-			}
-		} else {
-			for (;;) {
-				if (!isOverlayLifetimeActive(lifetime)) return;
-				const choice = await showSelection(
-					ctx,
-					"Actions",
-					[
-						{
-							value: "details",
-							label: "Session details",
-							description: ctx.sessionManager.getSessionFile() ?? "Ephemeral session",
-						},
-						...(runtime.getConfig().showSessionActions
-							? [
-									{ value: "rename", label: "Rename session" },
-									{ value: "compact", label: "Compact session" },
-								]
-							: []),
-						{ value: "back", label: "Back" },
-					],
-					lifetime,
-				);
-				if (!isOverlayLifetimeActive(lifetime)) return;
-				if (!choice || choice === "back") break;
-				if (choice === "details")
-					ctx.ui.notify(
-						ctx.sessionManager.getSessionFile()
-							? `Session: ${ctx.sessionManager.getSessionFile()}`
-							: "Ephemeral session",
-						"info",
-					);
-				else if (choice === "rename") await actions.renameSession();
-				else await actions.compactSession();
 			}
 		}
 	}

@@ -365,7 +365,6 @@ function applyNonDisplay(
 		else warnings.push("currencyDecimals must be an integer from 0 through 6");
 	}
 	for (const key of [
-		"showSessionActions",
 		"showSidebarToolNames",
 		"showSidebarOnStartup",
 		"completionNotifications",

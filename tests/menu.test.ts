@@ -70,12 +70,10 @@ function harness() {
 		getAllTools: vi.fn().mockReturnValue([{ name: "read" }, { name: "bash" }]),
 		getActiveTools: vi.fn().mockReturnValue(["read"]),
 		setActiveTools: vi.fn(),
-		setSessionName: vi.fn(),
 	};
 	const ctx = {
 		model: { id: "old", provider: "provider" },
-		ui: { notify: vi.fn(), input: vi.fn(), confirm: vi.fn(), custom: vi.fn() },
-		compact: vi.fn(),
+		ui: { notify: vi.fn(), custom: vi.fn() },
 	};
 	const savePatch = vi.fn().mockResolvedValue(undefined);
 	const actions = createMenuActions(pi as never, ctx as never, runtime as never, "/tmp/user.json", savePatch);
@@ -92,8 +90,6 @@ describe("Control Center presentation", () => {
 			mode: "tui",
 			model: { id: "old", provider: "provider" },
 			modelRegistry: { getAvailable: vi.fn().mockReturnValue([]) },
-			sessionManager: { getSessionFile: vi.fn().mockReturnValue("/tmp/session.jsonl") },
-			compact: vi.fn(),
 			ui: {
 				notify: vi.fn(),
 				custom: vi.fn((factory: (...args: any[]) => unknown, _options?: unknown) => {
@@ -116,7 +112,7 @@ describe("Control Center presentation", () => {
 		};
 	}
 
-	it("partitions Settings, Controls, and Actions at the root with current Sidebar state", async () => {
+	it("partitions Settings and Controls at the root with current Sidebar state", async () => {
 		rootMenuItems.length = 0;
 		const sidebar: SidebarControls = {
 			isVisible: vi.fn(() => true),
@@ -131,7 +127,7 @@ describe("Control Center presentation", () => {
 			"/tmp/user.json",
 			sidebar,
 		);
-		expect(rootMenuItems[0]?.map((item) => item.label)).toEqual(["Settings", "Controls", "Actions", "Close"]);
+		expect(rootMenuItems[0]?.map((item) => item.label)).toEqual(["Settings", "Controls", "Close"]);
 		expect(rootMenuItems[0]?.find((item) => item.value === "controls")?.description).toContain("Sidebar: On");
 	});
 
@@ -147,7 +143,6 @@ describe("Control Center presentation", () => {
 				"Back",
 			],
 		],
-		["actions", ["Session details", "Rename session", "Compact session", "Back"]],
 	] as const)("routes the %s root category to its destination", async (category, expectedLabels) => {
 		rootMenuItems.length = 0;
 		const sidebar: SidebarControls = {
@@ -453,25 +448,6 @@ describe("menu actions", () => {
 		expect(h.ctx.ui.notify).toHaveBeenCalledWith("Completion notifications disabled", "info");
 	});
 
-	it("renames a session only after non-empty input", async () => {
-		const h = harness();
-		h.ctx.ui.custom.mockImplementationOnce((factory: (...args: any[]) => any) => {
-			let result: string | undefined;
-			const component = factory(
-				{ requestRender: vi.fn(), terminal: { rows: 36 } },
-				{ fg: (_color: string, text: string) => text, bold: (text: string) => text },
-				{},
-				(value: string | undefined) => {
-					result = value;
-				},
-			);
-			component.handleInput("\r");
-			return Promise.resolve(result);
-		});
-		await h.actions.renameSession();
-		expect(h.pi.setSessionName).toHaveBeenCalledWith("Release prep");
-	});
-
 	it("rolls back tools and reports synchronous action failures", () => {
 		const h = harness();
 		h.pi.setActiveTools.mockImplementationOnce(() => {
@@ -480,12 +456,5 @@ describe("menu actions", () => {
 		h.actions.setTools(["bash"]);
 		expect(h.pi.setActiveTools).toHaveBeenLastCalledWith(["read"]);
 		expect(h.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("tool failure"), "error");
-	});
-
-	it("does not compact without confirmation", async () => {
-		const h = harness();
-		h.ctx.ui.confirm.mockResolvedValue(false);
-		await h.actions.compactSession();
-		expect(h.ctx.compact).not.toHaveBeenCalled();
 	});
 });
