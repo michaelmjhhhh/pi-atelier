@@ -37,6 +37,7 @@ Use Kitty or Ghostty for smooth native graphics. Keep temporary sessions for rel
 - [ ] Resize wide/narrow/tall/short. Curves and legends remain inside their frame; tiny windows show a resize hint. An optional sidebar graph disappears as a whole if it cannot fit.
 - [ ] Open the usage view, Settings and other capturing dialogs while a sidebar graph is visible. The background plot becomes reserved blank space with a close-dialog hint, never character stairs; title, legend and panel height remain stable. No sidebar image paints over the dialog. Closing restores the original graph without ghosts. Repeat in regular/fullscreen and non-image terminals.
 - [ ] Close/reopen usage, reload, disable/re-enable Atelier and switch sessions. No old image remains. Check both regular and fullscreen layouts.
+- [ ] In fullscreen mode, drag across multiple transcript rows containing colored tool results, including a drag ending in the sidebar. Only the transcript highlights; the sidebar keeps its original background and colors. Paste the selection elsewhere and confirm no sidebar text is included. Repeat after resize and reload, and with the usage dialog open/closed.
 - [ ] In a terminal without Kitty graphics, confirm the character fallback. Check Nerd Font off and NO_COLOR, including single-agent keyboard focus.
 
 ## TODO: accounting and lifecycle
@@ -72,3 +73,7 @@ Accounting regressions now cover distinct replies sharing the same millisecond (
 ## Background graph rendering fix
 
 The user's 2026-09-26 screenshot shows smooth curves in the usage dialog but character stairs in the visible part of the sidebar. The sidebar had represented overlay occlusion by removing its image owner; the chart interpreted that as a reason to draw the text fallback. A separate `suspendPlot` state now reserves exactly the same plot/axis rows without drawing either native graphics or character curves. The stable image owner remains available for restoration. This is a TUI-only change; the screenshot is the failure evidence and the open/close checklist above is the manual regression scenario. No new TUI tests were added.
+
+## Selection background fix
+
+The maintainer confirmed that copying excluded sidebar text correctly; only its background changed. A diagnostic replay through Pi 0.84.0 and 0.87.1's actual selection renderer reproduced the problem without any image: slicing the unselected suffix replayed the transcript's background after the pane reset. The fullscreen adapter now keeps Pi's highlighted main pane and recomposites it over the original row, preserving the sidebar's original styling. Copy bounds are unchanged, capturing dialogs retain Pi's own selection rendering, and disposal restores the original renderer method. The same replay confirmed the corrected sidebar styling on both versions. No new TUI tests were added; the interactive drag/copy scenario above remains a manual check.
