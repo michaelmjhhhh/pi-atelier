@@ -150,7 +150,6 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 	let disposed = false;
 	let resizing = false;
 	let resizeStartWidth = sidebarWidth;
-	let resizeStartMode: Exclude<SidebarMode, "off"> = mode;
 	let resizeStartAutoExpanded: boolean | undefined;
 	let dragging = false;
 	let unsubscribeInput: (() => void) | undefined;
@@ -439,7 +438,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 	// Invalid resize dimensions must not change the automatic expansion history.
 	const resolveLayout = (terminalWidth: number) => {
 		const validWidth = Number.isFinite(terminalWidth) && terminalWidth > 0;
-		if (enabled && mode === "auto" && validWidth) {
+		if (enabled && mode === "auto" && !resizing && validWidth) {
 			const threshold = Math.max(AUTO_MAIN_WIDTH, minimumMain) + sidebarWidth;
 			autoExpanded = terminalWidth >= threshold + (autoExpanded === false ? AUTO_REOPEN_MARGIN : 0);
 		}
@@ -447,7 +446,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			? "off"
 			: !validWidth || terminalWidth < minimumMain + minimumSidebar
 				? "too-narrow"
-				: mode === "auto" && !autoExpanded
+				: mode === "auto" && !resizing && !autoExpanded
 					? "auto-collapsed"
 					: "shown";
 		const effectiveWidth =
@@ -502,7 +501,6 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		if (!resizing && !resizeMouseTerminal && !unsubscribeInput) return;
 		if (restore) {
 			sidebarWidth = resizeStartWidth;
-			mode = resizeStartMode;
 			autoExpanded = resizeStartAutoExpanded;
 		}
 		// Clear first: geometry reconciliation can run during layout updates.
@@ -648,13 +646,12 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 				return false;
 			}
 			resizeStartWidth = sidebarWidth;
-			resizeStartMode = mode;
 			resizeStartAutoExpanded = autoExpanded;
-			mode = "on";
+			// Keep the mode; suspend automatic collapse only during the gesture.
+			resizing = true;
 			syncOverlayWidth();
 			syncFullscreenLayoutAdapter();
 			dragging = false;
-			resizing = true;
 			try {
 				unsubscribeInput = options.subscribeInput(handleResizeInput);
 				prioritizeFullscreenResizeInput(handleResizeInput);

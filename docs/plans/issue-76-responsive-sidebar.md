@@ -51,7 +51,7 @@ Replace the misleading `isVisible()` implementation, which currently returns `en
 
 Pause sidebar-only animation while it is width-hidden; resume on visibility transitions, including idle terminal expansion. Continue ingesting activity, TODO, and contributed-panel data while hidden. Coordinate transition notification with existing render scheduling to avoid recursive redraws.
 
-Interactive sidebar resizing is an explicit manual override to `on`. Capture the original mode and preferred width before starting. Commit keeps the chosen width and on mode; Escape restores both. If the terminal becomes too narrow during the gesture, cancel cleanly, restore the captured preference/mode, and release mouse/input capture. Terminal-driven clamping must not become a new preferred width. Resize hit-testing must use the effective divider position.
+Interactive sidebar resizing preserves the current Auto or On mode. Capture the preferred width and automatic expansion history before starting. Suspend automatic collapse during the gesture so the divider remains usable; commit keeps the chosen width and resumes the original visibility policy immediately. Escape restores the previous width and expansion history. If the terminal becomes too narrow during the gesture, cancel cleanly, restore the captured width and expansion history, and release mouse/input capture. Terminal-driven clamping must not become a new preferred width. Resize hit-testing must use the effective divider position.
 
 In `extensions/index.ts`, use actual presentation when deciding whether new TODO results can be abbreviated to `see sidebar`; preserve full output when the sidebar is hidden. Keep data updates independent of presentation. Existing abbreviated transcript results cannot be expanded retroactively by this change; document that limit rather than mutating historical tool results.
 
@@ -84,7 +84,7 @@ Manual TODO, in both regular and fullscreen modes:
 - [ ] On remains shown at 100 columns with safe clamping; 91 hides, 92 reopens. Off remains hidden even at 200 columns. Auto restores automatic policy.
 - [ ] Bare toggle and Control Center behave consistently when automatically hidden, manually off, shown, and below the hard minimum. Startup false remains respected after a new session.
 - [ ] Resize to preferred widths 28, 44, 60, and 72; return to auto and verify the corresponding thresholds. Shrink and expand the terminal without losing preferred width.
-- [ ] Mouse and keyboard resizing: commit, Escape, terminal shrink during drag, and subsequent normal typing/selection. No stuck input or mouse capture.
+- [ ] Mouse and keyboard resizing: commit in Auto and verify that narrowing the Herdr pane still collapses the sidebar; commit in On and verify it remains On. Check Escape, terminal shrink during drag, and subsequent normal typing/selection. No stuck input or mouse capture.
 - [ ] Collapse/reopen while streaming text, showing an image, selecting/copying transcript text, or opening/closing F6/settings overlays. No stale gutter, overlap, copied sidebar text, lost focus, or cursor corruption.
 - [ ] Hidden TODO results retain full output; live activity, Workspace Pulse, and contributed panels show current data on reopening. Sidebar animation stops while hidden and restarts when appropriate.
 - [ ] Session switch, reload, disable/enable, and exit clean up correctly; short terminal heights and invalid/transient dimensions do not corrupt layout.

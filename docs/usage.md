@@ -32,7 +32,7 @@ The sidebar starts in **Auto** mode, using the width available to Pi. Opening a 
 
 Use `/atelier sidebar auto|on|off` or **F6 → Controls → Sidebar** to choose a mode for this session. Bare `/atelier sidebar` turns a shown sidebar off, or pins a hidden sidebar on. **Settings → Sidebar on startup** chooses Auto or Off for future sessions using the existing `showSidebarOnStartup` boolean; it does not change the current mode.
 
-Press `Ctrl+Shift+R` to resize a visible sidebar with the arrow keys or by dragging its divider. Enter or mouse release commits the width and selects On mode; Escape restores the previous width and mode. Shrinking the terminal below the hard minimum cancels resizing and releases input capture. Your preferred width survives ordinary terminal resizing. Returning to Auto uses that width for its thresholds: a 60-column sidebar collapses below 140 and reopens at 148.
+Press `Ctrl+Shift+R` to resize a visible sidebar with the arrow keys or by dragging its divider. Enter or mouse release commits the width while preserving Auto or On mode; Escape restores the previous width. Automatic collapse pauses during the gesture and resumes immediately on completion in Auto mode. Shrinking the terminal below the hard minimum cancels resizing and releases input capture. Your preferred width survives ordinary terminal resizing. Auto uses the chosen width for its thresholds: a 60-column sidebar collapses below 140 and reopens at 148.
 
 Automatically hiding the sidebar reclaims its entire width and preserves live data. Sidebar animation pauses while hidden. New TODO results retain their full output while the sidebar is hidden; earlier results already abbreviated to “see sidebar” are not rewritten.
 
