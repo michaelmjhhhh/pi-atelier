@@ -44,7 +44,18 @@ Atelier does not bundle or install fonts or change terminal settings. If icons a
 
 ## Sidebar, selection, and images
 
-The sidebar starts visible and hides when the terminal is too narrow. Press `Ctrl+Shift+R` to resize it.
+The sidebar starts in **Auto** mode, using the width available to Pi. Opening a terminal host's sidebar or narrowing its pane causes Atelier to adapt when that host reports the changed terminal dimensions.
+
+- **Auto** reserves 80 columns for the main pane plus your preferred sidebar width. With the default 44-column sidebar, it collapses below 124 columns and reopens at 132. Between those thresholds it keeps its previous state to avoid flicker. On initial startup or explicit entry into Auto, it shows at 124 or more if the display switch is on. Manual width adjustment is disabled in Auto.
+- **Manual** lets you adjust the width yourself. It keeps an enabled sidebar shown whenever at least 64 main-pane columns and 28 sidebar columns fit. It can shrink temporarily and hides below 92 columns, then returns at 92.
+
+Use `/atelier sidebar auto|manual` or **F6 → Controls → Sidebar** to choose a mode for this session. The same menu has a separate **Show sidebar / Hide sidebar** action. `/atelier sidebar on|off` controls that display switch without changing the mode; the bare command toggles the switch. Manually hiding a sidebar keeps it hidden through terminal resizes and mode changes, including when it was already automatically collapsed. Show it explicitly to resume its selected mode.
+
+**Settings → Sidebar on startup** chooses Auto or Off for future sessions using the existing `showSidebarOnStartup` boolean; Off here means the display switch starts off, with Auto still selected. It does not change the current session.
+
+In Manual mode, press `Ctrl+Shift+R` to resize a visible sidebar with the arrow keys or by dragging its divider. Enter or mouse release commits the width; Escape restores the previous width. Shrinking the terminal below the hard minimum cancels resizing and releases input capture. In Auto, the shortcut prompts you to switch to Manual. Switching modes and ordinary terminal resizing preserve your preferred width. Auto uses that width for its thresholds: a 60-column sidebar collapses below 140 and reopens at 148.
+
+Automatically hiding the sidebar reclaims its entire width and preserves live data. Sidebar animation pauses while hidden. New TODO results retain their full output while the sidebar is hidden; earlier results already abbreviated to “see sidebar” are not rewritten.
 
 Its separate colored, rounded panels use aligned labels and values for model configuration, response timing, Git changes, session storage, usage, and enabled tools. Context usage has a continuous progress track with fractional fill, a right-aligned percentage, and a quieter token count. In short terminals, optional details are removed first; metadata then contracts to retain the core Agent, Activity, and Context panels.
 
@@ -66,4 +77,4 @@ Pi supports one custom footer and one custom editor at a time. Extension load or
 
 ## Disabling and re-enabling
 
-Disabling Atelier hides its UI, pauses usage/history scans and streaming estimates, cancels pending workspace refreshes, and aborts active Git inspection. Small run/tool bookkeeping continues. Re-enabling refreshes usage, TODOs, and workspace state once; show the sidebar again with `/atelier sidebar on`. If a response spans a disabled interval, its TTFT/TPS remains unavailable until the next provider request rather than reporting partial timing.
+Disabling Atelier hides its UI, pauses usage/history scans and streaming estimates, cancels pending workspace refreshes, and aborts active Git inspection. Small run/tool bookkeeping continues. Re-enabling refreshes usage, TODOs, and workspace state once; restore the sidebar with `/atelier sidebar on` (the selected mode is preserved). If a response spans a disabled interval, its TTFT/TPS remains unavailable until the next provider request rather than reporting partial timing.

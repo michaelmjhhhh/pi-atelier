@@ -22,11 +22,20 @@ import {
 	type SidebarPanelSetting,
 } from "./settings-workspace.js";
 import { openLifecycleOverlay, type OverlayLifetime } from "./overlay-lifecycle.js";
+import type { SidebarMode, SidebarStatus } from "./split-pane.js";
 import type { AtelierRuntime } from "./state.js";
 import type { AtelierConfig } from "./types.js";
 
 export type { OverlayLifetime } from "./overlay-lifecycle.js";
 export type SaveConfigPatch = typeof saveUserConfigPatch;
+
+export function sidebarStatusLabel(status: SidebarStatus): string {
+	const label = status.mode === "auto" ? "Auto" : "Manual";
+	if (!status.enabled) return `${label} · hidden`;
+	return status.presentation === "auto-collapsed" || status.presentation === "too-narrow"
+		? `${label} · hidden: narrow terminal`
+		: label;
+}
 
 export interface DisplaySettingsWorkspaceOptions {
 	lifetime?: OverlayLifetime;
@@ -42,7 +51,8 @@ function isOverlayLifetimeActive(lifetime: OverlayLifetime | undefined): boolean
 }
 
 export interface SidebarControls {
-	isVisible(): boolean;
+	getStatus(): SidebarStatus;
+	setMode(mode: SidebarMode): void;
 	toggle(): void;
 	isToolListExpanded(): boolean;
 	toggleToolList(): Promise<void>;
@@ -142,7 +152,7 @@ export function createMenuActions(
 			try {
 				await savePatch(userConfigPath, { showSidebarOnStartup: enabled });
 				if (!isActive()) return;
-				notify(`Sidebar will start ${enabled ? "shown" : "hidden"}`, "info");
+				notify(`Sidebar will start ${enabled ? "in Auto mode" : "hidden"}`, "info");
 			} catch (error) {
 				if (!isActive()) return;
 				runtime.setConfig(previous);
@@ -383,7 +393,7 @@ export async function openAtelierControlCenter(
 				{
 					value: "controls",
 					label: "Controls",
-					description: `Session controls · Sidebar: ${sidebar.isVisible() ? "On" : "Off"}`,
+					description: `Session controls · Sidebar: ${sidebarStatusLabel(sidebar.getStatus())}`,
 				},
 				...(options.openUsage
 					? [
@@ -422,7 +432,7 @@ export async function openAtelierControlCenter(
 						},
 						{
 							value: "sidebar-startup",
-							label: `Sidebar on startup: ${runtime.getConfig().showSidebarOnStartup ? "On" : "Off"}`,
+							label: `Sidebar on startup: ${runtime.getConfig().showSidebarOnStartup ? "Auto" : "Off"}`,
 							description: "Global user preference",
 						},
 						{
@@ -485,8 +495,8 @@ export async function openAtelierControlCenter(
 					[
 						{
 							value: "sidebar",
-							label: `Sidebar: ${sidebar.isVisible() ? "On" : "Off"}`,
-							description: "Session control; shown by default",
+							label: `Sidebar: ${sidebarStatusLabel(sidebar.getStatus())}`,
+							description: "Choose Auto or Manual; show or hide independently",
 						},
 						{
 							value: "model",
@@ -504,8 +514,30 @@ export async function openAtelierControlCenter(
 				);
 				if (!isOverlayLifetimeActive(lifetime)) return;
 				if (!choice || choice === "back") break;
-				if (choice === "sidebar") sidebar.toggle();
-				else if (choice === "tools") await showToolSettings(ctx, pi, actions.setTools, lifetime);
+				if (choice === "sidebar") {
+					const mode = await showSelection(
+						ctx,
+						"Sidebar mode",
+						[
+							{ value: "auto", label: "Auto", description: "Show when there is comfortable reading space" },
+							{
+								value: "manual",
+								label: "Manual",
+								description: "Adjust width manually; hide only when too narrow to fit",
+							},
+							{
+								value: "toggle",
+								label: sidebar.getStatus().enabled ? "Hide sidebar" : "Show sidebar",
+								description: "Keep the current mode",
+							},
+							{ value: "back", label: "Back" },
+						],
+						lifetime,
+					);
+					if (!isOverlayLifetimeActive(lifetime)) return;
+					if (mode === "auto" || mode === "manual") sidebar.setMode(mode);
+					else if (mode === "toggle") sidebar.toggle();
+				} else if (choice === "tools") await showToolSettings(ctx, pi, actions.setTools, lifetime);
 				else {
 					const selected = await showSelection(
 						ctx,
