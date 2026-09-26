@@ -87,6 +87,15 @@ function separateImages(lines: string[]): { text: string[]; images: ImagePlane[]
 	return { text, images };
 }
 
+/** Native sidebar graphics must not paint over a capturing dialog. */
+export function hasCapturingOverlay(tui: TUI): boolean {
+	const renderer = tui as unknown as ImageRenderer;
+	if (!Array.isArray(renderer.overlayStack) || typeof renderer.isOverlayVisible !== "function") return true;
+	return renderer.overlayStack.some(
+		(entry) => !entry.options?.nonCapturing && renderer.isOverlayVisible(entry),
+	);
+}
+
 /**
  * Share one instance-local adapter between the footer and split pane. Pi's text
  * compositor deliberately skips image-bearing rows; composite text first, then

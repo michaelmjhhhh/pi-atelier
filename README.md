@@ -47,6 +47,7 @@ See the [font setup guide and Plain text preview](https://github.com/michaelmjhh
 
 ## Features
 
+- **Subagent costs:** colored per-child cost curves from pi-subagents accounting events, with matching legends and real observation markers. Open `/atelier` → **Subagent usage** (or `/atelier usage`) for a framed, larger graph, keyboard focus and individual reply costs. Kitty-compatible terminals display smooth native graphics; other terminals use text strokes.
 - **Session visibility:** model, thinking level, context, token usage, cost, and session details in a compact status rail and sidebar.
 - **Live activity:** agent and tool activity, TODOs, response timing, and completion notifications on macOS and Windows.
 - **Workspace context:** workspace identity and read-only Git status alongside your session.
@@ -125,7 +126,8 @@ Use **Settings → Display** to reorder or hide status rail segments and sidebar
 Pi Atelier:
 
 - Does not collect telemetry or analytics
-- Does not store prompts, responses, credentials, or session content
+- Does not store prompts, responses, or credentials
+- For subagent usage, reads local metadata and owner-validated diagnostic event logs; retains only numeric cost/time projections in memory and saves only run IDs and artifact paths in the Pi session. Prompt/reply content in those logs is discarded. Active background runs refresh until they settle
 - Uses read-only Git inspection for workspace status only after the project is trusted
 - Does not read untracked file contents
 - Reads project configuration only for trusted projects

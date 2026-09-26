@@ -88,7 +88,6 @@ function harness(
 		getThinkingLevel: vi.fn().mockReturnValue("medium"),
 		getActiveTools: vi.fn().mockReturnValue(["read"]),
 		getAllTools: vi.fn().mockReturnValue([{ name: "read" }]),
-		setSessionName: vi.fn(),
 	};
 	const custom = vi.fn((factory: (...args: any[]) => any, options: any): Promise<any> => {
 		const requestRender = vi.fn();
@@ -135,7 +134,6 @@ function harness(
 		getContextUsage: vi.fn().mockReturnValue({ tokens: 10, contextWindow: 100, percent: 10 }),
 		model: undefined,
 		modelRegistry: { isUsingOAuth: vi.fn().mockReturnValue(false) },
-		compact: vi.fn(),
 		sessionManager: {
 			getEntries: vi.fn().mockReturnValue([]),
 			getBranch: vi.fn().mockReturnValue([]),
@@ -611,35 +609,6 @@ describe("extension registration", () => {
 		expect(renderOverlayText(h, 4)).toContain("Replacement session");
 	});
 
-	it("renders an inert retired Control Center text input", async () => {
-		const h = harness("tui", "linux", true);
-		await start(h);
-		void command(h, "");
-		await vi.waitFor(() => expect(h.overlays).toHaveLength(2));
-		const root = h.overlays[1]!;
-		root.component.handleInput("\u001b[B");
-		root.component.handleInput("\u001b[B");
-		root.component.handleInput("\r");
-		await vi.waitFor(() => expect(h.overlays).toHaveLength(3));
-		const actions = h.overlays[2]!;
-		actions.component.handleInput("\u001b[B");
-		actions.component.handleInput("\r");
-		await vi.waitFor(() => expect(h.overlays).toHaveLength(4));
-		const textInput = h.overlays[3]!;
-		textInput.done.mockImplementation(() => {
-			throw new Error("text input close failed");
-		});
-
-		await start(h, replacementContext(h.ctx, "Replacement session"));
-
-		expect(textInput.closed).toBe(false);
-		expect(() => textInput.component.render(80)).not.toThrow();
-		expect(textInput.component.render(80)).toEqual([]);
-		expect(() => textInput.component.handleInput("new name")).not.toThrow();
-		expect(h.pi.setSessionName).not.toHaveBeenCalled();
-		expect(renderOverlayText(h, 4)).toContain("Replacement session");
-	});
-
 	it("keeps cleanup exception-safe when independent disposers throw", async () => {
 		const h = harness(
 			"tui",
@@ -855,53 +824,6 @@ describe("extension registration", () => {
 
 		expect(modelPrompt.done).toHaveBeenCalledOnce();
 		expect(modelPrompt.closed).toBe(true);
-		expect(renderOverlayText(h, h.overlays.length - 1)).toContain("Replacement session");
-	});
-
-	it("closes the Control Center rename prompt during replacement", async () => {
-		const h = harness("tui", "linux", true);
-		await start(h);
-		const opening = command(h, "");
-		await vi.waitFor(() => expect(h.overlays).toHaveLength(2));
-		h.overlays[1]!.component.handleInput("\u001b[B");
-		h.overlays[1]!.component.handleInput("\u001b[B");
-		h.overlays[1]!.component.handleInput("\r");
-		await vi.waitFor(() => expect(h.overlays).toHaveLength(3));
-		h.overlays[2]!.component.handleInput("\u001b[B");
-		h.overlays[2]!.component.handleInput("\r");
-		await vi.waitFor(() => expect(h.overlays).toHaveLength(4));
-		const renamePrompt = h.overlays[3]!;
-
-		await start(h, replacementContext(h.ctx, "Replacement session"));
-		await opening;
-
-		expect(renamePrompt.done).toHaveBeenCalledOnce();
-		expect(renamePrompt.closed).toBe(true);
-		expect(h.pi.setSessionName).not.toHaveBeenCalled();
-		expect(renderOverlayText(h, h.overlays.length - 1)).toContain("Replacement session");
-	});
-
-	it("closes the Control Center compact prompt during replacement", async () => {
-		const h = harness("tui", "linux", true);
-		await start(h);
-		const opening = command(h, "");
-		await vi.waitFor(() => expect(h.overlays).toHaveLength(2));
-		h.overlays[1]!.component.handleInput("\u001b[B");
-		h.overlays[1]!.component.handleInput("\u001b[B");
-		h.overlays[1]!.component.handleInput("\r");
-		await vi.waitFor(() => expect(h.overlays).toHaveLength(3));
-		h.overlays[2]!.component.handleInput("\u001b[B");
-		h.overlays[2]!.component.handleInput("\u001b[B");
-		h.overlays[2]!.component.handleInput("\r");
-		await vi.waitFor(() => expect(h.overlays).toHaveLength(4));
-		const compactPrompt = h.overlays[3]!;
-
-		await start(h, replacementContext(h.ctx, "Replacement session"));
-		await opening;
-
-		expect(compactPrompt.done).toHaveBeenCalledOnce();
-		expect(compactPrompt.closed).toBe(true);
-		expect(h.ctx.compact).not.toHaveBeenCalled();
 		expect(renderOverlayText(h, h.overlays.length - 1)).toContain("Replacement session");
 	});
 
@@ -1601,7 +1523,7 @@ describe("extension registration", () => {
 				expect(rendered).toContain("vendor:missing");
 
 				// Two display rows, nine segments, and three actions precede configured panels.
-				for (let index = 0; index < 14 + 9; index += 1) workspace?.handleInput("\u001b[B");
+				for (let index = 0; index < 14 + 10; index += 1) workspace?.handleInput("\u001b[B");
 				const focusedRendered = workspace?.render(120).join("\n") ?? "";
 				expect(focusedRendered).toContain("Queue title");
 				expect(focusedRendered).toContain("unavailable");
@@ -1626,6 +1548,7 @@ describe("extension registration", () => {
 					"context",
 					"workspace",
 					"usage",
+					"subagents",
 					"tools",
 					"vendor:queue",
 				]);

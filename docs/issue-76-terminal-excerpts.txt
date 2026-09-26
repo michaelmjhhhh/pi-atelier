@@ -1,0 +1,106 @@
+Manual PTY audit 2026-09-26; Pi 0.84.0; 40 rows. Selected emitted lines, ANSI removed.
+These are output excerpts, not complete screenshots or automated assertions.
+
+REGULAR resize123
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-review · git detached* | ctx 0.0% / 272k auto ───────────────────────╮
+
+REGULAR resize131
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-review · git detached* | ctx 0.0% / 272k auto ───────────────────────────────╮
+
+REGULAR resize132
+                                                                                          ╭─ ✦ AGENT ──────────────────────────────╮
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-r… · git detached* | ctx 0.0% ────╮
+
+REGULAR off
+ Sidebar: Auto · hidden
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-review · git detached* | ctx 0.0% / 272k auto ────────────────────────────────╮
+
+REGULAR manual while off
+ Sidebar: Manual · hidden
+
+REGULAR on
+                                                                                          ╭─ ✦ AGENT ──────────────────────────────╮
+ Sidebar: Manual
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-r… · git detached* | ctx 0.0% ────╮
+
+REGULAR manual91
+ Sidebar: Manual
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-review · git detached* | ctx 0.0% ───╮
+
+REGULAR manual92
+ Pi can explain its own features and look up its docs. Ask it     ╭─ ✦ AGENT ──────────────╮
+ Sidebar: Manual
+╭─ READY | gpt-5.6-sol | git detached* | ctx 0.0% ─────────────╮
+
+FULLSCREEN140
+                                                                                                  ╭─ ✦ AGENT ──────────────────────────────╮
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-review · git detached | ctx 0.0% ─────────╮
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-review · git detached* | ctx 0.0% ────────╮
+
+FULLSCREEN123
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-review · git detached* | ctx 0.0% / 272k auto ───────────────────────╮
+
+FULLSCREEN131
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-review · git detached* | ctx 0.0% / 272k auto ───────────────────────────────╮
+
+FULLSCREEN132
+                                                                                          ╭─ ✦ AGENT ──────────────────────────────╮
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-r… · git detached* | ctx 0.0% ────╮
+
+FULLSCREEN auto CtrlShiftR
+ pi v0.84.0                                                                               ╭─ ✦ AGENT ──────────────────────────────╮
+ Warning: Switch to Manual mode with /atelier sidebar manual before resizing
+
+FULLSCREEN manual
+ Press ctrl+o to show full startup help and loaded resources.                             ╭─ ✦ AGENT ──────────────────────────────╮
+ Warning: Switch to Manual mode with /atelier sidebar manual before resizing
+ Sidebar: Manual
+
+FULLSCREEN begin resize
+ Press ctrl+o to show full startup help and loaded resources.                           │ RESIZE · drag divider
+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.  │ ╭─ ✦ AGENT ──────────────────────────────╮
+ Warning: Switch to Manual mode with /atelier sidebar manual before resizing            │
+ Sidebar: Manual                                                                        │
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-r… · git detached* | ctx 0.0% ────╮│
+
+FULLSCREEN grow1
+ Press ctrl+o to show full startup help and loaded resources.                          │ RESIZE · drag divider
+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi. │ ╭─ ✦ AGENT ───────────────────────────────╮
+ Warning: Switch to Manual mode with /atelier sidebar manual before resizing           │
+ Sidebar: Manual                                                                       │
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-r… · git detached* | ctx 0.0% ───╮│
+
+FULLSCREEN cancel
+ Press ctrl+o to show full startup help and loaded resources.                             ╭─ ✦ AGENT ──────────────────────────────╮
+ Warning: Switch to Manual mode with /atelier sidebar manual before resizing
+ Sidebar: Manual
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-r… · git detached* | ctx 0.0% ────╮
+
+FULLSCREEN begin resize2
+ Press ctrl+o to show full startup help and loaded resources.                           │ RESIZE · drag divider
+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.  │ ╭─ ✦ AGENT ──────────────────────────────╮
+ Warning: Switch to Manual mode with /atelier sidebar manual before resizing            │
+ Sidebar: Manual                                                                        │
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-r… · git detached* | ctx 0.0% ────╮│
+
+FULLSCREEN resize to91 during gesture
+ Warning: Switch to Manual mode with /atelier sidebar manual before resizing
+ Sidebar: Manual
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-review · git detached* | ctx 0.0% ───╮
+
+FULLSCREEN widen then off
+ Press ctrl+o to show full startup help and loaded resources.                             ╭─ ✦ AGENT ──────────────────────────────╮
+ Warning: Switch to Manual mode with /atelier sidebar manual before resizing
+ Sidebar: Manual
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-r… · git detached* | ctx 0.0% ────╮
+ Warning: Switch to Manual mode with /atelier sidebar manual before resizing
+ Sidebar: Manual · hidden
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-review · git detached* | ctx 0.0% / 272k auto ────────────────────────────────╮
+
+FULLSCREEN auto while off
+ Sidebar: Auto · hidden
+
+FULLSCREEN exit
+ Warning: Switch to Manual mode with /atelier sidebar manual before resizing
+ Sidebar: Auto · hidden
+╭─ READY | gpt-5.6-sol · think low | pi-atelier-pr77-review · git detached* | ctx 0.0% / 272k auto ────────────────────────────────╮

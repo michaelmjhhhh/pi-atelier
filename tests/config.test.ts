@@ -45,6 +45,7 @@ describe("configuration", () => {
 			"context",
 			"workspace",
 			"usage",
+			"subagents",
 			"tools",
 		]);
 	});
