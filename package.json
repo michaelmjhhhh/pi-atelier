@@ -41,11 +41,21 @@
 		"format": "biome format --write .",
 		"format:check": "biome format .",
 		"check:pack": "node scripts/verify-pack.mjs",
-		"check": "npm run typecheck && npm run format:check && npm test && npm run check:pack"
+		"check:audit": "npm audit --audit-level=low",
+		"check:install": "node scripts/verify-install.mjs",
+		"check": "npm run typecheck && npm run format:check && npm test && npm run check:pack && npm run check:audit && npm run check:install"
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-coding-agent": ">=0.84.0",
 		"@earendil-works/pi-tui": ">=0.84.0"
+	},
+	"peerDependenciesMeta": {
+		"@earendil-works/pi-coding-agent": {
+			"optional": true
+		},
+		"@earendil-works/pi-tui": {
+			"optional": true
+		}
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.4",
@@ -53,7 +63,12 @@
 		"@earendil-works/pi-tui": "0.84.0",
 		"@types/node": "24.12.4",
 		"typescript": "5.9.3",
-		"vitest": "4.1.10"
+		"vitest": "4.1.11"
+	},
+	"overrides": {
+		"@earendil-works/pi-coding-agent@0.84.0": {
+			"undici": "8.10.2"
+		}
 	},
 	"engines": {
 		"node": ">=22.19.0"

@@ -22,6 +22,9 @@ Install the extension:
 pi install npm:pi-atelier
 ```
 
+Atelier uses the core packages supplied by the running Pi host. Its npm peers are optional to prevent
+installing a second copy of Pi; Pi itself is still required and must be updated separately.
+
 Start Pi, then open the control center:
 
 ```text
@@ -137,7 +140,7 @@ Pi Atelier:
 ```bash
 git clone https://github.com/michaelmjhhhh/pi-atelier.git
 cd pi-atelier
-npm install
+npm ci
 npm run check
 ./node_modules/.bin/pi --no-session --no-extensions -e ./extensions/index.ts
 ```
@@ -145,6 +148,17 @@ npm run check
 See [CONTRIBUTING.md](https://github.com/michaelmjhhhh/pi-atelier/blob/main/CONTRIBUTING.md).
 
 The command above opens a temporary session with only the checkout's extension loaded, avoiding conflicts with an installed copy.
+
+`npm run check` includes a dependency audit and a clean install of the packed extension, so it requires
+npm registry access. The install check verifies that Atelier adds no runtime dependencies and loads
+through the development Pi host. Run `npm run check:audit` or `npm run check:install` separately to
+investigate dependency warnings. Warnings from an existing Pi installation can also come from the
+host or other installed packages; Atelier's checks cover its own dependency trees.
+
+Development stays on Pi 0.84.0 to check the minimum supported API. A scoped npm override patches
+that host's pinned `undici` dependency to 8.10.2. Remove the override when the development baseline
+moves to a compatible Pi release with patched `undici`. Root overrides do not apply to consumers
+or update their Pi hosts.
 
 ## License
 

@@ -22,7 +22,7 @@ npm run check
 git diff --check upstream/main...HEAD
 ```
 
-`check` runs strict TypeScript checking, Biome format checking, Vitest, and package-content verification. The diff check covers committed changes against updated `main`; also run `git diff --check` for uncommitted edits.
+`check` runs strict TypeScript checking, Biome format checking, Vitest, package-content verification, a dependency audit, and a packed-package install check. Registry access is required. The install check verifies that no runtime dependencies are installed and that the extension loads using Pi's host-provided packages. The diff check covers committed changes against updated `main`; also run `git diff --check` for uncommitted edits.
 
 Preserve useful existing tests. For non-TUI behavior changes, add regression coverage through public/runtime seams where practical, or explain the gap. Relevant cases include persisted `false` values and defaults, malformed/error payloads, empty/hidden states, session transitions, and stale events.
 
