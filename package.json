@@ -43,6 +43,8 @@
 		"check:pack": "node scripts/verify-pack.mjs",
 		"check:audit": "npm audit --audit-level=low",
 		"check:install": "node scripts/verify-install.mjs",
+		"bench:sidebar": "node scripts/benchmark-sidebar.mjs",
+		"bench:workspace": "node scripts/benchmark-workspace.mjs",
 		"check": "npm run typecheck && npm run format:check && npm test && npm run check:pack && npm run check:audit && npm run check:install"
 	},
 	"peerDependencies": {

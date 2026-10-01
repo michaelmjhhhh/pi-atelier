@@ -44,9 +44,7 @@ Pi packages run with your system permissions. Review third-party source before i
 
 ### Terminal font
 
-Plain text mode works with a standard monospace font and preserves colors, metrics, and responsive layout. The default Nerd Font mode requires a Nerd Font selected in your terminal settings.
-
-See the [font setup guide and Plain text preview](https://github.com/michaelmjhhhh/pi-atelier/blob/main/docs/usage.md#terminal-font) for installation instructions and configuration details.
+Plain text mode works with a standard monospace font and preserves colors, metrics, and responsive layout. The default Nerd Font mode requires a Nerd Font, such as one from [nerdfonts.com](https://www.nerdfonts.com), selected in your terminal settings. Switch modes in **Settings → Font mode**.
 
 ## Features
 
@@ -60,10 +58,11 @@ No telemetry or external network requests. See [Privacy](#privacy).
 
 ## Use
 
-Open `/atelier` or press **F6** to change display settings, control the sidebar, select models and tools, rename the session, or compact it.
+Open `/atelier` or press **F6** to change display settings, control the sidebar, select models and tools, or view subagent usage.
 
 ```text
 /atelier display            # display settings
+/atelier usage              # subagent cost graph
 /atelier sidebar            # toggle sidebar
 /atelier sidebar on|off     # set sidebar visibility
 /atelier sidebar tools      # toggle tool names
@@ -81,8 +80,6 @@ Choose a status rail preset in the display settings:
 | **classic** | Detailed telemetry |
 
 Pi supports one custom footer and one custom editor at a time. Extension load order determines which chrome is visible.
-
-See the [usage guide](https://github.com/michaelmjhhhh/pi-atelier/blob/main/docs/usage.md) for responsive layout, selection and copy, inline images, and disable/re-enable behavior.
 
 ## Configuration
 
@@ -115,6 +112,24 @@ Project settings override user settings. Session changes override both. Global f
 ```
 
 Use **Settings → Display** to reorder or hide status rail segments and sidebar panels. Undo restores the latest Display or Sidebar edit, including a Display Revert. Legacy user settings `showSidebarAgent` and `showSidebarTodos` remain supported when `sidebarPanelLayout` is absent.
+
+### Sidebar panels from other extensions
+
+Another extension can add a panel through Pi's event bus. `registerSidebarPanel` publishes it and answers discovery requests, so either extension may load first:
+
+```ts
+import { registerSidebarPanel } from "pi-atelier/extensions/index.ts";
+
+const panel = registerSidebarPanel(pi, {
+	id: "vendor:queue",
+	title: "Queue",
+	rows: ["2 queued", { text: "1 failed", role: "error" }],
+});
+panel.update({ id: "vendor:queue", title: "Queue", rows: ["idle"] });
+panel.dispose();
+```
+
+Panel IDs are namespaced (`vendor:name`). New panels start hidden; enable them in **Settings → Display**. Titles and rows are plain text: terminal sequences are stripped, and oversized payloads are rejected (see the exported `SIDEBAR_PANEL_MAX_*` limits). Extensions that cannot import the helper can emit the exported `SidebarPanelEvent` types on the `pi-atelier:sidebar-panels` channel directly.
 
 ## Troubleshooting
 

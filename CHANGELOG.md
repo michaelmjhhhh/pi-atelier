@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Strip OSC hyperlinks and other terminal control sequences from footer, sidebar, notification, and chart text; previously only color codes were removed, leaving link targets visible ([#83](https://github.com/michaelmjhhhh/pi-atelier/issues/83)).
+- Follow [no-color.org](https://no-color.org): only a non-empty `NO_COLOR` disables color, on every surface.
+- Show `—` for response timing that has not been measured yet; `~` now only marks an estimated output speed.
+- Report when restoring the previous model, thinking level, or tool selection fails after a change is rejected.
+- Draw subagent cost images in each curve's palette color for every theme, instead of falling back to grey when a theme does not emit truecolor.
+- Pulse the working Agent jewel once per sidebar animation tick.
+- The package entry point now exports only the sidebar contribution protocol: `registerSidebarPanel`, the ID and request guards, size limits, and event types. The internal registry and layout helpers are no longer exported. Document the protocol in the README.
+- Internal: consolidate duplicated text, path, and file helpers; remove dead code and test-only parameters; split long functions; remove vacuous and duplicate tests. Fix `--ref` in the workspace benchmark and add `npm run bench:sidebar` / `bench:workspace`.
+
 ## 0.12.1 — 2026-09-30
 
 - Mark host-provided Pi peers optional so ordinary npm installs do not download a redundant Pi dependency tree. Add a packed-install regression check and dependency audits to the validation gate ([#81](https://github.com/michaelmjhhhh/pi-atelier/issues/81)).

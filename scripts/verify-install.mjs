@@ -27,10 +27,7 @@ try {
 		join(consumerDir, "package.json"),
 		JSON.stringify({ name: "pi-atelier-install-check", private: true }),
 	);
-	npm(
-		["install", "--legacy-peer-deps=false", "--include=peer", "--no-fund", join(tempDir, packed.filename)],
-		consumerDir,
-	);
+	npm(["install", "--include=peer", "--no-fund", join(tempDir, packed.filename)], consumerDir);
 	const lock = JSON.parse(readFileSync(join(consumerDir, "package-lock.json"), "utf8"));
 	const unexpected = Object.keys(lock.packages).filter(
 		(path) => path !== "" && path !== "node_modules/pi-atelier",
@@ -41,9 +38,9 @@ try {
 		`Installation pulled in ${unexpected.length} unexpected dependencies: ${unexpected.slice(0, 10).join(", ")}`,
 	);
 	assert.ok(lock.packages["node_modules/pi-atelier"], "Packed pi-atelier was not installed");
-	npm(["audit", "--audit-level=low"], consumerDir);
 
 	process.env.PI_CODING_AGENT_DIR = join(tempDir, "agent");
+	// Pi's package index does not export the loader; this deep import may need updating on Pi upgrades.
 	const { loadExtensions } = await import(
 		"../node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js"
 	);
@@ -57,9 +54,7 @@ try {
 		result.extensions.some((extension) => extension.commands.has("atelier")),
 		"Atelier did not initialize",
 	);
-	console.log(
-		"Package install verified (no transitive dependencies, audit clean, host loader initialized Atelier)",
-	);
+	console.log("Package install verified (no transitive dependencies, host loader initialized Atelier)");
 } finally {
 	rmSync(tempDir, { recursive: true, force: true });
 }

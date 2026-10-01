@@ -9,7 +9,7 @@
 		"noUncheckedIndexedAccess": true,
 		"exactOptionalPropertyTypes": true,
 		"verbatimModuleSyntax": true,
-		"types": ["node", "vitest/globals"]
+		"types": ["node"]
 	},
 	"include": ["extensions/**/*.ts", "src/**/*.ts", "tests/**/*.ts"]
 }

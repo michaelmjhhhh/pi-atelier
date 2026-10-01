@@ -3,6 +3,6 @@
 	"formatter": { "enabled": true, "indentStyle": "tab", "lineWidth": 110 },
 	"linter": { "enabled": false },
 	"files": {
-		"includes": ["**", "!node_modules", "!coverage", "!.pi-subagents", "!*.tgz", "!package-lock.json"]
+		"includes": ["**", "!node_modules", "!coverage", "!*.tgz", "!package-lock.json"]
 	}
 }
