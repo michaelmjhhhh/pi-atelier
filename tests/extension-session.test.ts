@@ -1,3 +1,4 @@
+import { plainTheme } from "./helpers/render.js";
 import { describe, expect, it, vi } from "vitest";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import { SIDEBAR_PANEL_EVENT_CHANNEL } from "../extensions/index.js";
@@ -17,7 +18,6 @@ import {
 	renderFooter,
 	queueWorkspacePulseInspection,
 	execResult,
-	FOOTER_THEME,
 } from "./helpers/extension.js";
 
 describe("extension session", () => {
@@ -634,7 +634,7 @@ describe("extension session", () => {
 		const requestRender = vi.fn();
 		const factory = h.setFooter.mock.calls[0]?.[0];
 		expect(factory).toEqual(expect.any(Function));
-		const footer = factory({ requestRender }, FOOTER_THEME, {
+		const footer = factory({ requestRender }, plainTheme, {
 			getGitBranch: () => undefined,
 			getExtensionStatuses: () => new Map(),
 			onBranchChange: (callback: () => void) => {

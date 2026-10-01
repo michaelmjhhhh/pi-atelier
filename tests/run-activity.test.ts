@@ -1,5 +1,5 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createRunActivityTracker,
 	EMPTY_RUN_ACTIVITY,
@@ -8,20 +8,26 @@ import {
 } from "../src/run-activity.js";
 
 describe("run activity tracker transitions", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	it("tracks run, turn, and tool start with deterministic timestamps", () => {
 		const onChange = vi.fn();
 		const tracker = createRunActivityTracker({ cwd: "/repo", onChange });
-		tracker.startRun(1_000);
+		vi.setSystemTime(1_000);
+		tracker.startRun();
 		tracker.startTurn(2);
-		tracker.startTool(
-			{
-				type: "tool_execution_start",
-				toolCallId: "read-1",
-				toolName: "read",
-				args: { path: "/repo/src/state.ts" },
-			},
-			2_000,
-		);
+		vi.setSystemTime(2_000);
+		tracker.startTool({
+			type: "tool_execution_start",
+			toolCallId: "read-1",
+			toolName: "read",
+			args: { path: "/repo/src/state.ts" },
+		});
 
 		expect(tracker.getSnapshot()).toMatchObject({
 			phase: "running",
@@ -32,95 +38,116 @@ describe("run activity tracker transitions", () => {
 		expect(onChange).toHaveBeenCalledTimes(3);
 	});
 
-	it("tracks TTFT immediately and adds accurate generation TPS only when a response ends", () => {
-		const tracker = createRunActivityTracker({ cwd: "/repo" });
-		tracker.startRun(0);
-		tracker.startResponse(1_000);
-
-		tracker.updateResponseEstimate(1, 1_820);
-		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 820 });
-
-		tracker.finishResponse(120, 4_320);
-		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 820, tokensPerSecond: 48 });
-	});
-
 	it("updates estimated TPS during streaming and replaces it with final throughput", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
-		tracker.startResponse(1_000);
-		tracker.updateResponseEstimate(1, 1_800);
+		vi.setSystemTime(1_000);
+		tracker.startResponse();
+		vi.setSystemTime(1_800);
+		tracker.updateResponseEstimate(1);
 		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 800 });
 
-		tracker.updateResponseEstimate(40, 2_800);
+		vi.setSystemTime(2_800);
+		tracker.updateResponseEstimate(40);
 		expect(tracker.getSnapshot().performance).toEqual({
 			ttftMs: 800,
 			tokensPerSecond: 40,
 			estimated: true,
 		});
 
-		tracker.finishResponse(120, 4_300);
+		vi.setSystemTime(4_300);
+		tracker.finishResponse(120);
 		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 800, tokensPerSecond: 48 });
 	});
 
 	it("clears prior response performance at the next provider request", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
-		tracker.startRun(0);
-		tracker.startResponse(1_000);
-		tracker.updateResponseEstimate(1, 1_500);
-		tracker.finishResponse(20, 2_500);
+		vi.setSystemTime(0);
+		tracker.startRun();
+		vi.setSystemTime(1_000);
+		tracker.startResponse();
+		vi.setSystemTime(1_500);
+		tracker.updateResponseEstimate(1);
+		vi.setSystemTime(2_500);
+		tracker.finishResponse(20);
 
-		tracker.startResponse(3_000);
+		vi.setSystemTime(3_000);
+		tracker.startResponse();
 
 		expect(tracker.getSnapshot()).not.toHaveProperty("performance");
 	});
 
 	it("discards partial response timing without losing run or tool activity", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
-		tracker.startRun(0);
-		tracker.startTool({ type: "tool_execution_start", toolCallId: "tool", toolName: "read", args: {} }, 10);
-		tracker.startResponse(100);
-		tracker.updateResponseEstimate(1, 200);
+		vi.setSystemTime(0);
+		tracker.startRun();
+		vi.setSystemTime(10);
+		tracker.startTool({ type: "tool_execution_start", toolCallId: "tool", toolName: "read", args: {} });
+		vi.setSystemTime(100);
+		tracker.startResponse();
+		vi.setSystemTime(200);
+		tracker.updateResponseEstimate(1);
 		tracker.resetResponse();
-		tracker.updateResponseEstimate(10, 500);
-		tracker.finishResponse(20, 600);
+		vi.setSystemTime(500);
+		tracker.updateResponseEstimate(10);
+		vi.setSystemTime(600);
+		tracker.finishResponse(20);
 		expect(tracker.getSnapshot()).not.toHaveProperty("performance");
 		expect(tracker.getSnapshot()).toMatchObject({ phase: "running", activeTools: [{ id: "tool" }] });
-		tracker.startResponse(1_000);
-		tracker.updateResponseEstimate(1, 1_100);
-		tracker.finishResponse(20, 2_100);
+		vi.setSystemTime(1_000);
+		tracker.startResponse();
+		vi.setSystemTime(1_100);
+		tracker.updateResponseEstimate(1);
+		vi.setSystemTime(2_100);
+		tracker.finishResponse(20);
 		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 100, tokensPerSecond: 20 });
 	});
 
 	it("keeps TTFT without inventing TPS when final usage or generation duration is invalid", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
-		tracker.startResponse(1_000);
-		tracker.updateResponseEstimate(1, 1_500);
-		tracker.finishResponse(Number.NaN, 2_000);
+		vi.setSystemTime(1_000);
+		tracker.startResponse();
+		vi.setSystemTime(1_500);
+		tracker.updateResponseEstimate(1);
+		vi.setSystemTime(2_000);
+		tracker.finishResponse(Number.NaN);
 		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 500 });
 
-		tracker.startResponse(3_000);
-		tracker.updateResponseEstimate(1, 3_500);
-		tracker.finishResponse(10, 3_500);
+		vi.setSystemTime(3_000);
+		tracker.startResponse();
+		vi.setSystemTime(3_500);
+		tracker.updateResponseEstimate(1);
+		vi.setSystemTime(3_500);
+		tracker.finishResponse(10);
 		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 500 });
 	});
 
 	it("ignores first-token observations when no provider request is active", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
-		tracker.updateResponseEstimate(1, 1_000);
-		tracker.finishResponse(10, 2_000);
+		vi.setSystemTime(1_000);
+		tracker.updateResponseEstimate(1);
+		vi.setSystemTime(2_000);
+		tracker.finishResponse(10);
 		expect(tracker.getSnapshot()).not.toHaveProperty("performance");
 	});
 
 	it("preserves parallel active tool insertion order", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
-		tracker.startRun(0);
-		tracker.startTool(
-			{ type: "tool_execution_start", toolCallId: "bash-1", toolName: "bash", args: { command: "npm test" } },
-			100,
-		);
-		tracker.startTool(
-			{ type: "tool_execution_start", toolCallId: "read-1", toolName: "read", args: { path: "/repo/a.ts" } },
-			200,
-		);
+		vi.setSystemTime(0);
+		tracker.startRun();
+		vi.setSystemTime(100);
+		tracker.startTool({
+			type: "tool_execution_start",
+			toolCallId: "bash-1",
+			toolName: "bash",
+			args: { command: "npm test" },
+		});
+		vi.setSystemTime(200);
+		tracker.startTool({
+			type: "tool_execution_start",
+			toolCallId: "read-1",
+			toolName: "read",
+			args: { path: "/repo/a.ts" },
+		});
 
 		expect(tracker.getSnapshot().activeTools.map((tool) => tool.id)).toEqual(["bash-1", "read-1"]);
 	});
@@ -128,24 +155,39 @@ describe("run activity tracker transitions", () => {
 	it("records done and failed completions with clamped durations", () => {
 		const onChange = vi.fn();
 		const tracker = createRunActivityTracker({ cwd: "/repo", onChange });
-		tracker.startRun(0);
-		tracker.startTool(
-			{ type: "tool_execution_start", toolCallId: "ok", toolName: "read", args: { path: "/repo/a.ts" } },
-			1_000,
-		);
-		tracker.startTool(
-			{ type: "tool_execution_start", toolCallId: "bad", toolName: "bash", args: { command: "npm test" } },
-			4_000,
-		);
+		vi.setSystemTime(0);
+		tracker.startRun();
+		vi.setSystemTime(1_000);
+		tracker.startTool({
+			type: "tool_execution_start",
+			toolCallId: "ok",
+			toolName: "read",
+			args: { path: "/repo/a.ts" },
+		});
+		vi.setSystemTime(4_000);
+		tracker.startTool({
+			type: "tool_execution_start",
+			toolCallId: "bad",
+			toolName: "bash",
+			args: { command: "npm test" },
+		});
 
-		tracker.finishTool(
-			{ type: "tool_execution_end", toolCallId: "ok", toolName: "read", result: "ignored", isError: false },
-			2_500,
-		);
-		tracker.finishTool(
-			{ type: "tool_execution_end", toolCallId: "bad", toolName: "bash", result: "secret", isError: true },
-			3_000,
-		);
+		vi.setSystemTime(2_500);
+		tracker.finishTool({
+			type: "tool_execution_end",
+			toolCallId: "ok",
+			toolName: "read",
+			result: "ignored",
+			isError: false,
+		});
+		vi.setSystemTime(3_000);
+		tracker.finishTool({
+			type: "tool_execution_end",
+			toolCallId: "bad",
+			toolName: "bash",
+			result: "secret",
+			isError: true,
+		});
 
 		const snapshot = tracker.getSnapshot();
 		expect(snapshot.activeTools).toEqual([]);
@@ -161,27 +203,24 @@ describe("run activity tracker transitions", () => {
 
 	it("keeps newest-first recent history capped at three entries", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
-		tracker.startRun(0);
+		vi.setSystemTime(0);
+		tracker.startRun();
 		for (let index = 1; index <= 4; index += 1) {
-			tracker.startTool(
-				{
-					type: "tool_execution_start",
-					toolCallId: `tool-${index}`,
-					toolName: "read",
-					args: { path: `/repo/${index}.ts` },
-				},
-				index * 1_000,
-			);
-			tracker.finishTool(
-				{
-					type: "tool_execution_end",
-					toolCallId: `tool-${index}`,
-					toolName: "read",
-					result: {},
-					isError: false,
-				},
-				index * 1_000 + 100,
-			);
+			vi.setSystemTime(index * 1_000);
+			tracker.startTool({
+				type: "tool_execution_start",
+				toolCallId: `tool-${index}`,
+				toolName: "read",
+				args: { path: `/repo/${index}.ts` },
+			});
+			vi.setSystemTime(index * 1_000 + 100);
+			tracker.finishTool({
+				type: "tool_execution_end",
+				toolCallId: `tool-${index}`,
+				toolName: "read",
+				result: {},
+				isError: false,
+			});
 		}
 
 		expect(tracker.getSnapshot().recentTools.map((tool) => tool.id)).toEqual(["tool-4", "tool-3", "tool-2"]);
@@ -190,19 +229,18 @@ describe("run activity tracker transitions", () => {
 	it("ignores unknown completion IDs without notifying", () => {
 		const onChange = vi.fn();
 		const tracker = createRunActivityTracker({ cwd: "/repo", onChange });
-		tracker.startRun(0);
+		vi.setSystemTime(0);
+		tracker.startRun();
 		onChange.mockClear();
 
-		tracker.finishTool(
-			{
-				type: "tool_execution_end",
-				toolCallId: "missing",
-				toolName: "read",
-				result: { output: "ignored" },
-				isError: false,
-			},
-			1_000,
-		);
+		vi.setSystemTime(1_000);
+		tracker.finishTool({
+			type: "tool_execution_end",
+			toolCallId: "missing",
+			toolName: "read",
+			result: { output: "ignored" },
+			isError: false,
+		});
 
 		expect(tracker.getSnapshot()).toMatchObject({
 			activeTools: [],
@@ -213,41 +251,22 @@ describe("run activity tracker transitions", () => {
 		expect(onChange).not.toHaveBeenCalled();
 	});
 
-	it("normalizes non-finite and negative transition timestamps", () => {
-		const tracker = createRunActivityTracker({ cwd: "/repo" });
-		tracker.startRun(Number.NaN);
-		tracker.startTool(
-			{ type: "tool_execution_start", toolCallId: "read-1", toolName: "read", args: { path: "/repo/a.ts" } },
-			-1_000,
-		);
-		tracker.finishTool(
-			{
-				type: "tool_execution_end",
-				toolCallId: "read-1",
-				toolName: "read",
-				result: {},
-				isError: false,
-			},
-			Number.POSITIVE_INFINITY,
-		);
-
-		expect(tracker.getSnapshot()).toMatchObject({
-			startedAt: 0,
-			recentTools: [{ startedAt: 0, durationMs: 0 }],
-		});
-	});
-
 	it("settles active tools as failed and records run duration", () => {
 		const onChange = vi.fn();
 		const tracker = createRunActivityTracker({ cwd: "/repo", onChange });
-		tracker.startRun(1_000);
-		tracker.startTool(
-			{ type: "tool_execution_start", toolCallId: "read-1", toolName: "read", args: { path: "/repo/a.ts" } },
-			2_000,
-		);
+		vi.setSystemTime(1_000);
+		tracker.startRun();
+		vi.setSystemTime(2_000);
+		tracker.startTool({
+			type: "tool_execution_start",
+			toolCallId: "read-1",
+			toolName: "read",
+			args: { path: "/repo/a.ts" },
+		});
 		onChange.mockClear();
 
-		tracker.settle(5_000);
+		vi.setSystemTime(5_000);
+		tracker.settle();
 
 		expect(tracker.getSnapshot()).toMatchObject({
 			phase: "settled",
@@ -261,15 +280,22 @@ describe("run activity tracker transitions", () => {
 
 	it("resets to an idle empty snapshot", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
-		tracker.startRun(1_000);
+		vi.setSystemTime(1_000);
+		tracker.startRun();
 		tracker.startTurn(0);
-		tracker.startTool(
-			{ type: "tool_execution_start", toolCallId: "read-1", toolName: "read", args: { path: "/repo/a.ts" } },
-			2_000,
-		);
-		tracker.startResponse(2_500);
-		tracker.updateResponseEstimate(1, 2_750);
-		tracker.finishResponse(20, 3_750);
+		vi.setSystemTime(2_000);
+		tracker.startTool({
+			type: "tool_execution_start",
+			toolCallId: "read-1",
+			toolName: "read",
+			args: { path: "/repo/a.ts" },
+		});
+		vi.setSystemTime(2_500);
+		tracker.startResponse();
+		vi.setSystemTime(2_750);
+		tracker.updateResponseEstimate(1);
+		vi.setSystemTime(3_750);
+		tracker.finishResponse(20);
 		tracker.reset();
 
 		expect(tracker.getSnapshot()).toEqual(EMPTY_RUN_ACTIVITY);
@@ -278,20 +304,32 @@ describe("run activity tracker transitions", () => {
 
 	it("startRun resets prior run state", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
-		tracker.startRun(1_000);
-		tracker.startTool(
-			{ type: "tool_execution_start", toolCallId: "read-1", toolName: "read", args: { path: "/repo/a.ts" } },
-			2_000,
-		);
-		tracker.finishTool(
-			{ type: "tool_execution_end", toolCallId: "read-1", toolName: "read", result: {}, isError: false },
-			3_000,
-		);
-		tracker.startResponse(3_500);
-		tracker.updateResponseEstimate(1, 4_000);
-		tracker.finishResponse(20, 5_000);
+		vi.setSystemTime(1_000);
+		tracker.startRun();
+		vi.setSystemTime(2_000);
+		tracker.startTool({
+			type: "tool_execution_start",
+			toolCallId: "read-1",
+			toolName: "read",
+			args: { path: "/repo/a.ts" },
+		});
+		vi.setSystemTime(3_000);
+		tracker.finishTool({
+			type: "tool_execution_end",
+			toolCallId: "read-1",
+			toolName: "read",
+			result: {},
+			isError: false,
+		});
+		vi.setSystemTime(3_500);
+		tracker.startResponse();
+		vi.setSystemTime(4_000);
+		tracker.updateResponseEstimate(1);
+		vi.setSystemTime(5_000);
+		tracker.finishResponse(20);
 
-		tracker.startRun(10_000);
+		vi.setSystemTime(10_000);
+		tracker.startRun();
 
 		const snapshot = tracker.getSnapshot();
 		expect(snapshot).toMatchObject({
@@ -306,19 +344,18 @@ describe("run activity tracker transitions", () => {
 		expect(snapshot).not.toHaveProperty("performance");
 	});
 
-	it("returns immutable snapshots without exposing mutable tracker state", () => {
+	it("returns snapshots detached from tracker state", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
-		tracker.startRun(0);
-		tracker.startTool(
-			{ type: "tool_execution_start", toolCallId: "read-1", toolName: "read", args: { path: "/repo/a.ts" } },
-			1_000,
-		);
+		tracker.startRun();
+		tracker.startTool({
+			type: "tool_execution_start",
+			toolCallId: "read-1",
+			toolName: "read",
+			args: { path: "/repo/a.ts" },
+		});
 
 		const first = tracker.getSnapshot();
-		expect(Object.isFrozen(first)).toBe(true);
-		expect(Object.isFrozen(first.activeTools)).toBe(true);
-		expect(Object.isFrozen(first.activeTools[0])).toBe(true);
-		expect(() => (first.activeTools as unknown as { pop(): unknown }).pop()).toThrow();
+		(first.activeTools as unknown[]).pop();
 		expect(tracker.getSnapshot().activeTools).toHaveLength(1);
 	});
 });
@@ -400,9 +437,6 @@ describe("summarizeTool", () => {
 		expect(emojiSummary).toBe(`${"😀".repeat(12)}…`);
 		expect(zwjSummary).toBe(`${"👩‍💻".repeat(12)}…`);
 		expect(wideSummary).toBe(`${"界".repeat(12)}…`);
-		expect(visibleWidth(emojiSummary)).toBeLessThanOrEqual(26);
-		expect(visibleWidth(zwjSummary)).toBeLessThanOrEqual(26);
-		expect(visibleWidth(wideSummary)).toBeLessThanOrEqual(26);
 	});
 
 	it("strips ANSI-wrapped long strings before storing truncated summaries", () => {

@@ -8,11 +8,12 @@ import { vi, onTestFinished } from "vitest";
 import { type ExtensionEvent } from "@earendil-works/pi-coding-agent";
 import atelierExtension, { type AtelierExtensionDependencies } from "../../extensions/index.js";
 import { AtelierEditor } from "../../src/editor.js";
-import { loadConfig as loadAtelierConfig, validateConfig } from "../../src/config.js";
+import { loadConfig as loadAtelierConfig, resolveConfig } from "../../src/config.js";
+import { plainTheme, stripAnsi } from "./render.js";
 
 let persistedConfig = false;
 export const loadTestConfig: typeof loadAtelierConfig = (options) =>
-	persistedConfig ? loadAtelierConfig(options) : Promise.resolve(validateConfig({}));
+	persistedConfig ? loadAtelierConfig(options) : Promise.resolve(resolveConfig({}));
 
 export function loadConfigAfter(gate: ReturnType<typeof deferred<void>>): typeof loadAtelierConfig {
 	return async (options) => {
@@ -80,6 +81,7 @@ export function harness(
 			getBranch: vi.fn().mockReturnValue([]),
 			getSessionName: vi.fn().mockReturnValue("Test session"),
 			getSessionFile: vi.fn().mockReturnValue("/tmp/session.jsonl"),
+			getSessionId: vi.fn().mockReturnValue("test-session"),
 		},
 		ui: {
 			setFooter,
@@ -189,19 +191,13 @@ export function renderOverlayText(h: ReturnType<typeof harness>, index = 0, widt
 	const overlay = h.overlays[index];
 	if (!overlay) throw new Error(`overlay ${index} was not mounted`);
 	if (overlay.closed) throw new Error(`overlay ${index} is closed; Pi would not render it`);
-	return overlay.component.render(width).join("\n");
+	return stripAnsi(overlay.component.render(width).join("\n"));
 }
-
-export const FOOTER_THEME = {
-	fg: (_color: string, text: string) => text,
-	bold: (text: string) => text,
-	italic: (text: string) => text,
-};
 
 /** Mounts the public editor/footer factories in the order Pi uses them. */
 export function mountComposer(h: ReturnType<typeof harness>) {
 	const tui = { requestRender: vi.fn(), terminal: { rows: 24, columns: 80 } };
-	const footer = h.setFooter.mock.calls[0]?.[0](tui, FOOTER_THEME, {
+	const footer = h.setFooter.mock.calls[0]?.[0](tui, plainTheme, {
 		getGitBranch: () => "main",
 		getExtensionStatuses: () => new Map(),
 		onBranchChange: () => () => undefined,
@@ -220,7 +216,7 @@ export function renderFooter(
 	requestRender: () => void,
 	getExtensionStatuses: () => Map<string, string> = () => new Map(),
 ): any {
-	const component = factory({ requestRender }, FOOTER_THEME, {
+	const component = factory({ requestRender }, plainTheme, {
 		getGitBranch: () => undefined,
 		getExtensionStatuses,
 		onBranchChange: () => () => undefined,

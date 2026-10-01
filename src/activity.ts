@@ -1,4 +1,4 @@
-export const WORKING_PHRASES = [
+const WORKING_PHRASES = [
 	"KNEADING",
 	"PERCOLATING",
 	"MARINATING",
@@ -40,5 +40,5 @@ export const WORKING_PHRASES = [
 export function selectWorkingPhrase(randomValue: number): string {
 	const bounded = Number.isFinite(randomValue) ? Math.min(1, Math.max(0, randomValue)) : 0;
 	const index = Math.min(WORKING_PHRASES.length - 1, Math.floor(bounded * WORKING_PHRASES.length));
-	return WORKING_PHRASES[index]!;
+	return WORKING_PHRASES[index] ?? WORKING_PHRASES[0];
 }

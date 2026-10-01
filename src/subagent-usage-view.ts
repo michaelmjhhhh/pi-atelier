@@ -4,6 +4,10 @@ import { openLifecycleOverlay, type OverlayLifetime } from "./overlay-lifecycle.
 import { createPalette } from "./palette.js";
 import { costLegendColumns, subagentCostChart } from "./subagent-cost-chart.js";
 import type { SubagentUsageSnapshot } from "./subagent-usage.js";
+import { clamp, fitToWidth, isColorEnabled } from "./text.js";
+
+/** Point readouts show sub-cent reply costs regardless of the configured currency precision. */
+const POINT_COST_DECIMALS = 6;
 
 export async function openSubagentUsage(
 	ctx: ExtensionContext,
@@ -19,7 +23,7 @@ export async function openSubagentUsage(
 			let legendPage = 0;
 			let legendPageSize = 1;
 			const imageOwner = {};
-			const series = (snapshot.costHistory ?? []).filter((run) => run.points.length > 1);
+			const series = snapshot.costHistory.filter((run) => run.points.length > 1);
 			return {
 				render(width) {
 					const outerWidth = Math.max(1, Math.floor(width));
@@ -27,13 +31,11 @@ export async function openSubagentUsage(
 					if (outerWidth < 28 || height < 6) return [truncateToWidth("Resize to view usage", outerWidth)];
 					const contentWidth = outerWidth - 4;
 					const border = (text: string) => theme.fg("borderAccent", text);
-					const framed = (text: string): string => {
-						const content = truncateToWidth(text, contentWidth, "…");
-						return `${border("│")} ${content}${" ".repeat(Math.max(0, contentWidth - visibleWidth(content)))} ${border("│")}`;
-					};
+					const framed = (text: string): string =>
+						`${border("│")} ${fitToWidth(truncateToWidth(text, contentWidth, "…"), contentWidth)} ${border("│")}`;
 					const pageSize = Math.max(1, height - 5);
 					const legendColumns = costLegendColumns(contentWidth);
-					const awaitingRows = (snapshot.costHistory?.length ?? 0) > series.length ? 1 : 0;
+					const awaitingRows = snapshot.costHistory.length > series.length ? 1 : 0;
 					// Keep space for the graph and caption; paginate only the legend.
 					const legendRows = Math.max(1, Math.min(5, Math.floor((pageSize - awaitingRows - 5) / 2)));
 					legendPageSize = legendColumns * legendRows;
@@ -43,14 +45,9 @@ export async function openSubagentUsage(
 					const visibleLegendRows = Math.ceil(Math.min(series.length, legendPageSize) / legendColumns);
 					const plotHeight = pageSize - visibleLegendRows - awaitingRows - (pageCount > 1 ? 1 : 0) - 4;
 					const activeSeries = series[focused];
+					const lastPoint = (activeSeries?.points.length ?? 0) - 1;
 					const activePointIndex = activeSeries
-						? Math.max(
-								1,
-								Math.min(
-									pointIndex < 0 ? activeSeries.points.length - 1 : pointIndex,
-									activeSeries.points.length - 1,
-								),
-							)
+						? clamp(pointIndex < 0 ? lastPoint : pointIndex, 1, lastPoint)
 						: undefined;
 					const point = activePointIndex === undefined ? undefined : activeSeries?.points[activePointIndex];
 					const chart =
@@ -61,7 +58,7 @@ export async function openSubagentUsage(
 									contentWidth,
 									decimals,
 									true,
-									createPalette(theme, !process.env.NO_COLOR),
+									createPalette(theme, isColorEnabled()),
 									{
 										height: plotHeight,
 										focusedSeries: activeSeries?.id,
@@ -71,20 +68,19 @@ export async function openSubagentUsage(
 										legendPage,
 									},
 								);
-					const number = activeSeries
-						? (snapshot.costHistory ?? []).findIndex((run) => run.id === activeSeries.id) + 1
+					const seriesNumber = activeSeries
+						? snapshot.costHistory.findIndex((run) => run.id === activeSeries.id) + 1
 						: 0;
-					const precision = Math.max(6, Math.min(8, decimals));
 					const readout =
 						point && activeSeries && activePointIndex !== undefined
 							? [
 									theme.fg(
 										"accent",
-										`#${number} · Point ${activePointIndex}/${activeSeries.points.length - 1} · ${((point.at - activeSeries.startedAt) / 1000).toFixed(1)}s`,
+										`#${seriesNumber} · Point ${activePointIndex}/${activeSeries.points.length - 1} · ${((point.at - activeSeries.startedAt) / 1000).toFixed(1)}s`,
 									),
 									theme.fg(
 										"text",
-										`${contentWidth >= 40 ? "Total " : ""}$${point.cost.toFixed(precision)} · +$${(point.cost - (activeSeries.points[activePointIndex - 1]?.cost ?? 0)).toFixed(precision)}`,
+										`${contentWidth >= 40 ? "Total " : ""}$${point.cost.toFixed(POINT_COST_DECIMALS)} · +$${(point.cost - (activeSeries.points[activePointIndex - 1]?.cost ?? 0)).toFixed(POINT_COST_DECIMALS)}`,
 									),
 								]
 							: ["", theme.fg("dim", "Elapsed seconds · select an agent to inspect points")];
@@ -126,10 +122,7 @@ export async function openSubagentUsage(
 							pointIndex = -1;
 						}
 						const last = (series[focused]?.points.length ?? 2) - 1;
-						pointIndex = Math.max(
-							1,
-							Math.min(last, (pointIndex < 0 ? last : pointIndex) + (data === "[" ? -1 : 1)),
-						);
+						pointIndex = clamp((pointIndex < 0 ? last : pointIndex) + (data === "[" ? -1 : 1), 1, last);
 					}
 					if (data === "a" || data === "A") focused = -1;
 					if (matchesKey(data, "up") || matchesKey(data, "pageUp")) {

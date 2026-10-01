@@ -1,32 +1,14 @@
+import type { DENSITIES, PRODUCT_SEGMENT_ORDER, TEMPLATE_NAMES } from "./display.js";
+import type { BUILTIN_SIDEBAR_PANEL_IDS } from "./sidebar-panels.js";
 import type { SubagentUsageSnapshot } from "./subagent-usage.js";
-import { applyDisplayTemplate } from "./display.js";
-import { DEFAULT_SIDEBAR_PANEL_LAYOUT } from "./sidebar-panels.js";
 import type { WorkspacePulseData } from "./workspace-pulse.js";
 
-export type TemplateName = "editorial" | "minimal" | "classic";
+export type TemplateName = (typeof TEMPLATE_NAMES)[number];
 export type PresetName = TemplateName | "custom";
-export type ActivityState = "ready" | "working" | "warning" | "error";
-export type SegmentId =
-	| "brand"
-	| "activity"
-	| "metrics"
-	| "performance"
-	| "context"
-	| "model"
-	| "git"
-	| "statuses"
-	| "menu";
-export type Density = "comfortable" | "compact";
-export type BuiltinSidebarPanelId =
-	| "agent"
-	| "activity"
-	| "alerts"
-	| "todos"
-	| "context"
-	| "workspace"
-	| "subagents"
-	| "usage"
-	| "tools";
+export type ActivityState = "ready" | "working";
+export type SegmentId = (typeof PRODUCT_SEGMENT_ORDER)[number];
+export type Density = (typeof DENSITIES)[number];
+export type BuiltinSidebarPanelId = (typeof BUILTIN_SIDEBAR_PANEL_IDS)[number];
 /** Stable namespaced IDs are used by contributed panels. */
 export type ContributedSidebarPanelId = `${string}:${string}`;
 /** Configuration may retain built-ins and unavailable contributed panels. */
@@ -37,16 +19,6 @@ export interface SidebarPanelLayoutEntry {
 }
 export type SidebarPanelLayout = SidebarPanelLayoutEntry[];
 export type ConfigurationSource = "product" | "user" | "project" | "session";
-export interface TodoItem {
-	id: number;
-	text: string;
-	done: boolean;
-}
-export interface RpivTask {
-	id: number;
-	subject: string;
-	status: string;
-}
 export interface NormalizedTodo {
 	id: number;
 	text: string;
@@ -85,12 +57,8 @@ export interface DisplayLayerState {
 	session?: Record<string, unknown>;
 }
 
-/** A detached copy of the raw Session Display layer. */
-export type SessionDisplayOverride = DisplayPatch & {
-	segments?: unknown;
-	ornament?: unknown;
-	showExtensionStatuses?: unknown;
-};
+/** A detached copy of the Session Display layer. */
+export type SessionDisplayOverride = Omit<DisplayPatch, "sidebarPanelLayout">;
 
 export interface ResponsePerformance {
 	ttftMs: number;
@@ -155,16 +123,3 @@ export interface FooterState extends AtelierState {
 	performance?: ResponsePerformance;
 	workspaceLabel?: string;
 }
-
-export const DEFAULT_CONFIG: AtelierConfig = {
-	...applyDisplayTemplate("editorial"),
-	nerdFont: true,
-	shortcut: "f6",
-	contextWarning: 70,
-	contextDanger: 90,
-	currencyDecimals: 3,
-	showSidebarToolNames: false,
-	showSidebarOnStartup: true,
-	sidebarPanelLayout: DEFAULT_SIDEBAR_PANEL_LAYOUT.map((entry) => ({ ...entry })),
-	completionNotifications: true,
-};

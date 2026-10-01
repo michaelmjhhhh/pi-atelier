@@ -141,12 +141,12 @@ describe("native child cost history accounting", () => {
 		};
 		const result = await readSubagentUsage(options);
 		expect(result.costHistory).toHaveLength(1);
-		expect(result.totals.cost).toBe(0.1);
+		expect(result.runs[0]?.cost).toBe(0.1);
 		await writeFile(meta, JSON.stringify({ ...metadata, usage: { ...metadata.usage, cost: 0.2 } }));
 		const corrected = await readSubagentUsage(options);
 		expect(corrected.costHistory).toEqual([]);
 		expect(corrected.historyUnavailable).toBe(1);
-		expect(corrected.totals.cost).toBe(0.2);
+		expect(corrected.runs[0]?.cost).toBe(0.2);
 		await writeFile(join(asyncDir, "status.json"), JSON.stringify({ ...status, sessionId: "someone-else" }));
 		expect((await readSubagentUsage(options)).costHistory).toEqual([]);
 	});

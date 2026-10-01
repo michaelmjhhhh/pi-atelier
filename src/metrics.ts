@@ -16,7 +16,11 @@ export interface AggregateOptions {
 	autoCompact: boolean | null;
 }
 
-const finite = (value: number | undefined): number => (Number.isFinite(value) ? (value ?? 0) : 0);
+const isFiniteNumber = (value: unknown): value is number =>
+	typeof value === "number" && Number.isFinite(value);
+const finite = (value: number | undefined): number => (isFiniteNumber(value) ? value : 0);
+const finiteOrNull = (value: number | null | undefined): number | null =>
+	isFiniteNumber(value) ? value : null;
 
 export function aggregateMetrics(
 	messages: readonly UsageMessage[],
@@ -31,26 +35,31 @@ export function aggregateMetrics(
 	let usageAvailable = false;
 	let costAvailable = false;
 
-	for (const message of messages) {
-		const usage = message.usage;
+	for (const { usage } of messages) {
+		const messageInput = usage?.input;
+		const messageOutput = usage?.output;
+		const messageCacheRead = usage?.cacheRead;
+		const messageCacheWrite = usage?.cacheWrite;
 		if (
-			!usage ||
-			typeof usage !== "object" ||
-			![usage.input, usage.output, usage.cacheRead, usage.cacheWrite].every(
-				(value) => typeof value === "number" && Number.isFinite(value),
-			)
-		) {
+			!isFiniteNumber(messageInput) ||
+			!isFiniteNumber(messageOutput) ||
+			!isFiniteNumber(messageCacheRead) ||
+			!isFiniteNumber(messageCacheWrite)
+		)
 			continue;
-		}
 		usageAvailable = true;
-		costAvailable ||= typeof usage.cost?.total === "number" && Number.isFinite(usage.cost.total);
-		input += finite(usage.input);
-		output += finite(usage.output);
-		cacheRead += finite(usage.cacheRead);
-		cacheWrite += finite(usage.cacheWrite);
-		cost += finite(usage.cost?.total);
-		const prompt = finite(usage.input) + finite(usage.cacheRead) + finite(usage.cacheWrite);
-		cacheHitPercent = prompt > 0 ? (finite(usage.cacheRead) / prompt) * 100 : undefined;
+		const messageCost = usage?.cost?.total;
+		if (isFiniteNumber(messageCost)) {
+			costAvailable = true;
+			cost += messageCost;
+		}
+		input += messageInput;
+		output += messageOutput;
+		cacheRead += messageCacheRead;
+		cacheWrite += messageCacheWrite;
+		const prompt = messageInput + messageCacheRead + messageCacheWrite;
+		// Cache hit describes the latest request, not the session aggregate.
+		cacheHitPercent = prompt > 0 ? (messageCacheRead / prompt) * 100 : undefined;
 	}
 
 	const context = options.context;
@@ -64,13 +73,14 @@ export function aggregateMetrics(
 		...(cacheHitPercent === undefined ? {} : { cacheHitPercent }),
 		cost,
 		subscription: options.subscription,
-		contextTokens: context?.tokens ?? null,
+		contextTokens: finiteOrNull(context?.tokens),
 		contextWindow: finite(context?.contextWindow),
-		contextPercent: context?.percent ?? null,
+		contextPercent: finiteOrNull(context?.percent),
 		autoCompact: options.autoCompact,
 	};
 }
 
+/** Compact count: `999`, `1.2k`, `12k`, `1.2M`, `12M`. */
 export function formatTokens(count: number): string {
 	const safe = Math.max(0, finite(count));
 	if (safe < 1_000) return safe.toString();

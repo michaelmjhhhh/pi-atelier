@@ -1,7 +1,9 @@
 import { disposeAfterTest } from "./helpers/cleanup.js";
+import { DEFAULT_CONFIG, resolveDisplayLayers } from "../src/config.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AtelierRuntime } from "../src/state.js";
-import { DEFAULT_CONFIG } from "../src/types.js";
+import { selectWorkingPhrase } from "../src/activity.js";
+import { AtelierRuntime, type RuntimeDependencies } from "../src/state.js";
+import type { DisplayLayerState } from "../src/types.js";
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -32,31 +34,47 @@ const cleanInspection = {
 	},
 };
 
+function fakeContext(entries: unknown[] = [assistant]) {
+	return {
+		model: { id: "model", provider: "provider", reasoning: true },
+		modelRegistry: { isUsingOAuth: vi.fn().mockReturnValue(true) },
+		getContextUsage: vi.fn().mockReturnValue({ tokens: 1_000, contextWindow: 10_000, percent: 10 }),
+		isProjectTrusted: vi.fn().mockReturnValue(true),
+		sessionManager: {
+			getEntries: vi.fn().mockReturnValue(entries),
+			getSessionFile: vi.fn().mockReturnValue(undefined),
+			getSessionId: vi.fn().mockReturnValue("session"),
+		},
+	};
+}
+
+function buildRuntime(
+	overrides: Partial<RuntimeDependencies> & { displayLayers?: DisplayLayerState } = {},
+	ctx = fakeContext(),
+) {
+	const displayLayers = overrides.displayLayers ?? {};
+	return disposeAfterTest(
+		new AtelierRuntime({
+			pi: { events: { on: vi.fn(() => () => undefined) }, getThinkingLevel: vi.fn(() => "medium") } as never,
+			ctx: ctx as never,
+			config: DEFAULT_CONFIG,
+			displayProvenance: resolveDisplayLayers(displayLayers).provenance,
+			autoCompact: null,
+			requestRender: vi.fn(),
+			...overrides,
+			displayLayers,
+		}),
+	);
+}
+
 function createRuntime(
 	random: () => number = Math.random,
 	inspectWorkspace = vi.fn().mockResolvedValue(cleanInspection),
 	enabled = true,
 ) {
 	const requestRender = vi.fn();
-	const ctx = {
-		model: { id: "model", provider: "provider", reasoning: true },
-		modelRegistry: { isUsingOAuth: vi.fn().mockReturnValue(true) },
-		getContextUsage: vi.fn().mockReturnValue({ tokens: 1_000, contextWindow: 10_000, percent: 10 }),
-		isProjectTrusted: vi.fn().mockReturnValue(true),
-		sessionManager: { getEntries: vi.fn().mockReturnValue([assistant]) },
-	};
-	const runtime = disposeAfterTest(
-		new AtelierRuntime({
-			pi: {} as never,
-			ctx: ctx as never,
-			config: DEFAULT_CONFIG,
-			autoCompact: true,
-			enabled,
-			random,
-			requestRender,
-			inspectWorkspace,
-		}),
-	);
+	const ctx = fakeContext();
+	const runtime = buildRuntime({ autoCompact: true, enabled, random, requestRender, inspectWorkspace }, ctx);
 	return { runtime, requestRender, inspectWorkspace, ctx };
 }
 
@@ -73,7 +91,6 @@ describe("AtelierRuntime", () => {
 		expect(ctx.getContextUsage).not.toHaveBeenCalled();
 		expect(inspectWorkspace).not.toHaveBeenCalled();
 		expect(requestRender).not.toHaveBeenCalled();
-		runtime.dispose();
 	});
 
 	it("resynchronizes once after suspension while retaining activity and marking old workspace data stale", async () => {
@@ -109,7 +126,6 @@ describe("AtelierRuntime", () => {
 		await vi.advanceTimersByTimeAsync(0);
 		expect(inspectWorkspace).toHaveBeenCalledOnce();
 		expect(runtime.getState().workspacePulse.status).toBe("clean");
-		runtime.dispose();
 	});
 
 	it("derives metrics without retaining message content", () => {
@@ -232,28 +248,17 @@ describe("AtelierRuntime", () => {
 		runtime.setActivity("working");
 		runtime.refreshUsage();
 
-		expect(selected).toBe("PONDERING");
-		expect(runtime.getState()).toMatchObject({ activity: "working", workingLabel: "PONDERING" });
+		expect(selected).toBe(selectWorkingPhrase(0.5));
+		expect(runtime.getState()).toMatchObject({ activity: "working", workingLabel: selected });
 		expect(random).toHaveBeenCalledOnce();
 		expect(requestRender).toHaveBeenCalledTimes(2);
 	});
 
 	it("recomputes Session Display patches from retained lower layers with provenance", () => {
 		const requestRender = vi.fn();
-		const runtime = disposeAfterTest(
-			new AtelierRuntime({
-				pi: { exec: vi.fn() } as never,
-				ctx: {
-					modelRegistry: { isUsingOAuth: vi.fn() },
-					getContextUsage: vi.fn(),
-					isProjectTrusted: vi.fn().mockReturnValue(true),
-					sessionManager: { getEntries: vi.fn().mockReturnValue([]) },
-				} as never,
-				config: DEFAULT_CONFIG,
-				displayLayers: { user: { density: "compact" } },
-				autoCompact: null,
-				requestRender,
-			}),
+		const runtime = buildRuntime(
+			{ displayLayers: { user: { density: "compact" } }, requestRender },
+			fakeContext([]),
 		);
 		requestRender.mockClear();
 
@@ -264,14 +269,14 @@ describe("AtelierRuntime", () => {
 		});
 
 		expect(runtime.getDisplaySettings()).toMatchObject({ preset: "custom", density: "compact" });
-		expect(runtime.getDisplaySettings().segmentLayout[3]).toEqual({ id: "performance", visible: true });
+		expect(runtime.getDisplaySettings().segmentLayout).toContainEqual({ id: "performance", visible: true });
 		expect(runtime.getDisplayProvenance()).toMatchObject({ density: "user", order: "session" });
 		expect(runtime.getDisplayProvenance().visibility.performance).toBe("session");
 		expect(requestRender).toHaveBeenCalledOnce();
 
 		runtime.clearSessionDisplayOverride();
 		expect(runtime.getDisplaySettings()).toMatchObject({ density: "compact" });
-		expect(runtime.getDisplaySettings().segmentLayout[3]).toEqual({ id: "performance", visible: false });
+		expect(runtime.getDisplaySettings().segmentLayout).toContainEqual({ id: "performance", visible: false });
 		expect(runtime.getDisplayProvenance()).toMatchObject({ density: "user", order: "product" });
 		expect(requestRender).toHaveBeenCalledTimes(2);
 	});
@@ -291,22 +296,7 @@ describe("AtelierRuntime", () => {
 	});
 
 	it("recomputes trusted Project precedence after a successful User Display save", () => {
-		const requestRender = vi.fn();
-		const runtime = disposeAfterTest(
-			new AtelierRuntime({
-				pi: { exec: vi.fn() } as never,
-				ctx: {
-					modelRegistry: { isUsingOAuth: vi.fn() },
-					getContextUsage: vi.fn(),
-					isProjectTrusted: vi.fn().mockReturnValue(true),
-					sessionManager: { getEntries: vi.fn().mockReturnValue([]) },
-				} as never,
-				config: DEFAULT_CONFIG,
-				displayLayers: { project: { density: "comfortable" } },
-				autoCompact: null,
-				requestRender,
-			}),
-		);
+		const runtime = buildRuntime({ displayLayers: { project: { density: "comfortable" } } }, fakeContext([]));
 		runtime.applySavedUserDisplayPatch({ density: "compact" });
 		expect(runtime.getDisplaySettings().density).toBe("comfortable");
 		expect(runtime.getDisplayProvenance().density).toBe("project");
@@ -319,12 +309,15 @@ describe("AtelierRuntime", () => {
 		requestRender.mockClear();
 
 		runtime.setActivity("working");
-		expect(runtime.getState().workingLabel).toBe("KNEADING");
+		expect(runtime.getState().workingLabel).toBe(selectWorkingPhrase(0));
 		runtime.setActivity("ready");
 		runtime.setActivity("working");
 		runtime.setConfig({ ...DEFAULT_CONFIG, preset: "minimal" });
 
-		expect(runtime.getState()).toMatchObject({ activity: "working", workingLabel: "COMBOBULATING" });
+		expect(runtime.getState()).toMatchObject({
+			activity: "working",
+			workingLabel: selectWorkingPhrase(0.999_999),
+		});
 		expect(runtime.getConfig().preset).toBe("minimal");
 		expect(random).toHaveBeenCalledTimes(2);
 		expect(requestRender).toHaveBeenCalledTimes(4);

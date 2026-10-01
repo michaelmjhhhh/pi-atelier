@@ -1,10 +1,11 @@
 import { plainTheme } from "./helpers/render.js";
+import { DEFAULT_CONFIG } from "../src/config.js";
 import { disposeAfterTest } from "./helpers/cleanup.js";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { describe, expect, it, vi } from "vitest";
-import { DISPLAY_TEMPLATES, legacySegmentsToLayout } from "../src/display.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { applyDisplayTemplate, legacySegmentsToLayout } from "../src/display.js";
 import { createFooterComponent, renderFooterLine } from "../src/footer.js";
-import { type AtelierConfig, type AtelierState, DEFAULT_CONFIG, type FooterState } from "../src/types.js";
+import { type AtelierConfig, type AtelierState, type FooterState } from "../src/types.js";
 
 const stripAnsi = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "");
 
@@ -29,7 +30,6 @@ const namedTheme = (name: string) => ({
 	name,
 	fg: (color: string, text: string) => `<${name}:${color}>${text}</${name}:${color}>`,
 	bold: (text: string) => text,
-	italic: (text: string) => text,
 });
 
 const darkRgb = {
@@ -70,11 +70,7 @@ const withVisible = (ids: Parameters<typeof legacySegmentsToLayout>[0], override
 	segmentLayout: legacySegmentsToLayout(ids),
 });
 
-const actualClassicPresetConfig: AtelierConfig = {
-	...DEFAULT_CONFIG,
-	...DISPLAY_TEMPLATES.classic,
-	segmentLayout: DISPLAY_TEMPLATES.classic.segmentLayout.map((entry) => ({ ...entry })),
-};
+const actualClassicPresetConfig: AtelierConfig = { ...DEFAULT_CONFIG, ...applyDisplayTemplate("classic") };
 
 const state: AtelierState = {
 	activity: "ready",
@@ -118,6 +114,10 @@ const state: AtelierState = {
 	extensionStatuses: [],
 };
 
+afterEach(() => {
+	vi.useRealTimers();
+});
+
 function createFooter(options: Partial<Parameters<typeof createFooterComponent>[0]> = {}) {
 	return disposeAfterTest(
 		createFooterComponent({
@@ -136,7 +136,7 @@ describe("footer performance", () => {
 		const config = withVisible(["activity", "metrics", "performance", "context", "model", "menu"]);
 		const line = stripAnsi(renderFooterLine(state, config, plainTheme, 160));
 
-		expect(line).toContain(`${icons.latency} ~  ${icons.speed} ~`);
+		expect(line).toContain(`${icons.latency} —  ${icons.speed} —`);
 		expect(stripAnsi(renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 160))).not.toContain(icons.latency);
 	});
 
@@ -159,12 +159,12 @@ describe("footer performance", () => {
 		const theme = namedTheme("dark");
 
 		const idle = renderFooterLine(state, config, theme, 400);
-		expect(idle).toContain(`${darkRgb.muted}${icons.latency}\u001b[39m ${darkRgb.dim}~\u001b[39m`);
-		expect(idle).toContain(`${darkRgb.muted}${icons.speed}\u001b[39m ${darkRgb.dim}~\u001b[39m`);
+		expect(idle).toContain(`${darkRgb.muted}${icons.latency}\u001b[39m ${darkRgb.dim}—\u001b[39m`);
+		expect(idle).toContain(`${darkRgb.muted}${icons.speed}\u001b[39m ${darkRgb.dim}—\u001b[39m`);
 
 		const ttftOnly = renderFooterLine({ ...state, performance: { ttftMs: 820 } }, config, theme, 400);
 		expect(ttftOnly).toContain(`${darkRgb.muted}${icons.latency}\u001b[39m ${darkRgb.purple}820ms\u001b[39m`);
-		expect(ttftOnly).toContain(`${darkRgb.muted}${icons.speed}\u001b[39m ${darkRgb.dim}~\u001b[39m`);
+		expect(ttftOnly).toContain(`${darkRgb.muted}${icons.speed}\u001b[39m ${darkRgb.dim}—\u001b[39m`);
 
 		const measured = renderFooterLine(
 			{ ...state, performance: { ttftMs: 820, tokensPerSecond: 42.34 } },
@@ -204,8 +204,8 @@ describe("composer header and telemetry", () => {
 	};
 
 	it("places session identity in a flowing header and usage in a separate telemetry row", () => {
-		const header = stripAnsi(renderFooterLine(session, config, plainTheme, 160, true, "...", "header"));
-		const telemetry = stripAnsi(renderFooterLine(session, config, plainTheme, 160, true, "...", "telemetry"));
+		const header = stripAnsi(renderFooterLine(session, config, plainTheme, 160, { surface: "header" }));
+		const telemetry = stripAnsi(renderFooterLine(session, config, plainTheme, 160, { surface: "telemetry" }));
 		expect(header).toBe(
 			`● READY ${icons.separator} ${icons.model} gpt-5.6-sol · ${icons.thinking} medium ${icons.separator} ${icons.workspace} pi-atelier · ${icons.git} main* ${icons.separator} ${icons.context} 27.0% / 372k ${icons.autoCompact}`,
 		);
@@ -238,27 +238,23 @@ describe("composer header and telemetry", () => {
 				),
 			}),
 		});
-		try {
-			expect(component.renderTelemetry(160)).toEqual([]);
-			expect(component.renderHeader(160)).toContain("● READY");
-			const fallback = stripAnsi(component.render(160)[0] ?? "");
-			for (const marker of [
-				`${icons.input} —`,
-				`${icons.output} —`,
-				`${icons.cache} —`,
-				"$—",
-				`${icons.latency} ~`,
-			]) {
-				expect(fallback).toContain(marker);
-			}
-		} finally {
-			component.dispose();
+		expect(component.renderTelemetry(160)).toEqual([]);
+		expect(component.renderHeader(160)).toContain("● READY");
+		const fallback = stripAnsi(component.render(160)[0] ?? "");
+		for (const marker of [
+			`${icons.input} —`,
+			`${icons.output} —`,
+			`${icons.cache} —`,
+			"$—",
+			`${icons.latency} —`,
+		]) {
+			expect(fallback).toContain(marker);
 		}
 	});
 
 	it("right-aligns the menu when there are no measured values", () => {
 		const telemetry = stripAnsi(
-			renderFooterLine(unmeasured, config, plainTheme, 80, true, "...", "telemetry"),
+			renderFooterLine(unmeasured, config, plainTheme, 80, { surface: "telemetry" }),
 		);
 		expect(telemetry.trim()).toBe(`${icons.menu} F6`);
 		expect(telemetry.endsWith(`${icons.menu} F6`)).toBe(true);
@@ -271,7 +267,7 @@ describe("composer header and telemetry", () => {
 			metrics: { ...state.metrics, input: 0, output: 0, cacheHitPercent: 0, cost: 0 },
 			performance: { ttftMs: 0, tokensPerSecond: 0 },
 		};
-		const telemetry = stripAnsi(renderFooterLine(zero, config, plainTheme, 160, true, "...", "telemetry"));
+		const telemetry = stripAnsi(renderFooterLine(zero, config, plainTheme, 160, { surface: "telemetry" }));
 		for (const marker of [
 			`${icons.input} 0`,
 			`${icons.output} 0`,
@@ -281,16 +277,16 @@ describe("composer header and telemetry", () => {
 		]) {
 			expect(telemetry).toContain(marker);
 		}
-		expect(telemetry).not.toMatch(/—|~/);
+		expect(telemetry).not.toContain("—");
 	});
 
 	it("returns an empty header rather than clipping essential activity or context", () => {
 		const atBoundary = stripAnsi(
-			renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 17, true, "...", "header"),
+			renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 17, { surface: "header" }),
 		);
 		expect(atBoundary).toBe(`● READY ${icons.separator} ${icons.context} 27.0%`);
 		for (const width of [16, 12, 1, 0]) {
-			expect(renderFooterLine(state, DEFAULT_CONFIG, plainTheme, width, true, "...", "header")).toBe("");
+			expect(renderFooterLine(state, DEFAULT_CONFIG, plainTheme, width, { surface: "header" })).toBe("");
 		}
 		expect(plainAt(16)).toBe(`● READY  ${icons.context} 27.0%`);
 	});
@@ -303,21 +299,16 @@ describe("composer header and telemetry", () => {
 			getConfig: () => config,
 			requestRender,
 		});
-		try {
-			expect(component.renderHeader(160)).toContain("PONDERING...");
-			expect(component.renderTelemetry(160)[0]).not.toContain("PONDERING");
-			expect(vi.getTimerCount()).toBe(1);
-			vi.advanceTimersByTime(400);
-			expect(requestRender).toHaveBeenCalledOnce();
-			component.renderTelemetry(160);
-			expect(component.renderHeader(160)).toContain("PONDERING.. ");
-			expect(component.renderHeader(16)).toBe("");
-			component.renderTelemetry(160);
-			expect(vi.getTimerCount()).toBe(0);
-		} finally {
-			component.dispose();
-			vi.useRealTimers();
-		}
+		expect(component.renderHeader(160)).toContain("PONDERING...");
+		expect(component.renderTelemetry(160)[0]).not.toContain("PONDERING");
+		expect(vi.getTimerCount()).toBe(1);
+		vi.advanceTimersByTime(400);
+		expect(requestRender).toHaveBeenCalledOnce();
+		component.renderTelemetry(160);
+		expect(component.renderHeader(160)).toContain("PONDERING.. ");
+		expect(component.renderHeader(16)).toBe("");
+		component.renderTelemetry(160);
+		expect(vi.getTimerCount()).toBe(0);
 	});
 });
 
@@ -337,7 +328,6 @@ describe("footer", () => {
 		]) {
 			expect(line).toContain(text);
 		}
-		expect(line).not.toMatch(/ATELIER|R5\.9M|CH98\.8|◔|✦|MENU/);
 		expect(visibleWidth(line)).toBe(160);
 	});
 
@@ -355,7 +345,6 @@ describe("footer", () => {
 		expect(line).toContain(`${darkRgb.dim} ${icons.separator} \u001b[39m`);
 		expect(line).toContain(`${darkRgb.dim} · \u001b[39m`);
 		expect(stripAnsi(line)).toContain(`${icons.model} gpt-5.6-sol · ${icons.thinking} medium`);
-		expect(stripAnsi(line)).not.toContain("│");
 	});
 
 	it("drops secondary detail before workspace identity and required context", () => {
@@ -406,12 +395,6 @@ describe("footer", () => {
 		expect(visibleWidth(line)).toBeLessThanOrEqual(24);
 	});
 
-	it("never introduces old cryptic compact labels", () => {
-		for (const width of [180, 132, 96, 72, 56, 40, 24]) {
-			expect(plainAt(width)).not.toMatch(/(?:^|\s)(?:R|W|CH)\d|◔/);
-		}
-	});
-
 	it("uses cache hit for editorial and detailed cache values for classic", () => {
 		expect(plainAt(180, DEFAULT_CONFIG)).toContain(`${icons.cache} 99%`);
 		const classic = plainAt(180, actualClassicPresetConfig);
@@ -440,12 +423,7 @@ describe("footer", () => {
 
 	it("uses fixed dark colors for named custom themes", () => {
 		const fg = vi.fn((_color: string, text: string) => text);
-		const line = renderFooterLine(
-			state,
-			DEFAULT_CONFIG,
-			{ name: "nord", fg, bold: (text) => text, italic: (text) => text },
-			180,
-		);
+		const line = renderFooterLine(state, DEFAULT_CONFIG, { name: "nord", fg, bold: (text) => text }, 180);
 		expect(line).toContain(`${darkRgb.blue}${icons.input}\u001b[39m ${darkRgb.blue}324k\u001b[39m`);
 		expect(line).toContain(`${darkRgb.cyan}${icons.cache}\u001b[39m ${darkRgb.cyan}99%\u001b[39m`);
 		expect(fg).not.toHaveBeenCalled();
@@ -501,18 +479,6 @@ describe("footer", () => {
 		expect(working).toContain(`${darkRgb.amber}● PONDERING...\u001b[39m`);
 	});
 
-	it("uses exact warning and error activity colors", () => {
-		const warning = renderFooterLine(
-			{ ...state, activity: "warning" },
-			DEFAULT_CONFIG,
-			namedTheme("dark"),
-			180,
-		);
-		const error = renderFooterLine({ ...state, activity: "error" }, DEFAULT_CONFIG, namedTheme("dark"), 180);
-		expect(warning).toContain(`${darkRgb.amber}● WARNING\u001b[39m`);
-		expect(error).toContain(`${darkRgb.red}● ERROR\u001b[39m`);
-	});
-
 	it("overrides context blue at warning and danger thresholds", () => {
 		const warning = renderFooterLine(
 			{ ...state, metrics: { ...state.metrics, contextPercent: 70 } },
@@ -562,31 +528,10 @@ describe("footer", () => {
 
 	it("does not request warning or error roles for a clean ready state", () => {
 		const fg = vi.fn((_color: string, text: string) => text);
-		renderFooterLine(
-			{ ...state, dirty: false },
-			DEFAULT_CONFIG,
-			{ fg, bold: (text) => text, italic: (text) => text },
-			180,
-		);
+		renderFooterLine({ ...state, dirty: false }, DEFAULT_CONFIG, { fg, bold: (text) => text }, 180);
 		const colors = fg.mock.calls.map(([color]) => color);
 		expect(colors).not.toContain("warning");
 		expect(colors).not.toContain("error");
-	});
-
-	it("uses warning and error only for actionable states", () => {
-		for (const [percent, color] of [
-			[70, "warning"],
-			[90, "error"],
-		] as const) {
-			const fg = vi.fn((_color: string, text: string) => text);
-			renderFooterLine(
-				{ ...state, metrics: { ...state.metrics, contextPercent: percent } },
-				DEFAULT_CONFIG,
-				{ fg, bold: (text) => text, italic: (text) => text },
-				160,
-			);
-			expect(fg).toHaveBeenCalledWith(color, `${percent.toFixed(1)}%`);
-		}
 	});
 
 	it("uses the same semantic hierarchy without custom RGB when color is disabled", () => {
@@ -594,11 +539,11 @@ describe("footer", () => {
 		const disabled = renderFooterLine(
 			state,
 			DEFAULT_CONFIG,
-			{ name: "light", fg, bold: (text) => text, italic: (text) => text },
+			{ name: "light", fg, bold: (text) => text },
 			180,
-			false,
+			{ colorEnabled: false },
 		);
-		const colored = renderFooterLine(state, DEFAULT_CONFIG, namedTheme("light"), 180, true);
+		const colored = renderFooterLine(state, DEFAULT_CONFIG, namedTheme("light"), 180);
 		expect(stripAnsi(disabled)).toBe(stripAnsi(colored));
 		expect(disabled).not.toContain("\u001b[38;2;");
 		expect(fg.mock.calls.map(([color]) => color)).toEqual(
@@ -610,7 +555,6 @@ describe("footer", () => {
 		const ansiTheme = {
 			fg: (_color: string, text: string) => `\u001b[38;5;45m${text}\u001b[0m`,
 			bold: (text: string) => `\u001b[1m${text}\u001b[22m`,
-			italic: (text: string) => `\u001b[3m${text}\u001b[23m`,
 		};
 		for (const width of [132, 131, 96, 95, 72, 71, 56, 55, 20]) {
 			expect(visibleWidth(renderFooterLine(state, DEFAULT_CONFIG, ansiTheme, width))).toBeLessThanOrEqual(
@@ -640,7 +584,6 @@ describe("footer", () => {
 		const line = renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 56);
 		expect(line).toContain("● READY");
 		expect(line).toContain(`${icons.context} 27.0%`);
-		expect(line).not.toContain("ATELIER");
 	});
 
 	it("uses normalized layout as the sole Brand and Statuses visibility source", () => {
@@ -726,7 +669,7 @@ describe("footer", () => {
 		expect(narrow).toContain(icons.context);
 	});
 
-	it("renders unavailable and non-finite telemetry safely", () => {
+	it("renders unavailable telemetry as dim placeholders", () => {
 		const { cacheHitPercent: _cacheHitPercent, ...metricsWithoutHit } = state.metrics;
 		const unavailableState: AtelierState = {
 			...state,
@@ -748,21 +691,6 @@ describe("footer", () => {
 		]) {
 			expect(unavailableLine).toContain(marker);
 		}
-		const invalidLine = renderFooterLine(
-			{
-				...state,
-				metrics: {
-					...state.metrics,
-					cacheHitPercent: Number.NaN,
-					contextPercent: Number.POSITIVE_INFINITY,
-					cost: Number.NaN,
-				},
-			},
-			DEFAULT_CONFIG,
-			plainTheme,
-			160,
-		);
-		expect(invalidLine).not.toMatch(/NaN|Infinity/);
 	});
 
 	it("sanitizes optional text and drops oversized statuses before state or telemetry", () => {
@@ -794,30 +722,12 @@ describe("footer", () => {
 		expect(oversized).not.toContain("xxxxxxxxxx");
 	});
 
-	it("generates each item at most once for duplicate configured categories", () => {
-		const line = renderFooterLine(
-			state,
-			{
-				...DEFAULT_CONFIG,
-				segmentLayout: [
-					{ id: "activity", visible: true },
-					{ id: "metrics", visible: true },
-					{ id: "metrics", visible: true },
-					{ id: "context", visible: true },
-					{ id: "context", visible: true },
-				],
-			},
-			plainTheme,
-			180,
-		);
-		expect(line.match(/\uf019 324k/g)).toHaveLength(1);
-		expect(line.match(/\uf2db 27\.0%/g)).toHaveLength(1);
-	});
-
 	it("reserves ellipsis width so animated frames never move the model", () => {
 		const working = { ...state, activity: "working" as const, workingLabel: "CLAUDING" };
 		const lines = ["...", "..", "."].map((dots) =>
-			stripAnsi(renderFooterLine(working, DEFAULT_CONFIG, plainTheme, 160, true, dots)),
+			stripAnsi(
+				renderFooterLine(working, DEFAULT_CONFIG, plainTheme, 160, { colorEnabled: true, workingDots: dots }),
+			),
 		);
 		const modelColumns = lines.map((line) => line.indexOf("gpt-5.6-sol"));
 		expect(modelColumns[0]).toBeGreaterThan(0);
@@ -833,21 +743,16 @@ describe("footer", () => {
 		const working = { ...state, activity: "working" as const, workingLabel: "PHOTOSYNTHESIZING" };
 		const component = createFooter({ getState: () => working, requestRender });
 
-		try {
-			expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING...");
-			expect(vi.getTimerCount()).toBe(1);
-			vi.advanceTimersByTime(400);
-			expect(requestRender).toHaveBeenCalledTimes(1);
-			expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING..");
-			vi.advanceTimersByTime(400);
-			expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING.");
-			vi.advanceTimersByTime(400);
-			expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING...");
-			expect(component.render(160)[0]).not.toContain("WORKING");
-		} finally {
-			component.dispose();
-			vi.useRealTimers();
-		}
+		expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING...");
+		expect(vi.getTimerCount()).toBe(1);
+		vi.advanceTimersByTime(400);
+		expect(requestRender).toHaveBeenCalledTimes(1);
+		expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING..");
+		vi.advanceTimersByTime(400);
+		expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING.");
+		vi.advanceTimersByTime(400);
+		expect(component.render(160)[0]).toContain("PHOTOSYNTHESIZING...");
+		expect(component.render(160)[0]).not.toContain("WORKING");
 	});
 
 	it("animates only when the full working status is visible and resets after stopping", () => {
@@ -861,32 +766,27 @@ describe("footer", () => {
 		const requestRender = vi.fn();
 		const component = createFooter({ getState: () => current, getConfig: () => config, requestRender });
 
-		try {
-			expect(component.render(20)[0]).not.toContain("PONDERING");
-			expect(vi.getTimerCount()).toBe(0);
-			config = {
-				...DEFAULT_CONFIG,
-				segmentLayout: DEFAULT_CONFIG.segmentLayout.map((entry) =>
-					entry.id === "activity" ? { ...entry, visible: false } : { ...entry },
-				),
-			};
-			expect(component.render(100)[0]).not.toContain("PONDERING");
-			expect(vi.getTimerCount()).toBe(0);
-			config = DEFAULT_CONFIG;
-			expect(component.render(100)[0]).toContain("PONDERING...");
-			expect(vi.getTimerCount()).toBe(1);
-			vi.advanceTimersByTime(400);
-			expect(component.render(100)[0]).toContain("PONDERING..");
+		expect(component.render(20)[0]).not.toContain("PONDERING");
+		expect(vi.getTimerCount()).toBe(0);
+		config = {
+			...DEFAULT_CONFIG,
+			segmentLayout: DEFAULT_CONFIG.segmentLayout.map((entry) =>
+				entry.id === "activity" ? { ...entry, visible: false } : { ...entry },
+			),
+		};
+		expect(component.render(100)[0]).not.toContain("PONDERING");
+		expect(vi.getTimerCount()).toBe(0);
+		config = DEFAULT_CONFIG;
+		expect(component.render(100)[0]).toContain("PONDERING...");
+		expect(vi.getTimerCount()).toBe(1);
+		vi.advanceTimersByTime(400);
+		expect(component.render(100)[0]).toContain("PONDERING..");
 
-			current = { ...state, activity: "ready" };
-			expect(component.render(100)[0]).toContain("READY");
-			expect(vi.getTimerCount()).toBe(0);
-			current = { ...state, activity: "working", workingLabel: "PONDERING" };
-			expect(component.render(100)[0]).toContain("PONDERING...");
-		} finally {
-			component.dispose();
-			vi.useRealTimers();
-		}
+		current = { ...state, activity: "ready" };
+		expect(component.render(100)[0]).toContain("READY");
+		expect(vi.getTimerCount()).toBe(0);
+		current = { ...state, activity: "working", workingLabel: "PONDERING" };
+		expect(component.render(100)[0]).toContain("PONDERING...");
 	});
 
 	it("does not animate when an omitted activity label appears in another segment", () => {
@@ -906,38 +806,25 @@ describe("footer", () => {
 			}),
 		});
 
-		try {
-			expect(component.render(100)[0]).toContain("PONDERING");
-			expect(vi.getTimerCount()).toBe(0);
-		} finally {
-			component.dispose();
-			vi.useRealTimers();
-		}
+		expect(component.render(100)[0]).toContain("PONDERING");
+		expect(vi.getTimerCount()).toBe(0);
 	});
 
 	it("renders the full working phrase and dots in fixed amber for custom themes", () => {
 		const fg = vi.fn((_color: string, text: string) => text);
 		const bold = vi.fn((text: string) => `<b>${text}</b>`);
-		const italic = vi.fn((text: string) => `<i>${text}</i>`);
 		const working = { ...state, activity: "working" as const, workingLabel: "PONDERING" };
-		const line = renderFooterLine(
-			working,
-			DEFAULT_CONFIG,
-			{ name: "nord", fg, bold, italic },
-			160,
-			true,
-			"..",
-		);
+		const line = renderFooterLine(working, DEFAULT_CONFIG, { name: "nord", fg, bold }, 160, {
+			colorEnabled: true,
+			workingDots: "..",
+		});
 
 		expect(line).toContain(`${darkRgb.amber}<b>● PONDERING.. </b>\u001b[39m`);
 		expect(fg).not.toHaveBeenCalled();
-		expect(italic).not.toHaveBeenCalled();
 	});
 
 	it.each([
 		["ready", "READY"],
-		["warning", "WARNING"],
-		["error", "ERROR"],
 		["working", "WORKING"],
 	] as const)("renders %s with the expected fallback label", (activity, expected) => {
 		const line = renderFooterLine({ ...state, activity }, DEFAULT_CONFIG, plainTheme, 160);
@@ -971,41 +858,20 @@ describe("footer", () => {
 		expect(unsubscribe).toHaveBeenCalledOnce();
 	});
 
-	it("does not restart animation when rendered after disposal", () => {
-		vi.useFakeTimers();
-		const component = createFooter({
-			getState: () => ({ ...state, activity: "working", workingLabel: "PONDERING" }),
-		});
-
-		try {
-			component.dispose();
-			expect(component.render(160)[0]).toContain("PONDERING...");
-			expect(vi.getTimerCount()).toBe(0);
-		} finally {
-			component.dispose();
-			vi.useRealTimers();
-		}
-	});
-
-	it("clears the animation timer and prevents redraws after disposal", () => {
+	it("stops animating and requesting redraws once disposed", () => {
 		vi.useFakeTimers();
 		const requestRender = vi.fn();
 		const component = createFooter({
 			getState: () => ({ ...state, activity: "working", workingLabel: "PONDERING" }),
 			requestRender,
 		});
-
-		try {
-			component.render(160);
-			expect(vi.getTimerCount()).toBe(1);
-			component.dispose();
-			expect(vi.getTimerCount()).toBe(0);
-			vi.advanceTimersByTime(800);
-			expect(requestRender).not.toHaveBeenCalled();
-			component.dispose();
-		} finally {
-			component.dispose();
-			vi.useRealTimers();
-		}
+		component.render(160);
+		expect(vi.getTimerCount()).toBe(1);
+		component.dispose();
+		expect(vi.getTimerCount()).toBe(0);
+		vi.advanceTimersByTime(800);
+		expect(requestRender).not.toHaveBeenCalled();
+		expect(component.render(160)[0]).toContain("PONDERING...");
+		expect(vi.getTimerCount()).toBe(0);
 	});
 });

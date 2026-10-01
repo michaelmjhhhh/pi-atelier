@@ -2,25 +2,43 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
 	applyDisplayTemplate,
+	cloneLayout,
 	derivePresetIdentity,
+	isDensity,
+	isPresetName,
 	isSegmentId,
 	legacySegmentsToLayout,
 	normalizeSegmentLayout,
 	PRODUCT_SEGMENT_ORDER,
 } from "./display.js";
-import {
-	DEFAULT_CONFIG,
-	type AtelierConfig,
-	type ConfigurationSource,
-	type DisplayLayerState,
-	type DisplayProvenance,
-	type DisplaySettings,
-	type PresetName,
-	type SegmentId,
-	type SegmentLayout,
-	type TemplateName,
-} from "./types.js";
 import { DEFAULT_SIDEBAR_PANEL_LAYOUT, normalizeSidebarPanelLayout } from "./sidebar-panels.js";
+import { errorMessage, isRecord } from "./text.js";
+import type {
+	AtelierConfig,
+	ConfigurationSource,
+	DisplayLayerState,
+	DisplayProvenance,
+	DisplaySettings,
+	PresetName,
+	SegmentId,
+	SegmentLayout,
+	SidebarPanelLayout,
+} from "./types.js";
+
+export const MAX_CURRENCY_DECIMALS = 6;
+
+export const DEFAULT_CONFIG: AtelierConfig = {
+	...applyDisplayTemplate("editorial"),
+	nerdFont: true,
+	shortcut: "f6",
+	contextWarning: 70,
+	contextDanger: 90,
+	currencyDecimals: 3,
+	showSidebarToolNames: false,
+	showSidebarOnStartup: true,
+	sidebarPanelLayout: cloneLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT),
+	completionNotifications: true,
+};
 
 export interface ConfigLoadResult {
 	config: AtelierConfig;
@@ -33,104 +51,63 @@ export interface LoadConfigOptions {
 	userPath: string;
 	projectPath: string;
 	projectTrusted: boolean;
-	session?: Record<string, unknown> | Partial<AtelierConfig>;
+	/** Session layer input; Pi does not persist one, so only direct callers supply it. */
+	session?: unknown;
 }
 
-interface SidebarResolution {
-	layout: AtelierConfig["sidebarPanelLayout"];
-	warnings: string[];
-}
+type Ornament = "none" | "restrained";
+const isOrnament = (value: unknown): value is Ornament => value === "none" || value === "restrained";
 
-function cloneSidebarLayout(
-	layout: AtelierConfig["sidebarPanelLayout"],
-): AtelierConfig["sidebarPanelLayout"] {
-	return layout.map((entry) => ({ ...entry }));
-}
+/** Settings that only the global User layer may change. */
+const USER_ONLY_KEYS: ReadonlySet<string> = new Set([
+	"showSidebarOnStartup",
+	"completionNotifications",
+	"nerdFont",
+]);
 
-function parseSidebarLayout(
-	value: unknown,
-	warnings: string[],
-): AtelierConfig["sidebarPanelLayout"] | undefined {
+const isEnoent = (error: unknown): boolean => (error as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
+
+const invalidEnum = (name: string, value: unknown): string =>
+	typeof value === "string" ? `Unknown ${name}: ${value}` : `${name} must be a string`;
+
+function parseSidebarLayout(value: unknown, warnings: string[]): SidebarPanelLayout | undefined {
 	if (!Array.isArray(value)) {
 		warnings.push("sidebarPanelLayout must be an array");
 		return undefined;
 	}
-	const entries: Array<{ id: (typeof DEFAULT_SIDEBAR_PANEL_LAYOUT)[number]["id"]; visible: boolean }> = [];
+	const entries: { id: unknown; visible: boolean }[] = [];
 	for (const item of value) {
 		if (!isRecord(item) || typeof item.id !== "string") {
 			warnings.push("Ignoring malformed sidebarPanelLayout entry");
 			continue;
 		}
-		const visible = item.visible;
-		if (typeof visible !== "boolean") {
+		if (typeof item.visible !== "boolean") {
 			warnings.push(`sidebar panel visibility for ${item.id} must be boolean; using hidden`);
 		}
-		entries.push({
-			id: item.id as (typeof DEFAULT_SIDEBAR_PANEL_LAYOUT)[number]["id"],
-			visible: visible === true,
-		});
+		entries.push({ id: item.id, visible: item.visible === true });
 	}
 	return normalizeSidebarPanelLayout(entries, warnings);
 }
 
-function setSidebarVisibility(
-	layout: AtelierConfig["sidebarPanelLayout"],
-	id: "agent" | "todos",
-	visible: boolean,
-): void {
-	const entry = layout.find((item) => item.id === id);
-	if (entry) entry.visible = visible;
-}
-
-function resolveSidebarLayout(
-	layers: DisplayLayerState,
-	base: AtelierConfig = DEFAULT_CONFIG,
-): SidebarResolution {
+function resolveSidebarLayout(layers: DisplayLayerState): { layout: SidebarPanelLayout; warnings: string[] } {
 	const warnings: string[] = [];
 	const user = layers.user;
 	if (user && "sidebarPanelLayout" in user) {
 		const parsed = parseSidebarLayout(user.sidebarPanelLayout, warnings);
-		return {
-			layout: parsed ?? cloneSidebarLayout(base.sidebarPanelLayout),
-			warnings,
-		};
+		return { layout: parsed ?? cloneLayout(DEFAULT_CONFIG.sidebarPanelLayout), warnings };
 	}
-	const layout = cloneSidebarLayout(base.sidebarPanelLayout);
+	const layout = cloneLayout(DEFAULT_CONFIG.sidebarPanelLayout);
 	// Legacy Agent and TODOS visibility are global-user-only compatibility inputs.
 	// Project/session values are intentionally ignored.
-	if (user && typeof user.showSidebarAgent === "boolean")
-		setSidebarVisibility(layout, "agent", user.showSidebarAgent);
-	if (user && typeof user.showSidebarTodos === "boolean")
-		setSidebarVisibility(layout, "todos", user.showSidebarTodos);
+	for (const [key, id] of [
+		["showSidebarAgent", "agent"],
+		["showSidebarTodos", "todos"],
+	] as const) {
+		const visible = user?.[key];
+		const entry = layout.find((item) => item.id === id);
+		if (typeof visible === "boolean" && entry) entry.visible = visible;
+	}
 	return { layout, warnings };
-}
-
-const presets = new Set<PresetName>(["editorial", "minimal", "classic", "custom"]);
-const densities = new Set(["comfortable", "compact"]);
-const ornaments = new Set(["none", "restrained"]);
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
-const record = (value: unknown): Record<string, unknown> | undefined => (isRecord(value) ? value : undefined);
-const cloneConfig = (config: AtelierConfig): AtelierConfig => ({
-	...config,
-	segmentLayout: config.segmentLayout.map((entry) => ({ ...entry })),
-	sidebarPanelLayout: cloneSidebarLayout(config.sidebarPanelLayout),
-});
-
-interface CompatibilityState {
-	preset: PresetName;
-	ornament: "none" | "restrained";
-	brandListed: boolean;
-	statusesListed: boolean;
-	showStatuses: boolean;
-}
-
-interface DisplayResolution {
-	display: DisplaySettings;
-	provenance: DisplayProvenance;
-	warnings: string[];
 }
 
 function parsePersistedLayout(value: unknown, warnings: string[]): SegmentLayout | undefined {
@@ -154,12 +131,10 @@ function parsePersistedLayout(value: unknown, warnings: string[]): SegmentLayout
 			continue;
 		}
 		seen.add(item.id);
-		let visible = item.visible;
-		if (typeof visible !== "boolean") {
+		if (typeof item.visible !== "boolean") {
 			warnings.push(`segmentLayout visibility for ${item.id} must be boolean; using hidden`);
-			visible = false;
 		}
-		entries.push({ id: item.id, visible: visible === true });
+		entries.push({ id: item.id, visible: item.visible === true });
 	}
 	return normalizeSegmentLayout(entries);
 }
@@ -169,41 +144,45 @@ function parseLegacySegments(value: unknown, warnings: string[]): SegmentLayout 
 		warnings.push("segments must be an array");
 		return undefined;
 	}
-	const seen = new Set<SegmentId>();
-	const valid: SegmentId[] = [];
+	const valid = new Set<SegmentId>();
 	for (const item of value) {
-		if (!isSegmentId(item)) {
-			warnings.push(`Unknown segment: ${String(item)}`);
-			continue;
-		}
-		if (seen.has(item)) {
-			warnings.push(`Ignoring duplicate segment: ${item}`);
-			continue;
-		}
-		seen.add(item);
-		valid.push(item);
+		if (!isSegmentId(item)) warnings.push(`Unknown segment: ${String(item)}`);
+		else if (valid.has(item)) warnings.push(`Ignoring duplicate segment: ${item}`);
+		else valid.add(item);
 	}
-	return legacySegmentsToLayout(valid);
+	return legacySegmentsToLayout([...valid]);
 }
 
-export function resolveDisplayLayers(
-	layers: DisplayLayerState,
-	base: DisplaySettings = DEFAULT_CONFIG,
-): DisplayResolution {
+/**
+ * Legacy `segments`, `ornament`, and `showExtensionStatuses` inputs predate
+ * `segmentLayout`. They are translated only while no authoritative layout exists.
+ */
+interface CompatibilityState {
+	preset: PresetName;
+	ornament: Ornament;
+	brandListed: boolean;
+	statusesListed: boolean;
+	showStatuses: boolean;
+}
+
+export function resolveDisplayLayers(layers: DisplayLayerState): {
+	display: DisplaySettings;
+	provenance: DisplayProvenance;
+	warnings: string[];
+} {
 	let display: DisplaySettings = {
-		preset: base.preset,
-		density: base.density,
-		segmentLayout: base.segmentLayout.map((entry) => ({ ...entry })),
+		preset: DEFAULT_CONFIG.preset,
+		density: DEFAULT_CONFIG.density,
+		segmentLayout: cloneLayout(DEFAULT_CONFIG.segmentLayout),
 	};
-	const visibility = Object.fromEntries(PRODUCT_SEGMENT_ORDER.map((id) => [id, "product"])) as Record<
-		SegmentId,
-		ConfigurationSource
-	>;
 	const provenance: DisplayProvenance = {
 		preset: "product",
 		density: "product",
 		order: "product",
-		visibility,
+		visibility: Object.fromEntries(PRODUCT_SEGMENT_ORDER.map((id) => [id, "product"])) as Record<
+			SegmentId,
+			ConfigurationSource
+		>,
 	};
 	const compatibility: CompatibilityState = {
 		preset: "editorial",
@@ -213,6 +192,10 @@ export function resolveDisplayLayers(
 		showStatuses: true,
 	};
 	const warnings: string[] = [];
+	const setVisibility = (id: SegmentId, visible: boolean): void => {
+		const entry = display.segmentLayout.find((item) => item.id === id);
+		if (entry) entry.visible = visible;
+	};
 
 	for (const [source, input] of [
 		["user", layers.user],
@@ -220,99 +203,82 @@ export function resolveDisplayLayers(
 		["session", layers.session],
 	] as const) {
 		if (!input) continue;
+		const markAllVisibility = (): void => {
+			for (const id of PRODUCT_SEGMENT_ORDER) provenance.visibility[id] = source;
+		};
+		const applyLayout = (layout: SegmentLayout): void => {
+			display.segmentLayout = layout;
+			provenance.order = source;
+			markAllVisibility();
+			compatibility.brandListed = layout.find((entry) => entry.id === "brand")?.visible ?? false;
+			compatibility.statusesListed = layout.find((entry) => entry.id === "statuses")?.visible ?? false;
+		};
 		let changedTemplateField = false;
 		let suppliedPreset = false;
+
 		if ("preset" in input) {
-			if (typeof input.preset === "string" && presets.has(input.preset as PresetName)) {
-				compatibility.preset = input.preset as PresetName;
-				display.preset = input.preset as PresetName;
+			if (isPresetName(input.preset)) {
+				compatibility.preset = input.preset;
+				display.preset = input.preset;
 				provenance.preset = source;
 				suppliedPreset = true;
 				if (input.preset !== "custom") {
-					display = applyDisplayTemplate(input.preset as TemplateName);
+					display = applyDisplayTemplate(input.preset);
 					provenance.density = source;
 					provenance.order = source;
-					for (const id of PRODUCT_SEGMENT_ORDER) provenance.visibility[id] = source;
+					markAllVisibility();
 					changedTemplateField = true;
 				}
-			} else
-				warnings.push(
-					typeof input.preset === "string" ? `Unknown preset: ${input.preset}` : "preset must be a string",
-				);
+			} else warnings.push(invalidEnum("preset", input.preset));
 		}
 		if ("density" in input) {
-			if (typeof input.density === "string" && densities.has(input.density)) {
-				display.density = input.density as AtelierConfig["density"];
+			if (isDensity(input.density)) {
+				display.density = input.density;
 				provenance.density = source;
 				changedTemplateField = true;
-			} else
-				warnings.push(
-					typeof input.density === "string"
-						? `Unknown density: ${input.density}`
-						: "density must be a string",
-				);
+			} else warnings.push(invalidEnum("density", input.density));
 		}
 
-		let authoritative = false;
-		let legacySegmentsApplied = false;
-		if ("segmentLayout" in input) {
-			const parsed = parsePersistedLayout(input.segmentLayout, warnings);
-			if (parsed) {
-				display.segmentLayout = parsed;
-				provenance.order = source;
-				for (const id of PRODUCT_SEGMENT_ORDER) provenance.visibility[id] = source;
-				compatibility.brandListed = parsed.find((entry) => entry.id === "brand")?.visible ?? false;
-				compatibility.statusesListed = parsed.find((entry) => entry.id === "statuses")?.visible ?? false;
-				authoritative = true;
-				changedTemplateField = true;
+		const layout = "segmentLayout" in input ? parsePersistedLayout(input.segmentLayout, warnings) : undefined;
+		if (layout) {
+			applyLayout(layout);
+			changedTemplateField = true;
+		} else {
+			let legacySegmentsApplied = false;
+			if ("segments" in input) {
+				const legacy = parseLegacySegments(input.segments, warnings);
+				if (legacy) {
+					applyLayout(legacy);
+					changedTemplateField = true;
+					legacySegmentsApplied = true;
+				}
 			}
-		}
-		if (!authoritative && "segments" in input) {
-			const parsed = parseLegacySegments(input.segments, warnings);
-			if (parsed) {
-				display.segmentLayout = parsed;
-				provenance.order = source;
-				for (const id of PRODUCT_SEGMENT_ORDER) provenance.visibility[id] = source;
-				compatibility.brandListed = parsed.find((entry) => entry.id === "brand")?.visible ?? false;
-				compatibility.statusesListed = parsed.find((entry) => entry.id === "statuses")?.visible ?? false;
-				changedTemplateField = true;
-				legacySegmentsApplied = true;
-			}
-		}
-
-		if (!authoritative) {
-			let brandCompatibilityChanged = suppliedPreset || legacySegmentsApplied;
+			let brandChanged = suppliedPreset || legacySegmentsApplied;
 			if ("ornament" in input) {
-				if (typeof input.ornament === "string" && ornaments.has(input.ornament)) {
-					compatibility.ornament = input.ornament as CompatibilityState["ornament"];
-					brandCompatibilityChanged = true;
-				} else
-					warnings.push(
-						typeof input.ornament === "string"
-							? `Unknown ornament: ${input.ornament}`
-							: "ornament must be a string",
-					);
+				if (isOrnament(input.ornament)) {
+					compatibility.ornament = input.ornament;
+					brandChanged = true;
+				} else warnings.push(invalidEnum("ornament", input.ornament));
 			}
-			if (brandCompatibilityChanged) {
-				const brand = display.segmentLayout.find((entry) => entry.id === "brand");
-				if (brand)
-					brand.visible =
-						compatibility.brandListed &&
+			if (brandChanged) {
+				setVisibility(
+					"brand",
+					compatibility.brandListed &&
 						compatibility.preset !== "editorial" &&
-						compatibility.ornament === "restrained";
+						compatibility.ornament === "restrained",
+				);
 				provenance.visibility.brand = source;
 				changedTemplateField = true;
 			}
-			let statusesCompatibilityChanged = legacySegmentsApplied;
+			let statusesChanged = legacySegmentsApplied;
 			if ("showExtensionStatuses" in input) {
 				if (typeof input.showExtensionStatuses === "boolean") {
 					compatibility.showStatuses = input.showExtensionStatuses;
-					statusesCompatibilityChanged = true;
+					statusesChanged = true;
 				} else warnings.push("showExtensionStatuses must be boolean");
 			}
-			if (statusesCompatibilityChanged) {
-				const statuses = display.segmentLayout.find((entry) => entry.id === "statuses");
-				if (statuses) statuses.visible = compatibility.statusesListed && compatibility.showStatuses;
+			if (statusesChanged) {
+				setVisibility("statuses", compatibility.statusesListed && compatibility.showStatuses);
 				provenance.visibility.statuses = source;
 				changedTemplateField = true;
 			}
@@ -324,7 +290,7 @@ export function resolveDisplayLayers(
 			if (changedTemplateField) provenance.preset = source;
 		}
 	}
-	return { display, provenance, warnings: [...new Set(warnings)] };
+	return { display, provenance, warnings };
 }
 
 function applyNonDisplay(
@@ -344,25 +310,17 @@ function applyNonDisplay(
 			config.shortcut = shortcut.toLowerCase() === "alt+a" ? DEFAULT_CONFIG.shortcut : shortcut;
 		} else warnings.push("Shortcut cannot be empty");
 	} else if ("shortcut" in input) warnings.push("shortcut must be a string");
-	const invalidThresholdType =
-		("contextWarning" in input && typeof input.contextWarning !== "number") ||
-		("contextDanger" in input && typeof input.contextDanger !== "number");
-	const warning = typeof input.contextWarning === "number" ? input.contextWarning : config.contextWarning;
-	const danger = typeof input.contextDanger === "number" ? input.contextDanger : config.contextDanger;
-	if (invalidThresholdType) warnings.push("context thresholds must be numbers");
-	else if (warning >= 0 && warning < danger && danger <= 100) {
-		config.contextWarning = warning;
-		config.contextDanger = danger;
-	} else if ("contextWarning" in input || "contextDanger" in input)
-		warnings.push("Invalid context threshold ordering; expected 0 <= warning < danger <= 100");
+
+	applyContextThresholds(input, config, warnings);
+
 	if (typeof input.currencyDecimals === "number") {
 		if (
 			Number.isInteger(input.currencyDecimals) &&
 			input.currencyDecimals >= 0 &&
-			input.currencyDecimals <= 6
+			input.currencyDecimals <= MAX_CURRENCY_DECIMALS
 		)
 			config.currencyDecimals = input.currencyDecimals;
-		else warnings.push("currencyDecimals must be an integer from 0 through 6");
+		else warnings.push(`currencyDecimals must be an integer from 0 through ${MAX_CURRENCY_DECIMALS}`);
 	}
 	for (const key of [
 		"showSidebarToolNames",
@@ -370,12 +328,9 @@ function applyNonDisplay(
 		"completionNotifications",
 		"nerdFont",
 	] as const) {
-		if (typeof input[key] === "boolean") {
-			if (
-				userLayer ||
-				(key !== "showSidebarOnStartup" && key !== "completionNotifications" && key !== "nerdFont")
-			)
-				config[key] = input[key];
+		const value = input[key];
+		if (typeof value === "boolean") {
+			if (userLayer || !USER_ONLY_KEYS.has(key)) config[key] = value;
 		} else if (key in input) warnings.push(`${key} must be boolean`);
 	}
 	for (const key of ["showSidebarAgent", "showSidebarTodos"] as const) {
@@ -383,21 +338,49 @@ function applyNonDisplay(
 	}
 }
 
+function applyContextThresholds(
+	input: Record<string, unknown>,
+	config: AtelierConfig,
+	warnings: string[],
+): void {
+	const hasWarning = "contextWarning" in input;
+	const hasDanger = "contextDanger" in input;
+	if (!hasWarning && !hasDanger) return;
+	if (
+		(hasWarning && typeof input.contextWarning !== "number") ||
+		(hasDanger && typeof input.contextDanger !== "number")
+	) {
+		warnings.push("context thresholds must be numbers");
+		return;
+	}
+	const warning = typeof input.contextWarning === "number" ? input.contextWarning : config.contextWarning;
+	const danger = typeof input.contextDanger === "number" ? input.contextDanger : config.contextDanger;
+	if (warning >= 0 && warning < danger && danger <= 100) {
+		config.contextWarning = warning;
+		config.contextDanger = danger;
+	} else warnings.push("Invalid context threshold ordering; expected 0 <= warning < danger <= 100");
+}
+
 /** Resolve both file-backed and direct configuration through the same layer rules. */
-function resolveConfig(
-	input: { user?: unknown; project?: unknown; session?: unknown },
-	base: AtelierConfig = DEFAULT_CONFIG,
-): ConfigLoadResult {
-	const config = cloneConfig(base);
+export function resolveConfig(input: {
+	user?: unknown;
+	project?: unknown;
+	session?: unknown;
+}): ConfigLoadResult {
+	const config: AtelierConfig = {
+		...DEFAULT_CONFIG,
+		segmentLayout: cloneLayout(DEFAULT_CONFIG.segmentLayout),
+		sidebarPanelLayout: cloneLayout(DEFAULT_CONFIG.sidebarPanelLayout),
+	};
 	const warnings: string[] = [];
 	const displayLayers: DisplayLayerState = {};
 	for (const source of ["user", "project", "session"] as const) {
-		applyNonDisplay(input[source], config, warnings, source === "user");
-		const layer = record(input[source]);
-		if (layer) displayLayers[source] = layer;
+		const layer = input[source];
+		applyNonDisplay(layer, config, warnings, source === "user");
+		if (isRecord(layer)) displayLayers[source] = layer;
 	}
-	const resolved = resolveDisplayLayers(displayLayers, base);
-	const sidebar = resolveSidebarLayout(displayLayers, base);
+	const resolved = resolveDisplayLayers(displayLayers);
+	const sidebar = resolveSidebarLayout(displayLayers);
 	Object.assign(config, resolved.display, { sidebarPanelLayout: sidebar.layout });
 	return {
 		config,
@@ -407,16 +390,12 @@ function resolveConfig(
 	};
 }
 
-export function validateConfig(input: unknown, base: AtelierConfig = DEFAULT_CONFIG): ConfigLoadResult {
-	return resolveConfig({ user: input }, base);
-}
-
 async function readJson(path: string): Promise<{ value?: unknown; warning?: string }> {
 	try {
 		return { value: JSON.parse(await readFile(path, "utf8")) };
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
-		return { warning: `Cannot load ${path}: ${error instanceof Error ? error.message : String(error)}` };
+		if (isEnoent(error)) return {};
+		return { warning: `Cannot load ${path}: ${errorMessage(error)}` };
 	}
 }
 
@@ -424,14 +403,8 @@ export async function loadConfig(options: LoadConfigOptions): Promise<ConfigLoad
 	const user = await readJson(options.userPath);
 	const project = options.projectTrusted ? await readJson(options.projectPath) : {};
 	const resolved = resolveConfig({ user: user.value, project: project.value, session: options.session });
-	return {
-		...resolved,
-		warnings: [
-			...new Set(
-				[user.warning, project.warning, ...resolved.warnings].filter((item): item is string => !!item),
-			),
-		],
-	};
+	const fileWarnings = [user.warning, project.warning].filter((item): item is string => item !== undefined);
+	return { ...resolved, warnings: [...fileWarnings, ...resolved.warnings] };
 }
 
 export async function saveUserConfigPatch(path: string, patch: Partial<AtelierConfig>): Promise<void> {
@@ -441,10 +414,11 @@ export async function saveUserConfigPatch(path: string, patch: Partial<AtelierCo
 		if (!isRecord(parsed)) throw new Error("User configuration must be a JSON object");
 		current = parsed;
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		if (!isEnoent(error)) throw error;
 	}
 	await writeJsonAtomic(path, { ...current, ...patch });
 }
+
 async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
 	await mkdir(dirname(path), { recursive: true });
 	const temporaryPath = `${path}.${process.pid}.tmp`;

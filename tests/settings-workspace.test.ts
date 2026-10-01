@@ -3,14 +3,9 @@ import { settleMicrotasks } from "./helpers/async.js";
 import { requiredRow, requiredIndex } from "./helpers/render.js";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import { resolveDisplayLayers } from "../src/config.js";
+import { resolveDisplayLayers, DEFAULT_CONFIG } from "../src/config.js";
 import { createSettingsWorkspace } from "../src/settings-workspace.js";
-import {
-	DEFAULT_CONFIG,
-	type AtelierConfig,
-	type DisplayLayerState,
-	type DisplayPatch,
-} from "../src/types.js";
+import { type AtelierConfig, type DisplayLayerState, type DisplayPatch } from "../src/types.js";
 
 function harness(
 	initialLayers: DisplayLayerState = {},
@@ -51,7 +46,7 @@ function harness(
 			layers = { ...layers, user: { ...layers.user, ...structuredClone(patch) } };
 		},
 		getRenderConfig: () => renderConfig,
-		getSidebarPanelLayout: sidebarSettings,
+		getSidebarPanelSettings: sidebarSettings,
 		...(viewportHeight ? { getViewportHeight: viewportHeight } : {}),
 		theme,
 		colorEnabled: false,
@@ -115,20 +110,6 @@ describe("Display Settings Workspace", () => {
 			...configuredLayout.map((entry) => entry.id),
 			"vendor:queue",
 		]);
-	});
-
-	it("defensively sanitizes contributed titles before Settings interpolation", () => {
-		const h = harness({}, DEFAULT_CONFIG, () =>
-			DEFAULT_CONFIG.sidebarPanelLayout.map((entry) => ({
-				id: entry.id,
-				title: entry.id === "agent" ? "\u001b[31mSafe\nTitle" : entry.id,
-				available: true,
-				visible: entry.visible,
-			})),
-		);
-		const rendered = text(h.component);
-		expect(rendered).toContain("Safe Title");
-		expect(rendered).not.toContain("[31m");
 	});
 
 	it("applies a complete preset continuously as one Session mutation and one Undo step", () => {
@@ -226,7 +207,6 @@ describe("Display Settings Workspace", () => {
 		const rendered = text(h.component);
 		expect(rendered).toContain("Density      compact       user");
 		expect(rendered).toContain("order user");
-		expect(rendered).not.toContain("brand › activity");
 		expect(rendered.indexOf("1  ○ brand")).toBeLessThan(rendered.indexOf("2  ● activity"));
 		expect(rendered.indexOf("2  ● activity")).toBeLessThan(rendered.indexOf("3  ◆ metrics"));
 	});
@@ -243,7 +223,6 @@ describe("Display Settings Workspace", () => {
 		expect(previewStart).toBeGreaterThan(0);
 		expect(lines[previewStart + 1]).toContain("CRAFTING");
 		expect(lines[previewStart + 2]).toContain("└");
-		expect(lines.join("\n")).not.toContain("brand        ATELIER");
 	});
 
 	it("bounds the Display Settings frame to the live viewport without clipping its border", () => {

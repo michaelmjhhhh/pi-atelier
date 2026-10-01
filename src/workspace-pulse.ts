@@ -1,8 +1,16 @@
 import { existsSync } from "node:fs";
 import nodePath from "node:path";
+import type { ExecOptions, ExecResult } from "@earendil-works/pi-coding-agent";
 import { toDisplayPath } from "./display-path.js";
 
-export interface WorkspacePulseSnapshot {
+const GIT_TIMEOUT_MS = 2_000;
+/** Git's well-known empty tree, the diff baseline for a repository without commits. */
+const EMPTY_TREE_HASH = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+/** Result reported for a command skipped because inspection was cancelled. */
+export const SKIPPED_EXEC_RESULT: ExecResult = { stdout: "", stderr: "", code: 1, killed: true };
+
+interface WorkspacePulseSnapshot {
 	trackedFiles: number;
 	untrackedFiles: number;
 	linesAdded: number;
@@ -24,20 +32,9 @@ export type WorkspacePulseInspection =
 	| { kind: "not-repo" }
 	| { kind: "unavailable" };
 
-interface ExecResult {
-	stdout: string;
-	stderr: string;
-	code: number;
-	killed: boolean;
-}
+type WorkspacePulseExec = (command: string, args: string[], options?: ExecOptions) => Promise<ExecResult>;
 
-type WorkspacePulseExec = (
-	command: string,
-	args: string[],
-	options?: { cwd?: string; timeout?: number; signal?: AbortSignal },
-) => Promise<ExecResult>;
-
-export interface InspectWorkspacePulseOptions {
+interface InspectWorkspacePulseOptions {
 	exec: WorkspacePulseExec;
 	cwd: string;
 	signal?: AbortSignal;
@@ -50,7 +47,7 @@ export interface WorkspacePulseRefresh {
 	dispose(): void;
 }
 
-export interface WorkspacePulseRefreshOptions {
+interface WorkspacePulseRefreshOptions {
 	inspect(signal: AbortSignal): Promise<WorkspacePulseInspection>;
 	publish(inspection: WorkspacePulseInspection): void;
 	delayMs?: number;
@@ -77,7 +74,7 @@ function waitForInspection(running: Promise<void>, signal: AbortSignal): Promise
 
 /** Owns coalescing, serialization, and freshness for Workspace Pulse inspections. */
 export function createWorkspacePulseRefresh(options: WorkspacePulseRefreshOptions): WorkspacePulseRefresh {
-	const delayMs = Math.max(0, Math.trunc(options.delayMs ?? 250));
+	const delayMs = options.delayMs ?? 250;
 	let disposed = false;
 	let enabled = true;
 	let lifetime = new AbortController();
@@ -108,14 +105,11 @@ export function createWorkspacePulseRefresh(options: WorkspacePulseRefreshOption
 			options.publish(inspection);
 		})();
 		inFlight = running;
-		void running.then(
-			() => {
-				if (inFlight === running) inFlight = undefined;
-			},
-			() => {
-				if (inFlight === running) inFlight = undefined;
-			},
-		);
+		// Clear on either outcome without creating an unhandled rejection like `.finally()` would.
+		const clear = (): void => {
+			if (inFlight === running) inFlight = undefined;
+		};
+		void running.then(clear, clear);
 		return running;
 	};
 
@@ -136,7 +130,7 @@ export function createWorkspacePulseRefresh(options: WorkspacePulseRefreshOption
 				timer = undefined;
 				void runScheduled(version, current);
 			}, delayMs);
-			timer.unref?.();
+			timer.unref();
 		},
 		async flush() {
 			const current = lifetime;
@@ -265,20 +259,16 @@ function parseNumstat(
 			binaryFiles += 1;
 			continue;
 		}
-		const addedCount = Number(added);
-		const removedCount = Number(removed);
-		if (Number.isFinite(addedCount)) linesAdded += Math.max(0, Math.trunc(addedCount));
-		if (Number.isFinite(removedCount)) linesRemoved += Math.max(0, Math.trunc(removedCount));
+		linesAdded += Number.parseInt(added, 10) || 0;
+		linesRemoved += Number.parseInt(removed, 10) || 0;
 	}
 	return { linesAdded, linesRemoved, binaryFiles };
 }
 
-async function inspectWorkspacePulseUnchecked(
-	options: InspectWorkspacePulseOptions,
-): Promise<WorkspacePulseInspection> {
+async function inspectWorkspace(options: InspectWorkspacePulseOptions): Promise<WorkspacePulseInspection> {
 	const discovery = await options.exec("git", ["rev-parse", "--is-inside-work-tree", "--show-toplevel"], {
 		cwd: options.cwd,
-		timeout: 2_000,
+		timeout: GIT_TIMEOUT_MS,
 	});
 	if (discovery.code !== 0 || discovery.killed) {
 		const explicitNotRepo = /not a git repository/i.test(`${discovery.stderr}\n${discovery.stdout}`);
@@ -293,8 +283,9 @@ async function inspectWorkspacePulseUnchecked(
 	const status = await options.exec(
 		"git",
 		["-C", root, "status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"],
-		{ timeout: 2_000 },
+		{ timeout: GIT_TIMEOUT_MS },
 	);
+	// A command already running when inspection is cancelled still completes normally.
 	if (status.code !== 0 || status.killed || options.signal?.aborted) return { kind: "unavailable" };
 
 	const parsedStatus = parseStatus(status.stdout);
@@ -303,21 +294,16 @@ async function inspectWorkspacePulseUnchecked(
 	// Untracked files have no HEAD diff. Conflicts and changed submodules count as tracked.
 	if (parsedStatus.trackedFiles > 0) {
 		const head = await options.exec("git", ["-C", root, "rev-parse", "--verify", "HEAD^{tree}"], {
-			timeout: 2_000,
+			timeout: GIT_TIMEOUT_MS,
 		});
 		if (head.killed) return { kind: "unavailable" };
-		const baseline =
-			head.code === 0
-				? head.stdout.trim()
-				: parsedStatus.unborn
-					? "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-					: "";
+		const baseline = head.code === 0 ? head.stdout.trim() : parsedStatus.unborn ? EMPTY_TREE_HASH : "";
 		if (!baseline) return { kind: "unavailable" };
 
 		const diff = await options.exec(
 			"git",
 			["-C", root, "diff", "--numstat", "-z", "--find-renames", baseline, "--"],
-			{ timeout: 2_000 },
+			{ timeout: GIT_TIMEOUT_MS },
 		);
 		if (diff.code !== 0 || diff.killed) return { kind: "unavailable" };
 
@@ -327,7 +313,7 @@ async function inspectWorkspacePulseUnchecked(
 	return {
 		kind: "available",
 		root,
-		relativeCwd: toDisplayPath(nodePath.relative(root, options.cwd), nodePath.sep),
+		relativeCwd: toDisplayPath(nodePath.relative(root, options.cwd)),
 		...(parsedStatus.branch ? { branch: parsedStatus.branch } : {}),
 		snapshot: {
 			trackedFiles: parsedStatus.trackedFiles,
@@ -343,11 +329,11 @@ export async function inspectWorkspacePulse(
 	options: InspectWorkspacePulseOptions,
 ): Promise<WorkspacePulseInspection> {
 	try {
-		return await inspectWorkspacePulseUnchecked({
+		return await inspectWorkspace({
 			...options,
 			exec: (command, args, execOptions) =>
 				options.signal?.aborted
-					? Promise.resolve({ stdout: "", stderr: "", code: 1, killed: true })
+					? Promise.resolve(SKIPPED_EXEC_RESULT)
 					: options.exec(command, args, {
 							...execOptions,
 							...(options.signal ? { signal: options.signal } : {}),

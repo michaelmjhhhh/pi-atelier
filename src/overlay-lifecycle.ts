@@ -1,5 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { OverlayOptions, TUI } from "@earendil-works/pi-tui";
+import type { Component, OverlayOptions, TUI } from "@earendil-works/pi-tui";
 
 /** Session lifetime shared by every interactive overlay owned by the extension. */
 export interface OverlayLifetime {
@@ -7,11 +7,13 @@ export interface OverlayLifetime {
 	register(cancel: () => void): () => void;
 }
 
-interface LifecycleOverlayComponent {
-	render(width: number): string[];
-	invalidate(): void;
-	handleInput(data: string): void;
-}
+/** Without a lifetime an overlay is unbound and stays active. */
+export const isLifetimeActive = (lifetime: OverlayLifetime | undefined): boolean =>
+	lifetime?.isActive() ?? true;
+
+type LifecycleOverlayComponent = Component & { handleInput(data: string): void };
+
+const INERT_COMPONENT: LifecycleOverlayComponent = { render: () => [], invalidate() {}, handleInput() {} };
 
 /** Controls the lifetime of a mounted overlay binding. */
 interface RetirableLifecycleOverlayComponent extends LifecycleOverlayComponent {
@@ -37,7 +39,7 @@ function createLifecycleOverlayComponent(
 	const isActive = (): boolean => {
 		if (inert) return false;
 		try {
-			return lifetime?.isActive() ?? true;
+			return isLifetimeActive(lifetime);
 		} catch {
 			return false;
 		}
@@ -118,7 +120,7 @@ export async function openLifecycleOverlay<T>(
 		margin: 1,
 	},
 ): Promise<T | undefined> {
-	const isActive = (): boolean => lifetime?.isActive() ?? true;
+	const isActive = (): boolean => isLifetimeActive(lifetime);
 	if (!isActive()) return undefined;
 	let resolve!: (value: T | undefined) => void;
 	const settlement = new Promise<T | undefined>((done) => {
@@ -142,7 +144,7 @@ export async function openLifecycleOverlay<T>(
 				};
 				if (!isActive()) {
 					finish();
-					return { render: () => [], invalidate() {}, handleInput() {} };
+					return INERT_COMPONENT;
 				}
 				binding = createLifecycleOverlayComponent(lifetime, create(tui, theme, finish), () => finish());
 				// Creation or lifetime registration can complete synchronously, before binding is assigned.

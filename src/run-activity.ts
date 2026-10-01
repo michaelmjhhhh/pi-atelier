@@ -1,15 +1,15 @@
 import nodePath from "node:path";
+import type { ToolExecutionEndEvent, ToolExecutionStartEvent } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { toDisplayPath } from "./display-path.js";
+import { displayHomePath, displayPathWithin } from "./display-path.js";
+import { isRecord, PLACEHOLDER, sanitizeInline } from "./text.js";
 import type { DisplayValue, ResponsePerformance } from "./types.js";
-
-export type ToolActivityStatus = "running" | "done" | "failed";
 
 export interface ToolActivity {
 	id: string;
 	name: string;
 	summary: string;
-	status: ToolActivityStatus;
+	status: "running" | "done" | "failed";
 	startedAt: number;
 	durationMs?: number;
 }
@@ -26,31 +26,16 @@ export interface RunActivitySnapshot {
 	failedCount: number;
 }
 
-export interface ToolExecutionStartEvent {
-	type: "tool_execution_start";
-	toolCallId: string;
-	toolName: string;
-	args: unknown;
-}
-
-export interface ToolExecutionEndEvent {
-	type: "tool_execution_end";
-	toolCallId: string;
-	toolName: string;
-	result: unknown;
-	isError: boolean;
-}
-
 export interface RunActivityTracker {
-	startRun(now?: number): void;
+	startRun(): void;
 	startTurn(turnIndex: number): void;
-	startResponse(now?: number): void;
+	startResponse(): void;
 	resetResponse(): void;
-	updateResponseEstimate(estimatedOutputTokens: number, now?: number): void;
-	finishResponse(outputTokens: number, now?: number): void;
-	startTool(event: ToolExecutionStartEvent, now?: number): void;
-	finishTool(event: ToolExecutionEndEvent, now?: number): void;
-	settle(now?: number): void;
+	updateResponseEstimate(estimatedOutputTokens: number): void;
+	finishResponse(outputTokens: number): void;
+	startTool(event: ToolExecutionStartEvent): void;
+	finishTool(event: ToolExecutionEndEvent): void;
+	settle(): void;
 	reset(): void;
 	isRunning(): boolean;
 	getSnapshot(): RunActivitySnapshot;
@@ -78,22 +63,19 @@ export function responsePerformanceValues(performance?: ResponsePerformance): {
 } {
 	const ttftMs = performance?.ttftMs;
 	const tokensPerSecond = performance?.tokensPerSecond;
-	const ttftAvailable = ttftMs !== undefined && Number.isFinite(ttftMs);
-	const tpsAvailable = tokensPerSecond !== undefined && Number.isFinite(tokensPerSecond);
 	return {
-		ttft: { text: ttftAvailable ? formatTtft(ttftMs) : "~", available: ttftAvailable },
-		tps: {
-			text: tpsAvailable
-				? `${performance?.estimated ? "~" : ""}${Math.max(0, tokensPerSecond).toFixed(1)}`
-				: "~",
-			available: tpsAvailable,
-		},
+		ttft:
+			ttftMs !== undefined && Number.isFinite(ttftMs)
+				? { text: formatTtft(ttftMs), available: true }
+				: { text: PLACEHOLDER, available: false },
+		tps:
+			tokensPerSecond !== undefined && Number.isFinite(tokensPerSecond)
+				? {
+						text: `${performance?.estimated ? "~" : ""}${Math.max(0, tokensPerSecond).toFixed(1)}`,
+						available: true,
+					}
+				: { text: PLACEHOLDER, available: false },
 	};
-}
-
-export function formatResponsePerformance(performance?: ResponsePerformance): string {
-	const { ttft, tps } = responsePerformanceValues(performance);
-	return `TTFT ${ttft.text} · TPS ${tps.text}`;
 }
 
 function formatTtft(ttftMs: number): string {
@@ -101,13 +83,8 @@ function formatTtft(ttftMs: number): string {
 	return safe < 1_000 ? `${Math.round(safe)}ms` : `${(safe / 1_000).toFixed(1)}s`;
 }
 
-export function createRunActivityTracker(options: RunActivityTrackerOptions): RunActivityTracker {
-	return new DefaultRunActivityTracker(options);
-}
-
 export function formatDuration(durationMs: number): string {
-	const normalized = normalizeTimestamp(durationMs);
-	const totalSeconds = Math.floor(normalized / 1_000);
+	const totalSeconds = Number.isFinite(durationMs) ? Math.floor(Math.max(0, durationMs) / 1_000) : 0;
 	if (totalSeconds < 1) return "<1s";
 	if (totalSeconds < 60) return `${totalSeconds}s`;
 
@@ -122,268 +99,187 @@ export function formatDuration(durationMs: number): string {
 
 export function summarizeTool(toolName: string, args: unknown, cwd: string): string {
 	if (!isRecord(args)) return "";
-
 	switch (toolName) {
 		case "bash":
-			return truncateSummary(sanitizeText(getString(args, "command")), MAX_SUMMARY_COLUMNS);
+			return truncateSummary(sanitizeInline(getString(args, "command")));
 		case "read":
 		case "edit":
 		case "write":
-			return truncateSummary(shortenPath(getString(args, "path"), cwd), MAX_SUMMARY_COLUMNS);
+		case "ls":
+			return truncateSummary(shortenPath(getString(args, "path"), cwd));
 		case "grep":
-			return summarizePatternTool(args, cwd);
 		case "find":
 			return summarizePatternTool(args, cwd);
-		case "ls":
-			return truncateSummary(shortenPath(getString(args, "path"), cwd), MAX_SUMMARY_COLUMNS);
 		default:
 			return "";
 	}
 }
 
-class DefaultRunActivityTracker implements RunActivityTracker {
-	private phase: RunActivitySnapshot["phase"] = "idle";
-	private turnNumber: number | undefined;
-	private startedAt: number | undefined;
-	private durationMs: number | undefined;
-	private requestStartedAt: number | undefined;
-	private firstTokenAt: number | undefined;
-	private performance: ResponsePerformance | undefined;
-	private activeTools = new Map<string, ToolActivity>();
-	private recentTools: ToolActivity[] = [];
-	private completedCount = 0;
-	private failedCount = 0;
-	private readonly cwd: string;
-	private readonly onChange: (() => void) | undefined;
+interface TrackerState {
+	phase: RunActivitySnapshot["phase"];
+	turnNumber: number | undefined;
+	startedAt: number | undefined;
+	durationMs: number | undefined;
+	/** In-flight provider request; performance exists once the first token arrives. */
+	response: { requestedAt: number; firstTokenAt?: number } | undefined;
+	performance: ResponsePerformance | undefined;
+	activeTools: Map<string, ToolActivity>;
+	recentTools: ToolActivity[];
+	completedCount: number;
+	failedCount: number;
+}
 
-	constructor(options: RunActivityTrackerOptions) {
-		this.cwd = options.cwd;
-		this.onChange = options.onChange;
-	}
+const initialState = (): TrackerState => ({
+	phase: "idle",
+	turnNumber: undefined,
+	startedAt: undefined,
+	durationMs: undefined,
+	response: undefined,
+	performance: undefined,
+	activeTools: new Map(),
+	recentTools: [],
+	completedCount: 0,
+	failedCount: 0,
+});
 
-	startRun(now?: number): void {
-		this.phase = "running";
-		this.turnNumber = undefined;
-		this.startedAt = normalizeTimestamp(now ?? Date.now());
-		this.durationMs = undefined;
-		this.requestStartedAt = undefined;
-		this.firstTokenAt = undefined;
-		this.performance = undefined;
-		this.activeTools = new Map<string, ToolActivity>();
-		this.recentTools = [];
-		this.completedCount = 0;
-		this.failedCount = 0;
-		this.notify();
-	}
+const isInitial = (state: TrackerState): boolean =>
+	state.phase === "idle" &&
+	state.turnNumber === undefined &&
+	state.startedAt === undefined &&
+	state.response === undefined &&
+	state.performance === undefined &&
+	state.activeTools.size === 0 &&
+	state.recentTools.length === 0 &&
+	state.completedCount === 0 &&
+	state.failedCount === 0;
 
-	startTurn(turnIndex: number): void {
-		const nextTurnNumber = Math.max(0, Number.isFinite(turnIndex) ? Math.trunc(turnIndex) : 0) + 1;
-		if (this.turnNumber === nextTurnNumber && this.phase === "running") return;
+export function createRunActivityTracker(options: RunActivityTrackerOptions): RunActivityTracker {
+	let state = initialState();
+	const notify = (): void => options.onChange?.();
 
-		this.phase = "running";
-		this.turnNumber = nextTurnNumber;
-		this.durationMs = undefined;
-		this.notify();
-	}
-
-	startResponse(now?: number): void {
-		this.requestStartedAt = normalizeTimestamp(now ?? Date.now());
-		this.firstTokenAt = undefined;
-		this.performance = undefined;
-		this.notify();
-	}
-
-	/** A response partly observed while disabled has no reliable TTFT or TPS. */
-	resetResponse(): void {
-		this.requestStartedAt = undefined;
-		this.firstTokenAt = undefined;
-		this.performance = undefined;
-		this.notify();
-	}
-
-	updateResponseEstimate(estimatedOutputTokens: number, now?: number): void {
-		if (
-			this.requestStartedAt === undefined ||
-			!Number.isFinite(estimatedOutputTokens) ||
-			estimatedOutputTokens <= 0
-		) {
-			return;
-		}
-		const observedAt = normalizeTimestamp(now ?? Date.now());
-		if (this.firstTokenAt === undefined) {
-			this.firstTokenAt = observedAt;
-			this.performance = freezePerformance({
-				ttftMs: Math.max(0, observedAt - this.requestStartedAt),
+	return {
+		startRun() {
+			state = { ...initialState(), phase: "running", startedAt: Date.now() };
+			notify();
+		},
+		startTurn(turnIndex) {
+			const turnNumber = Math.max(0, Math.trunc(turnIndex)) + 1;
+			if (state.turnNumber === turnNumber && state.phase === "running") return;
+			state.phase = "running";
+			state.turnNumber = turnNumber;
+			state.durationMs = undefined;
+			notify();
+		},
+		startResponse() {
+			state.response = { requestedAt: Date.now() };
+			state.performance = undefined;
+			notify();
+		},
+		/** A response partly observed while disabled has no reliable TTFT or TPS. */
+		resetResponse() {
+			state.response = undefined;
+			state.performance = undefined;
+			notify();
+		},
+		updateResponseEstimate(estimatedOutputTokens) {
+			const response = state.response;
+			if (!response || !Number.isFinite(estimatedOutputTokens) || estimatedOutputTokens <= 0) return;
+			const observedAt = Date.now();
+			if (response.firstTokenAt === undefined) {
+				response.firstTokenAt = observedAt;
+				state.performance = { ttftMs: Math.max(0, observedAt - response.requestedAt) };
+				notify();
+				return;
+			}
+			const generationMs = observedAt - response.firstTokenAt;
+			if (generationMs <= 0 || !state.performance) return;
+			state.performance = {
+				ttftMs: state.performance.ttftMs,
+				tokensPerSecond: estimatedOutputTokens / (generationMs / 1_000),
+				estimated: true,
+			};
+			notify();
+		},
+		finishResponse(outputTokens) {
+			const firstTokenAt = state.response?.firstTokenAt;
+			state.response = undefined;
+			if (firstTokenAt === undefined || !state.performance) return;
+			const generationMs = Date.now() - firstTokenAt;
+			if (!Number.isFinite(outputTokens) || outputTokens <= 0 || generationMs <= 0) return;
+			state.performance = {
+				ttftMs: state.performance.ttftMs,
+				tokensPerSecond: outputTokens / (generationMs / 1_000),
+			};
+			notify();
+		},
+		startTool(event) {
+			const id = sanitizeInline(event.toolCallId);
+			if (id.length === 0) return;
+			state.phase = "running";
+			state.durationMs = undefined;
+			state.activeTools.set(id, {
+				id,
+				name: truncateSummary(sanitizeInline(event.toolName)),
+				summary: summarizeTool(event.toolName, event.args, options.cwd),
+				status: "running",
+				startedAt: Date.now(),
 			});
-			this.notify();
-			return;
-		}
-
-		const generationDurationMs = Math.max(0, observedAt - this.firstTokenAt);
-		if (generationDurationMs <= 0 || this.performance === undefined) return;
-		this.performance = freezePerformance({
-			...this.performance,
-			tokensPerSecond: estimatedOutputTokens / (generationDurationMs / 1_000),
-			estimated: true,
-		});
-		this.notify();
-	}
-
-	finishResponse(outputTokens: number, now?: number): void {
-		const firstTokenAt = this.firstTokenAt;
-		this.requestStartedAt = undefined;
-		this.firstTokenAt = undefined;
-		if (firstTokenAt === undefined || this.performance === undefined) return;
-
-		const generationDurationMs = Math.max(0, normalizeTimestamp(now ?? Date.now()) - firstTokenAt);
-		if (!Number.isFinite(outputTokens) || outputTokens <= 0 || generationDurationMs <= 0) return;
-		this.performance = freezePerformance({
-			ttftMs: this.performance.ttftMs,
-			tokensPerSecond: outputTokens / (generationDurationMs / 1_000),
-		});
-		this.notify();
-	}
-
-	startTool(event: ToolExecutionStartEvent, now?: number): void {
-		const id = sanitizeText(event.toolCallId);
-		if (id.length === 0) return;
-
-		const tool: ToolActivity = freezeTool({
-			id,
-			name: sanitizeToolName(event.toolName),
-			summary: summarizeTool(event.toolName, event.args, this.cwd),
-			status: "running",
-			startedAt: normalizeTimestamp(now ?? Date.now()),
-		});
-		this.phase = "running";
-		this.durationMs = undefined;
-		this.activeTools.set(id, tool);
-		this.notify();
-	}
-
-	finishTool(event: ToolExecutionEndEvent, now?: number): void {
-		const id = sanitizeText(event.toolCallId);
-		const active = this.activeTools.get(id);
-		if (!active) return;
-
-		this.activeTools.delete(id);
-		const endedAt = normalizeTimestamp(now ?? Date.now());
-		const status: ToolActivityStatus = event.isError ? "failed" : "done";
-		const completed = freezeTool({
-			...active,
-			status,
-			durationMs: Math.max(0, endedAt - active.startedAt),
-		});
-		if (status === "failed") {
-			this.failedCount += 1;
-		} else {
-			this.completedCount += 1;
-		}
-		this.recentTools = [completed, ...this.recentTools].slice(0, MAX_RECENT_TOOLS);
-		this.notify();
-	}
-
-	settle(now?: number): void {
-		if (this.phase === "idle" && this.activeTools.size === 0) return;
-		if (this.phase === "settled" && this.activeTools.size === 0) return;
-
-		const settledAt = normalizeTimestamp(now ?? Date.now());
-		const failedActiveTools = Array.from(this.activeTools.values(), (tool) =>
-			freezeTool({
-				...tool,
-				status: "failed",
-				durationMs: Math.max(0, settledAt - tool.startedAt),
-			}),
-		);
-		this.activeTools = new Map<string, ToolActivity>();
-		for (const tool of failedActiveTools) {
-			this.failedCount += 1;
-			this.recentTools.unshift(tool);
-		}
-		this.recentTools = this.recentTools.slice(0, MAX_RECENT_TOOLS);
-		this.phase = "settled";
-		this.durationMs = Math.max(0, settledAt - (this.startedAt ?? settledAt));
-		this.notify();
-	}
-
-	reset(): void {
-		if (this.isEmpty()) return;
-
-		this.phase = "idle";
-		this.turnNumber = undefined;
-		this.startedAt = undefined;
-		this.durationMs = undefined;
-		this.requestStartedAt = undefined;
-		this.firstTokenAt = undefined;
-		this.performance = undefined;
-		this.activeTools = new Map<string, ToolActivity>();
-		this.recentTools = [];
-		this.completedCount = 0;
-		this.failedCount = 0;
-		this.notify();
-	}
-
-	isRunning(): boolean {
-		return this.phase === "running";
-	}
-
-	getSnapshot(): RunActivitySnapshot {
-		const activeTools = Object.freeze(Array.from(this.activeTools.values()));
-		const recentTools = Object.freeze([...this.recentTools]);
-		const snapshot: RunActivitySnapshot = {
-			phase: this.phase,
-			...(this.turnNumber === undefined ? {} : { turnNumber: this.turnNumber }),
-			...(this.startedAt === undefined ? {} : { startedAt: this.startedAt }),
-			...(this.durationMs === undefined ? {} : { durationMs: this.durationMs }),
-			...(this.performance === undefined ? {} : { performance: this.performance }),
-			activeTools,
-			recentTools,
-			completedCount: this.completedCount,
-			failedCount: this.failedCount,
-		};
-		return Object.freeze(snapshot);
-	}
-
-	private notify(): void {
-		this.onChange?.();
-	}
-
-	private isEmpty(): boolean {
-		return (
-			this.phase === "idle" &&
-			this.turnNumber === undefined &&
-			this.startedAt === undefined &&
-			this.durationMs === undefined &&
-			this.requestStartedAt === undefined &&
-			this.firstTokenAt === undefined &&
-			this.performance === undefined &&
-			this.activeTools.size === 0 &&
-			this.recentTools.length === 0 &&
-			this.completedCount === 0 &&
-			this.failedCount === 0
-		);
-	}
-}
-
-function normalizeTimestamp(value: number): number {
-	if (!Number.isFinite(value)) return 0;
-	return Math.max(0, Math.trunc(value));
-}
-
-function freezePerformance(performance: ResponsePerformance): ResponsePerformance {
-	return Object.freeze({ ...performance });
-}
-
-function freezeTool(tool: ToolActivity): ToolActivity {
-	return Object.freeze({ ...tool });
-}
-
-function sanitizeToolName(name: string): string {
-	return truncateSummary(sanitizeText(name), MAX_SUMMARY_COLUMNS);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
+			notify();
+		},
+		finishTool(event) {
+			const id = sanitizeInline(event.toolCallId);
+			const active = state.activeTools.get(id);
+			if (!active) return;
+			state.activeTools.delete(id);
+			const status = event.isError ? "failed" : "done";
+			if (status === "failed") state.failedCount += 1;
+			else state.completedCount += 1;
+			const completed: ToolActivity = {
+				...active,
+				status,
+				durationMs: Math.max(0, Date.now() - active.startedAt),
+			};
+			state.recentTools = [completed, ...state.recentTools].slice(0, MAX_RECENT_TOOLS);
+			notify();
+		},
+		settle() {
+			if (state.phase !== "running" && state.activeTools.size === 0) return;
+			const settledAt = Date.now();
+			const interrupted = Array.from(
+				state.activeTools.values(),
+				(tool): ToolActivity => ({
+					...tool,
+					status: "failed",
+					durationMs: Math.max(0, settledAt - tool.startedAt),
+				}),
+			);
+			state.activeTools = new Map();
+			state.failedCount += interrupted.length;
+			state.recentTools = [...interrupted.reverse(), ...state.recentTools].slice(0, MAX_RECENT_TOOLS);
+			state.phase = "settled";
+			state.durationMs = Math.max(0, settledAt - (state.startedAt ?? settledAt));
+			notify();
+		},
+		reset() {
+			if (isInitial(state)) return;
+			state = initialState();
+			notify();
+		},
+		isRunning: () => state.phase === "running",
+		getSnapshot() {
+			return {
+				phase: state.phase,
+				...(state.turnNumber === undefined ? {} : { turnNumber: state.turnNumber }),
+				...(state.startedAt === undefined ? {} : { startedAt: state.startedAt }),
+				...(state.durationMs === undefined ? {} : { durationMs: state.durationMs }),
+				...(state.performance === undefined ? {} : { performance: state.performance }),
+				activeTools: [...state.activeTools.values()],
+				recentTools: [...state.recentTools],
+				completedCount: state.completedCount,
+				failedCount: state.failedCount,
+			};
+		},
+	};
 }
 
 function getString(record: Record<string, unknown>, key: string): string {
@@ -391,63 +287,24 @@ function getString(record: Record<string, unknown>, key: string): string {
 	return typeof value === "string" ? value : "";
 }
 
-function sanitizeText(value: string): string {
-	return value
-		.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "")
-		.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
-		.replace(/\s+/g, " ")
-		.trim();
-}
-
 function summarizePatternTool(args: Record<string, unknown>, cwd: string): string {
-	const pattern = sanitizeText(getString(args, "pattern"));
+	const pattern = sanitizeInline(getString(args, "pattern"));
 	if (pattern.length === 0) return "";
-
 	const targetPath = shortenPath(getString(args, "path"), cwd);
-	if (targetPath.length === 0) return truncateSummary(pattern, MAX_SUMMARY_COLUMNS);
-
 	const combined = `${pattern} in ${targetPath}`;
-	if (visibleWidth(combined) <= MAX_SUMMARY_COLUMNS) return combined;
-	return truncateSummary(pattern, MAX_SUMMARY_COLUMNS);
+	if (targetPath.length > 0 && visibleWidth(combined) <= MAX_SUMMARY_COLUMNS) return combined;
+	return truncateSummary(pattern);
 }
 
 function shortenPath(pathValue: string, cwd: string): string {
-	const safePath = sanitizeText(pathValue);
+	const safePath = sanitizeInline(pathValue);
 	if (safePath.length === 0) return "";
-
-	const normalizedCwd = nodePath.resolve(sanitizeText(cwd));
-	const normalizedPath = nodePath.isAbsolute(safePath)
-		? nodePath.normalize(safePath)
-		: nodePath.resolve(normalizedCwd, safePath);
-
-	const projectRelativePath = safeRelativePath(normalizedCwd, normalizedPath);
-	if (projectRelativePath !== undefined) return toDisplayPath(projectRelativePath, nodePath.sep);
-
-	const home = sanitizeText(process.env.HOME ?? "");
-	if (home.length > 0) {
-		const normalizedHome = nodePath.resolve(home);
-		const homeRelativePath = safeRelativePath(normalizedHome, normalizedPath);
-		if (homeRelativePath !== undefined) {
-			return homeRelativePath === "." ? "~" : `~/${toDisplayPath(homeRelativePath, nodePath.sep)}`;
-		}
-	}
-
-	return toDisplayPath(normalizedPath, nodePath.sep);
+	const normalizedCwd = nodePath.resolve(sanitizeInline(cwd));
+	const normalizedPath = nodePath.resolve(normalizedCwd, safePath);
+	return displayPathWithin(normalizedCwd, normalizedPath) ?? displayHomePath(normalizedPath);
 }
 
-function safeRelativePath(fromPath: string, toPath: string): string | undefined {
-	const relativePath = nodePath.relative(fromPath, toPath);
-	if (relativePath === "") return ".";
-	if (
-		nodePath.isAbsolute(relativePath) ||
-		relativePath === ".." ||
-		relativePath.startsWith(`..${nodePath.sep}`)
-	) {
-		return undefined;
-	}
-	return relativePath;
-}
-
-function truncateSummary(value: string, maxColumns: number): string {
-	return sanitizeText(truncateToWidth(value, maxColumns, "…"));
+/** `truncateToWidth` appends SGR resets when it truncates; strip them so summaries stay plain text. */
+function truncateSummary(value: string): string {
+	return sanitizeInline(truncateToWidth(value, MAX_SUMMARY_COLUMNS, "…"));
 }

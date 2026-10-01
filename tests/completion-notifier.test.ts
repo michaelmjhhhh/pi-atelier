@@ -13,7 +13,6 @@ class FakeProcess extends EventEmitter implements NotificationProcess {
 }
 
 const settled: CompletionNotification = {
-	kind: "turn-settled",
 	projectName: "pi-atelier",
 	sessionName: "Notification work",
 	completedToolCount: 2,
@@ -61,7 +60,6 @@ describe("completion notifier", () => {
 		const h = harness("win32");
 		h.notifier.runStarted();
 		const notification: CompletionNotification = {
-			kind: "input-requested",
 			projectName: "pi-atelier",
 			sessionName: "Notification work",
 		};
@@ -84,7 +82,6 @@ describe("completion notifier", () => {
 	it("delivers and deduplicates input requests even when agent_start was not observed", () => {
 		const h = harness("darwin");
 		const notification: CompletionNotification = {
-			kind: "input-requested",
 			projectName: "pi-atelier",
 		};
 
@@ -98,7 +95,7 @@ describe("completion notifier", () => {
 		const h = harness("darwin");
 		h.disable();
 		h.notifier.runStarted();
-		h.notifier.inputRequested("question-1", { kind: "input-requested", projectName: "private" });
+		h.notifier.inputRequested("question-1", { projectName: "private" });
 		h.notifier.turnSettled(settled);
 
 		expect(h.spawn).not.toHaveBeenCalled();
@@ -140,7 +137,7 @@ describe("completion notifier", () => {
 		h.notifier.runStarted();
 		h.notifier.turnSettled(settled);
 
-		h.notifier.inputRequested("question-1", { kind: "input-requested", projectName: "pi-atelier" });
+		h.notifier.inputRequested("question-1", { projectName: "pi-atelier" });
 		h.notifier.reset();
 
 		expect(h.processes).toHaveLength(2);

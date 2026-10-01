@@ -1,3 +1,4 @@
+import { plainTheme } from "./helpers/render.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { SIDEBAR_PANEL_EVENT_CHANNEL } from "../extensions/index.js";
@@ -12,7 +13,6 @@ import {
 	renderOverlayText,
 	mountComposer,
 	withPersistedUserConfig,
-	FOOTER_THEME,
 } from "./helpers/extension.js";
 
 describe("extension registration", () => {
@@ -284,7 +284,7 @@ describe("extension registration", () => {
 		h.setFooter.mockImplementation((value: unknown) => {
 			if (value === undefined) throw new Error("footer removal failed");
 			if (typeof value === "function") {
-				mountedFooter = value({ requestRender: vi.fn() }, FOOTER_THEME, {
+				mountedFooter = value({ requestRender: vi.fn() }, plainTheme, {
 					getGitBranch: () => undefined,
 					getExtensionStatuses: () => new Map(),
 					onBranchChange: (callback: () => void) => {
@@ -320,7 +320,7 @@ describe("extension registration", () => {
 			const requestRender = vi.fn();
 			let branchChange: (() => void) | undefined;
 			const unsubscribe = vi.fn();
-			const component = value({ requestRender }, FOOTER_THEME, {
+			const component = value({ requestRender }, plainTheme, {
 				getGitBranch: () => undefined,
 				getExtensionStatuses: () => new Map([["live", "live footer"]]),
 				onBranchChange: (onChange: () => void) => {

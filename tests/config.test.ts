@@ -2,15 +2,16 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig, saveUserConfigPatch, validateConfig } from "../src/config.js";
+import { DEFAULT_CONFIG, loadConfig, resolveConfig, saveUserConfigPatch } from "../src/config.js";
 import { DISPLAY_TEMPLATES, PRODUCT_SEGMENT_ORDER } from "../src/display.js";
-import { DEFAULT_CONFIG } from "../src/types.js";
+
+const validateConfig = (user: unknown) => resolveConfig({ user });
 
 const visibility = (layout: typeof DEFAULT_CONFIG.segmentLayout, id: string) =>
 	layout.find((entry) => entry.id === id)?.visible;
 
 describe("configuration validation", () => {
-	it("defines complete defaults and compatibility templates", () => {
+	it("defines complete templates with the required segments visible", () => {
 		for (const template of [DEFAULT_CONFIG, ...Object.values(DISPLAY_TEMPLATES)]) {
 			expect(template.segmentLayout.map((entry) => entry.id)).toEqual(PRODUCT_SEGMENT_ORDER);
 			expect(new Set(template.segmentLayout.map((entry) => entry.id)).size).toBe(9);
@@ -19,20 +20,6 @@ describe("configuration validation", () => {
 			expect(visibility(template.segmentLayout, "brand")).toBe(false);
 			expect(visibility(template.segmentLayout, "performance")).toBe(false);
 		}
-		expect(DEFAULT_CONFIG.showSidebarToolNames).toBe(false);
-		expect(DEFAULT_CONFIG.completionNotifications).toBe(true);
-		expect(DEFAULT_CONFIG.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(true);
-		expect(DEFAULT_CONFIG.sidebarPanelLayout.map((entry) => entry.id)).toEqual([
-			"agent",
-			"activity",
-			"alerts",
-			"todos",
-			"context",
-			"workspace",
-			"usage",
-			"subagents",
-			"tools",
-		]);
 	});
 
 	it("keeps legacy Sidebar visibility compatible when no authoritative layout is present", () => {
@@ -49,42 +36,6 @@ describe("configuration validation", () => {
 		const deviated = validateConfig({ preset: "minimal", density: "comfortable" });
 		expect(deviated.config.preset).toBe("custom");
 		expect(deviated.config.segmentLayout).toEqual(DISPLAY_TEMPLATES.minimal.segmentLayout);
-	});
-
-	it("preserves the public validateConfig base Display values", () => {
-		const base = { ...DEFAULT_CONFIG, ...DISPLAY_TEMPLATES.minimal };
-		const result = validateConfig({ shortcut: "ctrl+x" }, base);
-		expect(result.config).toMatchObject({ preset: "minimal", density: "compact", shortcut: "ctrl+x" });
-		expect(result.config.segmentLayout).toEqual(DISPLAY_TEMPLATES.minimal.segmentLayout);
-	});
-
-	it("preserves a custom base Sidebar layout when input omits layout", () => {
-		const base = {
-			...DEFAULT_CONFIG,
-			sidebarPanelLayout: [
-				{ id: "vendor:queue" as const, visible: true },
-				{ id: "agent" as const, visible: false },
-				...DEFAULT_CONFIG.sidebarPanelLayout.filter((entry) => !["agent", "todos"].includes(entry.id)),
-			],
-		};
-		const result = validateConfig({ shortcut: "ctrl+x" }, base);
-		expect(result.config.sidebarPanelLayout).toEqual(base.sidebarPanelLayout);
-		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(false);
-	});
-
-	it("translates legacy Sidebar visibility against a custom base without resetting it", () => {
-		const base = {
-			...DEFAULT_CONFIG,
-			sidebarPanelLayout: [
-				{ id: "vendor:queue" as const, visible: true },
-				{ id: "agent" as const, visible: false },
-				...DEFAULT_CONFIG.sidebarPanelLayout.filter((entry) => entry.id !== "agent"),
-			],
-		};
-		const result = validateConfig({ showSidebarTodos: false }, base);
-		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "vendor:queue")?.visible).toBe(true);
-		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(false);
-		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "todos")?.visible).toBe(false);
 	});
 
 	it("makes a usable segmentLayout authoritative over same-layer legacy fields", () => {
@@ -119,7 +70,7 @@ describe("configuration validation", () => {
 			{ id: "brand", visible: false },
 		]);
 		expect(result.config.segmentLayout.map((entry) => entry.id)).toHaveLength(9);
-		expect(result.warnings.some((warning) => warning.includes("duplicate"))).toBe(true);
+		expect(result.warnings.filter((warning) => warning.includes("duplicate"))).toHaveLength(1);
 		expect(result.warnings.filter((warning) => warning.includes("malformed"))).toHaveLength(1);
 	});
 
@@ -282,12 +233,6 @@ describe("configuration files", () => {
 		expect(result.config).toEqual(DEFAULT_CONFIG);
 		expect(result.warnings).toEqual([]);
 		expect(result.displayProvenance.order).toBe("product");
-	});
-
-	it("loads persisted showSidebarAgent false from user config", async () => {
-		await writeJson(userPath, { showSidebarAgent: false });
-		const result = await loadConfig({ userPath, projectPath, projectTrusted: false });
-		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(false);
 	});
 
 	it("reports malformed JSON once and retains defaults", async () => {

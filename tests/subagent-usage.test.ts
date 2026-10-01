@@ -33,6 +33,8 @@ async function metadata(runId: string, index = 0, extra: Record<string, unknown>
 }
 const read = (entries: unknown[]) =>
 	readSubagentUsage({ cwd, sessionFile: join(cwd, "session.jsonl"), entries });
+const totalCost = (snapshot: { runs: readonly { cost: number }[] }) =>
+	snapshot.runs.reduce((total, run) => total + run.cost, 0);
 
 describe("subagent metadata accounting", () => {
 	it("counts separate executions of the same agent once, excluding unrelated sessions and mirrored tool usage", async () => {
@@ -43,14 +45,8 @@ describe("subagent metadata accounting", () => {
 		const details = { runId: "run-a", results: [{ artifactPaths: { metadataPath: path }, usage }] };
 		const result = await read([tool(details), tool(details), tool({ runId: "run-b", results: [] })]);
 		expect(result.runs).toHaveLength(3);
-		expect(result.totals).toEqual({
-			input: 400,
-			output: 80,
-			cacheRead: 90,
-			cacheWrite: 12,
-			cost: 0.5,
-			pricedRuns: 3,
-		});
+		expect(totalCost(result)).toBe(0.5);
+		expect(result.runs.every((run) => run.priced)).toBe(true);
 		expect(result.unavailable).toBe(0);
 	});
 
@@ -74,7 +70,7 @@ describe("subagent metadata accounting", () => {
 		);
 		const result = await read([tool({ mode: "workflow", runId: "workflow-root", asyncDir, results: [] })]);
 		expect(result.runs).toHaveLength(2);
-		expect(result.totals.cost).toBe(0.25);
+		expect(totalCost(result)).toBe(0.25);
 		expect(result.unavailable).toBe(0);
 	});
 
@@ -122,7 +118,7 @@ describe("subagent metadata accounting", () => {
 		const entries = [tool({ runId: "workflow-root", asyncDir, results: [] })];
 		const running = await read(entries);
 		expect(running.runs).toHaveLength(1);
-		expect(running.pending).toBeGreaterThan(0);
+		expect(running.pending).toBe(2);
 		expect(running.unavailable).toBe(0);
 		await writeFile(
 			join(asyncDir, "status.json"),
@@ -187,8 +183,8 @@ describe("subagent metadata accounting", () => {
 		}
 		const result = await read([tool({ runId: "workflow-root", asyncDir, results: [] })]);
 		expect(result.runs).toHaveLength(2);
-		expect(result.costHistory?.map((run) => run.runId).sort()).toEqual(["child-latest", "child-previous"]);
-		expect(result.totals.cost).toBe(0.25);
+		expect(result.costHistory.map((run) => run.runId).sort()).toEqual(["child-latest", "child-previous"]);
+		expect(totalCost(result)).toBe(0.25);
 		expect(result.unavailable).toBe(0);
 	});
 
@@ -197,12 +193,11 @@ describe("subagent metadata accounting", () => {
 		const entries = [
 			{ type: "custom", customType: SUBAGENT_METADATA_ENTRY, data: { runIds: ["async-a"], paths: [path] } },
 		];
-		expect((await read(entries)).totals.output).toBe(20);
+		expect(totalCost(await read(entries))).toBe(0.125);
 		await metadata("async-a", 0, { usage: { ...usage, output: 10, cost: 0.1 }, timestamp: 2 });
 		const result = await read(entries);
 		expect(result.runs).toHaveLength(1);
-		expect(result.totals.output).toBe(10);
-		expect(result.totals.cost).toBe(0.1);
+		expect(totalCost(result)).toBe(0.1);
 	});
 
 	it("uses project and explicit custom artifact locations, validates ownership, and deduplicates aliases", async () => {
@@ -223,7 +218,7 @@ describe("subagent metadata accounting", () => {
 			}),
 		]);
 		expect(result.runs).toHaveLength(2);
-		expect(result.totals.cost).toBe(0.25);
+		expect(totalCost(result)).toBe(0.25);
 	});
 
 	it("does not count slash initial/final and repeated wait observations as additional executions", async () => {
@@ -238,10 +233,10 @@ describe("subagent metadata accounting", () => {
 			type: "message",
 			message: { role: "toolResult", toolName: "bg_wait", details: { completions: [details] } },
 		};
-		expect((await read([slash, slash, wait, wait])).totals.cost).toBe(0.125);
+		expect(totalCost(await read([slash, slash, wait, wait]))).toBe(0.125);
 	});
 
-	it("keeps failed-run spend and distinguishes missing cost/model from reported zero", async () => {
+	it("keeps failed runs and distinguishes a missing cost from a reported zero", async () => {
 		await metadata("failed", 0, {
 			exitCode: 1,
 			model: undefined,
@@ -250,9 +245,8 @@ describe("subagent metadata accounting", () => {
 		await metadata("free", 0, { usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 } });
 		const result = await read([tool({ runId: "failed" }), tool({ runId: "free" })]);
 		expect(result.runs).toHaveLength(2);
-		expect(result.runs[0]).toMatchObject({ exitCode: 1, pricedRuns: 0 });
-		expect(result.runs[0]?.model).toBeUndefined();
-		expect(result.totals).toMatchObject({ input: 100, output: 20, cost: 0, pricedRuns: 1 });
+		expect(result.runs.find((run) => run.runId === "failed")).toMatchObject({ cost: 0, priced: false });
+		expect(result.runs.find((run) => run.runId === "free")).toMatchObject({ cost: 0, priced: true });
 	});
 
 	it("reports missing, corrupt and incomplete artifacts without guessing numbers", async () => {
@@ -265,8 +259,8 @@ describe("subagent metadata accounting", () => {
 			tool({ runId: "negative" }),
 		]);
 		expect(result.runs).toEqual([]);
-		expect(result.unavailable).toBeGreaterThanOrEqual(3);
-		expect(result.totals.cost).toBe(0);
+		// Each unreadable file and each unresolved run reference is counted.
+		expect(result.unavailable).toBe(5);
 	});
 
 	it("does not discover usage from arbitrary tools, notifications or unreferenced files", async () => {

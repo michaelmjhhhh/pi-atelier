@@ -1,29 +1,27 @@
 import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
 	applyDisplayTemplate,
+	cloneLayout,
 	derivePresetIdentity,
-	REQUIRED_SEGMENT_IDS,
+	isRequiredSegment,
 	reorderSegment,
+	TEMPLATE_NAMES,
 	toggleSegmentVisibility,
 } from "./display.js";
-import { renderFooterLine, type ThemeLike } from "./footer.js";
-import {
-	DEFAULT_SIDEBAR_PANEL_LAYOUT,
-	sanitizeSidebarPanelText,
-	SIDEBAR_PANEL_MAX_TITLE_CHARS,
-	isSidebarPanelId,
-} from "./sidebar-panels.js";
+import { renderFooterLine } from "./footer.js";
+import type { ThemeLike } from "./palette.js";
+import { DEFAULT_SIDEBAR_PANEL_LAYOUT } from "./sidebar-panels.js";
+import { errorMessage, fitToWidth } from "./text.js";
 import type {
 	AtelierConfig,
-	SidebarPanelId,
-	SidebarPanelLayout,
 	DisplayPatch,
 	DisplayProvenance,
 	DisplaySettings,
 	FooterState,
 	SegmentId,
 	SessionDisplayOverride,
-	TemplateName,
+	SidebarPanelId,
+	SidebarPanelLayout,
 } from "./types.js";
 
 export interface SidebarPanelSetting {
@@ -33,7 +31,8 @@ export interface SidebarPanelSetting {
 	visible: boolean;
 }
 
-export const DISPLAY_SETTINGS_OVERLAY_MAX_HEIGHT = "95%" as const;
+const OVERLAY_MAX_HEIGHT_PERCENT = 95;
+export const DISPLAY_SETTINGS_OVERLAY_MAX_HEIGHT = `${OVERLAY_MAX_HEIGHT_PERCENT}%` as const;
 export const DISPLAY_SETTINGS_OVERLAY_MARGIN = 1;
 
 /**
@@ -41,9 +40,9 @@ export const DISPLAY_SETTINGS_OVERLAY_MARGIN = 1;
  * Percentages are floored and the one-cell margin is applied on both sides.
  */
 export function getDisplaySettingsViewportHeight(terminalRows: number): number {
-	const rows = Number.isFinite(terminalRows) ? Math.max(0, Math.floor(terminalRows)) : 0;
+	const rows = Math.max(0, Math.floor(terminalRows));
 	const availableHeight = Math.max(1, rows - DISPLAY_SETTINGS_OVERLAY_MARGIN * 2);
-	const maxHeight = Math.floor((rows * 95) / 100);
+	const maxHeight = Math.floor((rows * OVERLAY_MAX_HEIGHT_PERCENT) / 100);
 	return Math.max(1, Math.min(maxHeight, availableHeight));
 }
 
@@ -56,8 +55,8 @@ export interface SettingsWorkspaceOptions {
 	persistUserDisplayPatch(patch: DisplayPatch): Promise<void>;
 	applySavedUserDisplayPatch(patch: DisplayPatch): void;
 	getRenderConfig(): AtelierConfig;
-	getSidebarPanelLayout?(): readonly SidebarPanelSetting[];
-	/** Live overlay viewport height in rows; omitted direct callers keep full rendering. */
+	getSidebarPanelSettings(): readonly SidebarPanelSetting[];
+	/** Live overlay viewport height in rows; without it the workspace renders in full. */
 	getViewportHeight?(): number;
 	theme: ThemeLike;
 	colorEnabled?: boolean;
@@ -73,18 +72,25 @@ export interface SettingsWorkspace {
 	handleInput(data: string): void;
 }
 
-const PRESETS: TemplateName[] = ["editorial", "minimal", "classic"];
-const DISPLAY_KEYS = ["preset", "density"] as const;
+type ActionId = "save" | "revert" | "undo" | "sidebar-default";
 type Row =
-	| { kind: "preset"; id: "preset" }
-	| { kind: "density"; id: "density" }
+	| { kind: "preset" }
+	| { kind: "density" }
 	| { kind: "segment"; id: SegmentId }
 	| { kind: "sidebarPanel"; id: SidebarPanelId }
-	| { kind: "action"; id: "save" | "revert" | "undo" | "sidebar-default" };
+	| { kind: "action"; id: ActionId };
+
+/** Shortcut letter shown next to, and handled for, each action row. */
+const ACTION_KEYS: Record<ActionId, string> = { save: "S", revert: "R", undo: "U", "sidebar-default": "D" };
+const TITLE = "DISPLAY SETTINGS";
+const KEY_HINTS = "↑/↓ Select · Enter Change · S Save · Esc Close";
+
+const sameRow = (left: Row, right: Row): boolean =>
+	left.kind === right.kind && ("id" in left ? left.id : undefined) === ("id" in right ? right.id : undefined);
 
 const cloneDisplay = (value: DisplaySettings): DisplaySettings => ({
 	...value,
-	segmentLayout: value.segmentLayout.map((entry) => ({ ...entry })),
+	segmentLayout: cloneLayout(value.segmentLayout),
 });
 const cloneOverride = (value: SessionDisplayOverride | undefined): SessionDisplayOverride | undefined =>
 	value === undefined ? undefined : structuredClone(value);
@@ -133,29 +139,16 @@ const representativeState: FooterState = {
 	extensionStatuses: ["SYNC"],
 };
 
-function fit(text: string, width: number): string {
-	if (width <= 0) return "";
-	const clipped = truncateToWidth(text, width, "");
-	return `${clipped}${" ".repeat(Math.max(0, width - visibleWidth(clipped)))}`;
-}
-
-function panel(title: string, lines: string[], width: number, theme: ThemeLike, accent = false): string[] {
-	return panelWithFocus(
-		title,
-		lines.map((line) => ({ line })),
-		width,
-		theme,
-		accent,
-	).map(({ line }) => line);
-}
-
 interface LayoutLine {
 	line: string;
 	/** True only for the line that structurally represents the focused row. */
 	focused?: boolean;
 }
 
-function panelWithFocus(
+const blankLines = (count: number): LayoutLine[] =>
+	Array.from({ length: Math.max(0, count) }, () => ({ line: "" }));
+
+function panel(
 	title: string,
 	lines: readonly LayoutLine[],
 	width: number,
@@ -164,7 +157,7 @@ function panelWithFocus(
 ): LayoutLine[] {
 	const withFocus = (line: string, focused: boolean | undefined): LayoutLine =>
 		focused === undefined ? { line } : { line, focused };
-	if (width < 4) return lines.map(({ line, focused }) => withFocus(fit(line, width), focused));
+	if (width < 4) return lines.map(({ line, focused }) => withFocus(fitToWidth(line, width), focused));
 	const inner = width - 2;
 	const edge = (text: string) => theme.fg(accent ? "borderAccent" : "muted", text);
 	const heading = ` ${title} `;
@@ -173,9 +166,63 @@ function panelWithFocus(
 		{
 			line: `${edge("┌")}${theme.bold(theme.fg(accent ? "accent" : "muted", heading))}${edge("─".repeat(rule))}${edge("┐")}`,
 		},
-		...lines.map(({ line, focused }) => withFocus(`${edge("│")}${fit(line, inner)}${edge("│")}`, focused)),
+		...lines.map(({ line, focused }) =>
+			withFocus(`${edge("│")}${fitToWidth(line, inner)}${edge("│")}`, focused),
+		),
 		{ line: `${edge("└")}${edge("─".repeat(inner))}${edge("┘")}` },
 	];
+}
+
+/**
+ * Fit the scrollable middle of the workspace into `rows`, keeping the focused
+ * line visible and marking clipped content with scroll indicators.
+ */
+function virtualize(
+	central: readonly LayoutLine[],
+	rows: number,
+	scrollOffset: number,
+	width: number,
+): { lines: LayoutLine[]; scrollOffset: number } {
+	const more = (direction: "↑" | "↓"): LayoutLine => ({ line: fitToWidth(`${direction} more`, width) });
+	const focused = Math.max(
+		0,
+		central.findIndex(({ focused }) => focused),
+	);
+	if (central.length <= rows) return { lines: [...central], scrollOffset: 0 };
+	// The sticky chrome fills the interior; there is no room for content or indicators.
+	if (rows === 0) return { lines: [], scrollOffset: 0 };
+	// One row cannot carry an indicator and a focused row simultaneously.
+	if (rows === 1) {
+		const offset = Math.min(focused, central.length - 1);
+		return { lines: [central[offset] ?? { line: "" }], scrollOffset: offset };
+	}
+	// Two rows can show one indicator plus content, so prioritize the focused edge.
+	if (rows === 2) {
+		return focused <= 0
+			? { lines: [central[0] ?? { line: "" }, more("↓")], scrollOffset: 0 }
+			: { lines: [more("↑"), central[focused] ?? { line: "" }], scrollOffset: focused };
+	}
+	const topCapacity = rows - 1;
+	const bottomOffset = central.length - topCapacity;
+	const middleCapacity = rows - 2;
+	let offset: number;
+	if (focused < topCapacity) offset = 0;
+	else if (focused >= bottomOffset) offset = bottomOffset;
+	else {
+		// A middle window has an indicator on both sides; offset 0 is the top window.
+		const maxMiddleOffset = central.length - middleCapacity - 1;
+		offset = Math.max(1, Math.min(scrollOffset, maxMiddleOffset));
+		if (focused < offset) offset = focused;
+		else if (focused >= offset + middleCapacity) offset = focused - middleCapacity + 1;
+		offset = Math.max(1, Math.min(offset, maxMiddleOffset));
+	}
+	const atTop = offset === 0;
+	const atBottom = offset === bottomOffset;
+	const body = central.slice(offset, offset + rows - (atTop ? 0 : 1) - (atBottom ? 0 : 1));
+	return {
+		lines: [...(atTop ? [] : [more("↑")]), ...body, ...(atBottom ? [] : [more("↓")])],
+		scrollOffset: offset,
+	};
 }
 
 export function createSettingsWorkspace(options: SettingsWorkspaceOptions): SettingsWorkspace {
@@ -185,67 +232,34 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 		| { kind: "display"; value: SessionDisplayOverride | undefined }
 		| { kind: "sidebar"; value: SidebarPanelLayout }
 		| undefined;
-	let sidebarDraft: SidebarPanelLayout = (
-		options.getRenderConfig().sidebarPanelLayout ?? DEFAULT_SIDEBAR_PANEL_LAYOUT
-	).map((entry) => ({
-		id: entry.id,
-		visible: entry.visible,
-	}));
+	let sidebarDraft: SidebarPanelLayout = cloneLayout(options.getRenderConfig().sidebarPanelLayout);
 	let sidebarDirty = false;
 	let feedback = "";
 	let saving = false;
 	let scrollOffset = 0;
 
-	const buildRows = (): Row[] => [
-		...DISPLAY_KEYS.map((id) => ({ kind: id, id }) as Row),
-		...display.segmentLayout.map((entry) => ({ kind: "segment", id: entry.id }) as Row),
+	const rows = (): Row[] => [
+		{ kind: "preset" },
+		{ kind: "density" },
+		...display.segmentLayout.map((entry): Row => ({ kind: "segment", id: entry.id })),
 		{ kind: "action", id: "save" },
 		{ kind: "action", id: "revert" },
 		{ kind: "action", id: "undo" },
-		...sidebarDraft.map((entry) => ({ kind: "sidebarPanel", id: entry.id }) as Row),
+		...sidebarDraft.map((entry): Row => ({ kind: "sidebarPanel", id: entry.id })),
 		{ kind: "action", id: "sidebar-default" },
 	];
-
-	/** Keep unavailable configured entries in place and append newly discovered panels. */
-	const syncSidebarDraft = (): void => {
-		const available = options.getSidebarPanelLayout?.();
-		if (!available) return;
-		const focusedRow = buildRows()[focus];
-		const configuredIds = new Set(sidebarDraft.map((entry) => entry.id));
-		for (const setting of available) {
-			if (!isSidebarPanelId(setting.id) || configuredIds.has(setting.id)) continue;
-			configuredIds.add(setting.id);
-			sidebarDraft.push({ id: setting.id, visible: false });
-		}
-		if (focusedRow) {
-			const nextFocus = buildRows().findIndex(
-				(row) => row.kind === focusedRow.kind && row.id === focusedRow.id,
-			);
-			if (nextFocus >= 0) focus = nextFocus;
-		}
-	};
-	const sidebarSettings = (): SidebarPanelSetting[] => {
-		const available = options.getSidebarPanelLayout?.();
-		if (available)
-			return available
-				.filter((entry) => isSidebarPanelId(entry.id))
-				.map((entry) => ({
-					...entry,
-					title: sanitizeSidebarPanelText(entry.title, SIDEBAR_PANEL_MAX_TITLE_CHARS) || entry.id,
-				}));
-		return sidebarDraft.map((entry) => ({
-			id: entry.id,
-			title: entry.id,
-			available: true,
-			visible: entry.visible,
-		}));
-	};
-	const rows = (): Row[] => {
-		syncSidebarDraft();
-		return buildRows();
-	};
 	const rowIndex = (target: Row, allRows = rows()): number =>
-		allRows.findIndex((row) => row.kind === target.kind && row.id === target.id);
+		allRows.findIndex((row) => sameRow(row, target));
+
+	/** Append newly registered panels to the draft (hidden) while keeping focus on the same row. */
+	const absorbNewSidebarPanels = (): void => {
+		const configuredIds = new Set(sidebarDraft.map((entry) => entry.id));
+		const added = options.getSidebarPanelSettings().filter((setting) => !configuredIds.has(setting.id));
+		if (added.length === 0) return;
+		const focusedRow = rows()[focus];
+		sidebarDraft.push(...added.map((setting) => ({ id: setting.id, visible: false })));
+		if (focusedRow) focus = Math.max(0, rowIndex(focusedRow));
+	};
 	const request = (live = false): void => {
 		options.requestWorkspaceRender();
 		if (live) options.requestLiveRender();
@@ -253,6 +267,10 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 	const tell = (message: string, kind: "info" | "warning" | "error" = "info"): void => {
 		feedback = message;
 		options.report?.(message, kind);
+	};
+	const warn = (message: string): void => {
+		tell(message, "warning");
+		request();
 	};
 	const refresh = (): void => {
 		display = cloneDisplay(options.getDisplaySettings());
@@ -266,8 +284,12 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 		tell(message);
 		request(true);
 	};
-	const recordSidebarUndo = (): void => {
-		undo = { kind: "sidebar", value: sidebarDraft.map((entry) => ({ ...entry })) };
+	const changeSidebar = (next: SidebarPanelLayout, message: string): void => {
+		undo = { kind: "sidebar", value: cloneLayout(sidebarDraft) };
+		sidebarDraft = next;
+		sidebarDirty = true;
+		tell(message);
+		request();
 	};
 	const revert = (): void => {
 		undo = { kind: "display", value: cloneOverride(options.getSessionDisplayOverride()) };
@@ -279,8 +301,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 	const undoOnce = (): void => {
 		const previous = undo;
 		if (!previous) {
-			tell("Nothing to undo", "warning");
-			request();
+			warn("Nothing to undo");
 			return;
 		}
 		undo = undefined;
@@ -296,19 +317,19 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 			request(true);
 		}
 	};
+	const restoreSidebarDefault = (): void =>
+		changeSidebar(cloneLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT), "Restored product Sidebar default");
 	const save = async (): Promise<void> => {
 		if (saving) return;
-		saving = true;
-		request();
 		if (sidebarDirty && !sidebarDraft.some((entry) => entry.visible)) {
-			tell("At least one Sidebar panel must remain visible", "warning");
-			saving = false;
-			request();
+			warn("At least one Sidebar panel must remain visible");
 			return;
 		}
+		saving = true;
+		request();
 		const patch: DisplayPatch = {
 			...cloneDisplay(display),
-			...(sidebarDirty ? { sidebarPanelLayout: sidebarDraft.map((entry) => ({ ...entry })) } : {}),
+			...(sidebarDirty ? { sidebarPanelLayout: cloneLayout(sidebarDraft) } : {}),
 		};
 		try {
 			await options.persistUserDisplayPatch(patch);
@@ -320,93 +341,227 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 			}
 			tell("Saved as User default");
 		} catch (error) {
-			tell(`Save failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+			tell(`Save failed: ${errorMessage(error)}`, "error");
 		} finally {
 			saving = false;
 			request(true);
 		}
 	};
+	const runAction = (id: ActionId): void => {
+		if (id === "save") void save();
+		else if (id === "revert") revert();
+		else if (id === "undo") undoOnce();
+		else restoreSidebarDefault();
+	};
 	const activate = (): void => {
 		const row = rows()[focus];
 		if (!row) return;
-		if (row.kind === "preset") {
-			const current = PRESETS.indexOf(display.preset as TemplateName);
-			const next = PRESETS[(current + 1 + PRESETS.length) % PRESETS.length] ?? "editorial";
-			commitMutation(applyDisplayTemplate(next), `Applied ${next} preset`);
-		} else if (row.kind === "density") {
-			commitMutation(
-				{ ...cloneDisplay(display), density: display.density === "compact" ? "comfortable" : "compact" },
-				"Changed density",
-			);
-		} else if (row.kind === "segment") {
-			if ((REQUIRED_SEGMENT_IDS as readonly SegmentId[]).includes(row.id)) {
-				tell(`${row.id} is required; use Shift+Up/Down to reorder`, "warning");
-				request();
+		switch (row.kind) {
+			case "preset": {
+				const current = TEMPLATE_NAMES.findIndex((name) => name === display.preset);
+				const next = TEMPLATE_NAMES[(current + 1) % TEMPLATE_NAMES.length] ?? "editorial";
+				commitMutation(applyDisplayTemplate(next), `Applied ${next} preset`);
 				return;
 			}
-			commitMutation(
-				{ ...cloneDisplay(display), segmentLayout: toggleSegmentVisibility(display.segmentLayout, row.id) },
-				`Toggled ${row.id}`,
-			);
-		} else if (row.kind === "sidebarPanel") {
-			const entry = sidebarDraft.find((item) => item.id === row.id);
-			if (!entry) return;
-			recordSidebarUndo();
-			entry.visible = !entry.visible;
-			sidebarDirty = true;
-			tell(`${row.id} ${entry.visible ? "shown" : "hidden"}`);
-			request();
-		} else if (row.id === "save") void save();
-		else if (row.id === "revert") revert();
-		else if (row.id === "sidebar-default") {
-			recordSidebarUndo();
-			sidebarDraft = DEFAULT_SIDEBAR_PANEL_LAYOUT.map((entry) => ({ ...entry }));
-			sidebarDirty = true;
-			tell("Restored product Sidebar default");
-			request();
-		} else undoOnce();
+			case "density":
+				commitMutation(
+					{ ...cloneDisplay(display), density: display.density === "compact" ? "comfortable" : "compact" },
+					"Changed density",
+				);
+				return;
+			case "segment":
+				if (isRequiredSegment(row.id)) {
+					warn(`${row.id} is required; use Shift+Up/Down to reorder`);
+					return;
+				}
+				commitMutation(
+					{ ...cloneDisplay(display), segmentLayout: toggleSegmentVisibility(display.segmentLayout, row.id) },
+					`Toggled ${row.id}`,
+				);
+				return;
+			case "sidebarPanel": {
+				const index = sidebarDraft.findIndex((item) => item.id === row.id);
+				const entry = sidebarDraft[index];
+				if (!entry) return;
+				const next = cloneLayout(sidebarDraft);
+				next[index] = { ...entry, visible: !entry.visible };
+				changeSidebar(next, `${row.id} ${entry.visible ? "hidden" : "shown"}`);
+				return;
+			}
+			case "action":
+				runAction(row.id);
+		}
 	};
 	const move = (direction: "earlier" | "later"): void => {
 		const row = rows()[focus];
 		if (!row || (row.kind !== "segment" && row.kind !== "sidebarPanel")) {
-			tell("Select a Segment or Sidebar panel to reorder", "warning");
-			request();
+			warn("Select a Segment or Sidebar panel to reorder");
+			return;
+		}
+		const layout = row.kind === "segment" ? display.segmentLayout : sidebarDraft;
+		const index = layout.findIndex((entry) => entry.id === row.id);
+		const target = direction === "earlier" ? index - 1 : index + 1;
+		if (target < 0 || target >= layout.length) {
+			warn(`${row.id} is already at the ${direction === "earlier" ? "start" : "end"}`);
 			return;
 		}
 		if (row.kind === "sidebarPanel") {
-			const index = sidebarDraft.findIndex((entry) => entry.id === row.id);
-			const target = direction === "earlier" ? index - 1 : index + 1;
-			if (target < 0 || target >= sidebarDraft.length) {
-				tell(`${row.id} is already at the ${direction === "earlier" ? "start" : "end"}`, "warning");
-				request();
-				return;
-			}
-			recordSidebarUndo();
-			const moved = sidebarDraft.splice(index, 1)[0];
-			if (moved) sidebarDraft.splice(target, 0, moved);
-			sidebarDirty = true;
-			tell(`Moved ${row.id} ${direction}`);
-			focus = rowIndex(row);
-			request();
-			return;
+			const next = cloneLayout(sidebarDraft);
+			const [moved] = next.splice(index, 1);
+			if (moved) next.splice(target, 0, moved);
+			changeSidebar(next, `Moved ${row.id} ${direction}`);
+		} else {
+			commitMutation(
+				{ ...cloneDisplay(display), segmentLayout: reorderSegment(display.segmentLayout, row.id, direction) },
+				`Moved ${row.id} ${direction}`,
+			);
 		}
-		const index = display.segmentLayout.findIndex((entry) => entry.id === row.id);
-		const target = direction === "earlier" ? index - 1 : index + 1;
-		if (target < 0 || target >= display.segmentLayout.length) {
-			tell(`${row.id} is already at the ${direction === "earlier" ? "start" : "end"}`, "warning");
-			request();
-			return;
-		}
-		commitMutation(
-			{ ...cloneDisplay(display), segmentLayout: reorderSegment(display.segmentLayout, row.id, direction) },
-			`Moved ${row.id} ${direction}`,
-		);
 		focus = rowIndex(row);
+	};
+	const actionForKey = (data: string): ActionId | undefined =>
+		(Object.keys(ACTION_KEYS) as ActionId[]).find((id) => ACTION_KEYS[id] === data.toUpperCase());
+
+	const buildContent = (outerInner: number): { content: LayoutLine[]; sessionChanged: boolean } => {
+		const { theme } = options;
+		const provenance = options.getDisplayProvenance();
+		const allRows = rows();
+		const rowLine = (row: Row, text: string): LayoutLine => {
+			const focused = focus === rowIndex(row, allRows);
+			return { line: `${focused ? theme.fg("accent", "›") : " "} ${text}`, focused };
+		};
+		const actionLine = (id: ActionId, label: string, hint = ACTION_KEYS[id]): LayoutLine =>
+			rowLine({ kind: "action", id }, `${label.padEnd(16)}${hint}`);
+		const sessionChanged = options.getSessionDisplayOverride() !== undefined;
+		const displayLines: LayoutLine[] = [
+			rowLine({ kind: "preset" }, `Preset       ${display.preset.padEnd(13)} ${provenance.preset}`),
+			rowLine({ kind: "density" }, `Density      ${display.density.padEnd(13)} ${provenance.density}`),
+			{ line: "" },
+			actionLine("save", "Save default", saving ? "saving…" : ACTION_KEYS.save),
+			actionLine("revert", "Revert session"),
+			actionLine("undo", "Undo", undo ? ACTION_KEYS.undo : "—"),
+		];
+		const segmentLines: LayoutLine[] = [
+			{ line: theme.fg("muted", `  ● shown   ○ hidden   ◆ required   order ${provenance.order}`) },
+			{ line: "" },
+			...display.segmentLayout.map((entry, index) => {
+				const required = isRequiredSegment(entry.id);
+				const state = required ? "◆" : entry.visible ? "●" : "○";
+				return rowLine(
+					{ kind: "segment", id: entry.id },
+					`${String(index + 1).padStart(2)}  ${state} ${entry.id.padEnd(12)}${required ? "  required" : ""}`,
+				);
+			}),
+		];
+		const sidebarSettings = new Map(options.getSidebarPanelSettings().map((entry) => [entry.id, entry]));
+		const sidebarLines: LayoutLine[] = [
+			{ line: theme.fg("muted", `  ● shown   ○ hidden   ${sidebarDirty ? "draft · " : ""}saved order`) },
+			{ line: "" },
+			...sidebarDraft.map((entry, index) => {
+				const setting = sidebarSettings.get(entry.id);
+				const suffix = setting?.available === false ? "  unavailable" : "";
+				return rowLine(
+					{ kind: "sidebarPanel", id: entry.id },
+					`${String(index + 1).padStart(2)}  ${entry.visible ? "●" : "○"} ${setting?.title || entry.id}${suffix}`,
+				);
+			}),
+			{ line: "" },
+			actionLine("sidebar-default", "Restore default"),
+		];
+		const previewLine = renderFooterLine(
+			representativeState,
+			{ ...options.getRenderConfig(), ...cloneDisplay(display) },
+			theme,
+			Math.max(1, outerInner - 6),
+			{ colorEnabled: options.colorEnabled ?? true },
+		);
+		const preview = [
+			...panel("Preview", [{ line: `  ${previewLine}` }], outerInner, theme, true),
+			{ line: "" },
+			...panel(
+				"Sidebar Preview",
+				sidebarDraft.filter((entry) => entry.visible).map((entry) => ({ line: `  ${entry.id}` })),
+				outerInner,
+				theme,
+			),
+		];
+		let editing: LayoutLine[];
+		if (outerInner >= 72) {
+			const leftWidth = Math.max(28, Math.floor((outerInner - 2) * 0.4));
+			const rightWidth = outerInner - leftWidth - 2;
+			const height = Math.max(displayLines.length, segmentLines.length);
+			const left = panel(
+				"Display",
+				[...displayLines, ...blankLines(height - displayLines.length)],
+				leftWidth,
+				theme,
+			);
+			const right = panel(
+				"Segment Editor",
+				[...segmentLines, ...blankLines(height - segmentLines.length)],
+				rightWidth,
+				theme,
+			);
+			editing = [
+				...left.map((leftLine, index) => ({
+					line: `${leftLine.line}  ${right[index]?.line ?? fitToWidth("", rightWidth)}`,
+					focused: Boolean(leftLine.focused || right[index]?.focused),
+				})),
+				{ line: "" },
+				...panel("Sidebar Editor", sidebarLines, outerInner, theme),
+			];
+		} else {
+			editing = [
+				...panel("Display", displayLines, outerInner, theme),
+				{ line: "" },
+				...panel("Segment Editor", segmentLines, outerInner, theme),
+				{ line: "" },
+				...panel("Sidebar Editor", sidebarLines, outerInner, theme),
+			];
+		}
+		const selected = allRows[focus];
+		let guidance = KEY_HINTS;
+		if (selected?.kind === "segment") {
+			const required = isRequiredSegment(selected.id);
+			const visibility = required
+				? "required"
+				: display.segmentLayout.find((entry) => entry.id === selected.id)?.visible
+					? "shown"
+					: "hidden";
+			guidance = `${selected.id} · ${visibility} · source:${provenance.visibility[selected.id]} · order:${provenance.order} · ${required ? "Shift+↑/↓ Reorder" : "Enter Toggle · Shift+↑/↓ Reorder"}`;
+		} else if (selected?.kind === "preset" || selected?.kind === "density") {
+			guidance = `${selected.kind} · source:${provenance[selected.kind]} · Enter Change · U Undo`;
+		} else if (selected?.kind === "sidebarPanel") {
+			const entry = sidebarDraft.find((item) => item.id === selected.id);
+			const available = sidebarSettings.get(selected.id)?.available !== false;
+			guidance = `${selected.id} · ${entry?.visible ? "shown" : "hidden"} · ${available ? "available" : "unavailable"} · Enter Toggle · Shift+↑/↓ Reorder`;
+		} else if (selected?.kind === "action") {
+			guidance = `${selected.id} · Enter or ${ACTION_KEYS[selected.id]}`;
+		}
+		const status = saving ? "saving…" : sessionChanged || sidebarDirty ? "session changed" : "effective";
+		const content: LayoutLine[] = [
+			{
+				line: fitToWidth(
+					`${theme.bold(TITLE)}  ${theme.fg(sessionChanged ? "warning" : "success", status)}`,
+					outerInner,
+				),
+			},
+			{ line: fitToWidth(theme.fg("muted", KEY_HINTS), outerInner) },
+			{ line: "" },
+			...preview,
+			{ line: "" },
+			...editing,
+			{ line: "" },
+			...(feedback ? [{ line: fitToWidth(feedback, outerInner) }] : []),
+			{ line: fitToWidth(guidance, outerInner) },
+		];
+		return { content, sessionChanged };
 	};
 
 	return {
 		invalidate() {},
 		handleInput(data: string) {
+			absorbNewSidebarPanels();
+			const action = actionForKey(data);
 			if (matchesKey(data, "up")) {
 				focus = Math.max(0, focus - 1);
 				request();
@@ -417,184 +572,31 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 			else if (matchesKey(data, "shift+down")) move("later");
 			else if (matchesKey(data, "enter") || data === " ") activate();
 			else if (matchesKey(data, "escape")) options.close();
-			else if (data.toLowerCase() === "u") undoOnce();
-			else if (data.toLowerCase() === "r") revert();
-			else if (data.toLowerCase() === "d") {
-				focus = rowIndex({ kind: "action", id: "sidebar-default" });
-				activate();
-			} else if (data.toLowerCase() === "s") void save();
+			else if (action) runAction(action);
 		},
 		render(width: number): string[] {
 			if (width <= 0) return [];
+			// Panels registered while the workspace is open appear without waiting for input.
+			absorbNewSidebarPanels();
 			const outerInner = Math.max(0, width - 2);
-			const provenance = options.getDisplayProvenance();
-			const allRows = rows();
-			const marker = (row: Row) => (focus === rowIndex(row, allRows) ? options.theme.fg("accent", "›") : " ");
-			const isFocused = (row: Row): boolean => focus === rowIndex(row, allRows);
-			const rowLine = (row: Row, text: string): LayoutLine => ({
-				line: `${marker(row)} ${text}`,
-				focused: isFocused(row),
-			});
-			const presetRow: Row = { kind: "preset", id: "preset" };
-			const densityRow: Row = { kind: "density", id: "density" };
-			const actionRow = (id: Extract<Row, { kind: "action" }>["id"]): Row => ({ kind: "action", id });
-			const actionLine = (
-				id: Extract<Row, { kind: "action" }>["id"],
-				label: string,
-				hint: string,
-			): LayoutLine => rowLine(actionRow(id), `${label.padEnd(16)}${hint}`);
-			const sessionChanged = options.getSessionDisplayOverride() !== undefined;
-			const status = saving ? "saving…" : sessionChanged || sidebarDirty ? "session changed" : "effective";
-			const displayLines: LayoutLine[] = [
-				rowLine(presetRow, `Preset       ${display.preset.padEnd(13)} ${provenance.preset}`),
-				rowLine(densityRow, `Density      ${display.density.padEnd(13)} ${provenance.density}`),
-				{ line: "" },
-				actionLine("save", "Save default", saving ? "saving…" : "S"),
-				actionLine("revert", "Revert session", "R"),
-				actionLine("undo", "Undo", undo ? "U" : "—"),
-			];
-			const segmentLines: LayoutLine[] = [
-				{ line: options.theme.fg("muted", `  ● shown   ○ hidden   ◆ required   order ${provenance.order}`) },
-				{ line: "" },
-				...display.segmentLayout.map((entry, index) => {
-					const required = (REQUIRED_SEGMENT_IDS as readonly SegmentId[]).includes(entry.id);
-					const state = required ? "◆" : entry.visible ? "●" : "○";
-					const suffix = required ? "  required" : "";
-					return rowLine(
-						{ kind: "segment", id: entry.id },
-						`${String(index + 1).padStart(2)}  ${state} ${entry.id.padEnd(12)}${suffix}`,
-					);
-				}),
-			];
-			const sidebarAvailability = new Map(sidebarSettings().map((entry) => [entry.id, entry]));
-			const sidebarLines: LayoutLine[] = [
-				{
-					line: options.theme.fg(
-						"muted",
-						`  ● shown   ○ hidden   ${sidebarDirty ? "draft · " : ""}saved order`,
-					),
-				},
-				{ line: "" },
-				...sidebarDraft.map((entry, index) => {
-					const available = sidebarAvailability.get(entry.id);
-					const state = entry.visible ? "●" : "○";
-					const suffix = available?.available === false ? "  unavailable" : "";
-					return rowLine(
-						{ kind: "sidebarPanel", id: entry.id },
-						`${String(index + 1).padStart(2)}  ${state} ${available?.title ?? entry.id}${suffix}`,
-					);
-				}),
-				{ line: "" },
-				actionLine("sidebar-default", "Restore default", "D"),
-			];
-			const sidebarPreviewRows = sidebarDraft.filter((entry) => entry.visible).map((entry) => entry.id);
-			const previewConfig = { ...options.getRenderConfig(), ...cloneDisplay(display) };
-			const previewLine = renderFooterLine(
-				representativeState,
-				previewConfig,
-				options.theme,
-				Math.max(1, outerInner - 6),
-				options.colorEnabled ?? true,
-			);
-			const preview = [
-				...panel("Preview", [`  ${previewLine}`], outerInner, options.theme, true),
-				"",
-				...panel(
-					"Sidebar Preview",
-					sidebarPreviewRows.map((row) => `  ${row}`),
-					outerInner,
-					options.theme,
-				),
-			];
-			let editing: LayoutLine[];
-			if (outerInner >= 72) {
-				const leftWidth = Math.max(28, Math.floor((outerInner - 2) * 0.4));
-				const rightWidth = outerInner - leftWidth - 2;
-				const height = Math.max(displayLines.length, segmentLines.length);
-				const left = panelWithFocus(
-					"Display",
-					[...displayLines, ...Array(Math.max(0, height - displayLines.length)).fill({ line: "" })],
-					leftWidth,
-					options.theme,
-				);
-				const right = panelWithFocus(
-					"Segment Editor",
-					[...segmentLines, ...Array(Math.max(0, height - segmentLines.length)).fill({ line: "" })],
-					rightWidth,
-					options.theme,
-				);
-				editing = [
-					...left.map((leftLine, index) => ({
-						line: `${leftLine.line}  ${right[index]?.line ?? fit("", rightWidth)}`,
-						focused: Boolean(leftLine.focused || right[index]?.focused),
-					})),
-					{ line: "" },
-					...panelWithFocus("Sidebar Editor", sidebarLines, outerInner, options.theme),
-				];
-			} else {
-				editing = [
-					...panelWithFocus("Display", displayLines, outerInner, options.theme),
-					{ line: "" },
-					...panelWithFocus("Segment Editor", segmentLines, outerInner, options.theme),
-					{ line: "" },
-					...panelWithFocus("Sidebar Editor", sidebarLines, outerInner, options.theme),
-				];
-			}
-			const selected = allRows[focus];
-			let guidance = "↑/↓ Select · Enter Change · S Save · Esc Close";
-			if (selected?.kind === "segment") {
-				const required = (REQUIRED_SEGMENT_IDS as readonly SegmentId[]).includes(selected.id);
-				const visibility = required
-					? "required"
-					: display.segmentLayout.find((entry) => entry.id === selected.id)?.visible
-						? "shown"
-						: "hidden";
-				guidance = `${selected.id} · ${visibility} · source:${provenance.visibility[selected.id]} · order:${provenance.order} · ${required ? "Shift+↑/↓ Reorder" : "Enter Toggle · Shift+↑/↓ Reorder"}`;
-			} else if (selected?.kind === "preset" || selected?.kind === "density") {
-				guidance = `${selected.id} · source:${provenance[selected.id]} · Enter Change · U Undo`;
-			} else if (selected?.kind === "sidebarPanel") {
-				const entry = sidebarDraft.find((item) => item.id === selected.id);
-				const available = sidebarAvailability.get(selected.id);
-				guidance = `${selected.id} · ${entry?.visible ? "shown" : "hidden"} · ${available?.available === false ? "unavailable" : "available"} · Enter Toggle · Shift+↑/↓ Reorder`;
-			} else if (selected?.kind === "action") {
-				guidance = `${selected.id} · Enter or ${selected.id === "save" ? "S" : selected.id === "revert" ? "R" : selected.id === "sidebar-default" ? "D" : "U"}`;
-			}
-			const content: LayoutLine[] = [
-				{
-					line: fit(
-						`${options.theme.bold("DISPLAY SETTINGS")}  ${options.theme.fg(sessionChanged ? "warning" : "success", status)}`,
-						outerInner,
-					),
-				},
-				{
-					line: fit(options.theme.fg("muted", "↑/↓ Select · Enter Change · S Save · Esc Close"), outerInner),
-				},
-				{ line: "" },
-				...preview.map((line) => ({ line })),
-				{ line: "" },
-				...editing,
-				{ line: "" },
-				...(feedback ? [{ line: fit(feedback, outerInner) }] : []),
-				{ line: fit(guidance, outerInner) },
-			];
+			const { content } = buildContent(outerInner);
 			const border = (text: string) => options.theme.fg("borderAccent", text);
-			const frame = (lines: string[]): string[] =>
+			const frame = (lines: readonly LayoutLine[]): string[] =>
 				[
 					border(`╭${"─".repeat(outerInner)}╮`),
-					...lines.map((line) => `${border("│")}${fit(line, outerInner)}${border("│")}`),
+					...lines.map(({ line }) => `${border("│")}${fitToWidth(line, outerInner)}${border("│")}`),
 					border(`╰${"─".repeat(outerInner)}╯`),
 				].map((line) => truncateToWidth(line, width, ""));
 
 			const viewportHeight = options.getViewportHeight?.();
-			if (viewportHeight === undefined || !Number.isFinite(viewportHeight))
-				return frame(content.map(({ line }) => line));
+			if (viewportHeight === undefined) return frame(content);
 
 			// Pi clamps an overlay's maxHeight to at least one row. Keep the reported
 			// viewport as-is, however: callers can report zero while the terminal is
 			// being resized, and returning no lines is safer than overflowing it.
 			const height = Math.max(0, Math.floor(viewportHeight));
 			if (height === 0) return [];
-			if (height === 1) return [fit(options.theme.bold("DISPLAY SETTINGS"), width)];
+			if (height === 1) return [fitToWidth(options.theme.bold(TITLE), width)];
 
 			// Keep the heading, global key hints, and contextual guidance fixed. Only the
 			// central preview/editor content is virtualized so the frame is never clipped.
@@ -604,74 +606,15 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 			if (interiorRows < fixedTop.length + fixedBottom.length) {
 				// There is room for a frame, but not for the complete sticky chrome.
 				// Prefer the heading over dropping the outer frame at tiny heights.
-				return frame([...fixedTop, ...fixedBottom].slice(0, interiorRows).map(({ line }) => line));
+				return frame([...fixedTop, ...fixedBottom].slice(0, interiorRows));
 			}
-
 			const central = content.slice(2, -1);
 			while (central.at(-1)?.line === "") central.pop();
 			const centralRows = interiorRows - fixedTop.length - fixedBottom.length;
-			const selectedCentralLine = Math.max(
-				0,
-				central.findIndex(({ focused }) => focused),
-			);
-			const overflowing = central.length > centralRows;
-			let centralLines: LayoutLine[];
-
-			if (!overflowing) {
-				scrollOffset = 0;
-				centralLines = [...central];
-			} else if (centralRows === 0) {
-				// The sticky chrome fills the interior (height 5); there is no room for
-				// editor content or indicators, but the frame remains complete.
-				scrollOffset = 0;
-				centralLines = [];
-			} else if (centralRows === 1) {
-				// One row cannot carry an indicator and a focused row simultaneously.
-				scrollOffset = Math.min(selectedCentralLine, central.length - 1);
-				centralLines = [central[scrollOffset] ?? { line: "" }];
-			} else if (centralRows === 2) {
-				// Two rows can show one indicator plus content. Both indicators require
-				// at least three central rows, so prioritize the focused edge.
-				if (selectedCentralLine <= 0) {
-					scrollOffset = 0;
-					centralLines = [central[0] ?? { line: "" }, { line: fit("↓ more", outerInner) }];
-				} else {
-					scrollOffset = selectedCentralLine;
-					centralLines = [{ line: fit("↑ more", outerInner) }, central[scrollOffset] ?? { line: "" }];
-				}
-			} else {
-				const topCapacity = centralRows - 1;
-				const bottomOffset = central.length - topCapacity;
-				const middleCapacity = centralRows - 2;
-				if (selectedCentralLine < topCapacity) {
-					scrollOffset = 0;
-				} else if (selectedCentralLine >= bottomOffset) {
-					scrollOffset = bottomOffset;
-				} else {
-					const minMiddleOffset = 1;
-					const maxMiddleOffset = central.length - middleCapacity - 1;
-					scrollOffset = Math.max(minMiddleOffset, Math.min(scrollOffset, maxMiddleOffset));
-					if (selectedCentralLine < scrollOffset) scrollOffset = selectedCentralLine;
-					else if (selectedCentralLine >= scrollOffset + middleCapacity)
-						scrollOffset = selectedCentralLine - middleCapacity + 1;
-					scrollOffset = Math.max(minMiddleOffset, Math.min(scrollOffset, maxMiddleOffset));
-				}
-
-				const atTop = scrollOffset === 0;
-				const atBottom = scrollOffset === bottomOffset;
-				const bodyCapacity = centralRows - (atTop ? 0 : 1) - (atBottom ? 0 : 1);
-				const body = central.slice(scrollOffset, scrollOffset + bodyCapacity);
-				centralLines = [
-					...(atTop ? [] : [{ line: fit("↑ more", outerInner) }]),
-					...body,
-					...(atBottom ? [] : [{ line: fit("↓ more", outerInner) }]),
-				];
-			}
-
-			while (centralLines.length < centralRows) centralLines.push({ line: "" });
-			return frame(
-				[...fixedTop, ...centralLines, ...fixedBottom].slice(0, interiorRows).map(({ line }) => line),
-			);
+			const virtualized = virtualize(central, centralRows, scrollOffset, outerInner);
+			scrollOffset = virtualized.scrollOffset;
+			const centralLines = [...virtualized.lines, ...blankLines(centralRows - virtualized.lines.length)];
+			return frame([...fixedTop, ...centralLines, ...fixedBottom].slice(0, interiorRows));
 		},
 	};
 }

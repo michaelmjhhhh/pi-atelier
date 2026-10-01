@@ -1,15 +1,16 @@
-import { deflateSync } from "node:zlib";
+import { crc32, deflateSync } from "node:zlib";
 import { allocateImageId, getCapabilities, getCellDimensions, Image } from "@earendil-works/pi-tui";
-import type { SubagentCostSeries } from "./subagent-cost-history.js";
+import type { Rgb } from "./palette.js";
 
-export type ChartRgb = readonly [number, number, number];
-export interface CostImageSeries {
-	series: SubagentCostSeries;
-	color: ChartRgb;
+interface CostImageCurve {
+	id: string;
+	/** Unit coordinates: `u` is elapsed time and `v` is cost, both in [0, 1]. */
+	points: readonly { u: number; v: number }[];
+	color: Rgb;
 	opacity: number;
 	selectedPoint?: number | undefined;
 }
-export interface CurvePoint {
+interface CurvePoint {
 	x: number;
 	y: number;
 }
@@ -51,33 +52,24 @@ export function interpolateCostCurve(points: readonly CurvePoint[]): CurvePoint[
 	}
 	return result;
 }
-const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, index) => {
-	let crc = index;
-	for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
-	return crc >>> 0;
-});
 function chunk(name: string, data: Buffer): Buffer {
+	const length = Buffer.alloc(4);
+	length.writeUInt32BE(data.length);
 	const body = Buffer.concat([Buffer.from(name), data]);
-	let crc = 0xffffffff;
-	for (const byte of body) crc = (crc >>> 8) ^ (CRC_TABLE[(crc ^ byte) & 255] ?? 0);
-	const output = Buffer.alloc(body.length + 8);
-	output.writeUInt32BE(data.length, 0);
-	body.copy(output, 4);
-	output.writeUInt32BE((crc ^ 0xffffffff) >>> 0, output.length - 4);
-	return output;
+	const checksum = Buffer.alloc(4);
+	checksum.writeUInt32BE(crc32(body));
+	return Buffer.concat([length, body, checksum]);
 }
 
 /** Transparent, anti-aliased PNG; no shell, external renderer, files or additional packages. */
-export function drawCostPlot(
-	series: readonly CostImageSeries[],
+function drawCostPlot(
+	curves: readonly CostImageCurve[],
 	width: number,
 	height: number,
-	scale = 1,
+	scale: number,
 ): Buffer {
-	width = Math.max(40, Math.min(1400, Math.round(width)));
-	height = Math.max(40, Math.min(800, Math.round(height)));
 	const pixels = Buffer.alloc(width * height * 4);
-	const blend = (x: number, y: number, color: ChartRgb, alpha: number): void => {
+	const blend = (x: number, y: number, color: Rgb, alpha: number): void => {
 		if (x < 0 || y < 0 || x >= width || y >= height || alpha <= 0) return;
 		const offset = (y * width + x) * 4,
 			oldAlpha = (pixels[offset + 3] ?? 0) / 255;
@@ -91,7 +83,7 @@ export function drawCostPlot(
 	};
 	let coverage: Float32Array | undefined;
 	let touched: number[] = [];
-	const line = (a: CurvePoint, b: CurvePoint, color: ChartRgb, radius: number, opacity: number): void => {
+	const line = (a: CurvePoint, b: CurvePoint, color: Rgb, radius: number, opacity: number): void => {
 		const dx = b.x - a.x,
 			dy = b.y - a.y,
 			length = dx * dx + dy * dy;
@@ -123,22 +115,17 @@ export function drawCostPlot(
 		right = width - pad,
 		top = pad,
 		bottom = height - pad;
-	const axis: ChartRgb = [126, 135, 145];
+	const axis: Rgb = [126, 135, 145];
 	line({ x: left, y: bottom }, { x: right, y: bottom }, axis, 0.55 * scale, 0.5);
 	line({ x: left, y: bottom }, { x: left, y: top }, axis, 0.55 * scale, 0.5);
-	const maxCost = Math.max(0, ...series.flatMap(({ series }) => series.points.map((point) => point.cost)));
-	const duration = Math.max(
-		1,
-		...series.map(({ series }) => (series.points.at(-1)?.at ?? series.startedAt) - series.startedAt),
-	);
 	// Draw de-emphasized series first so the selected curve stays fully visible at crossings.
 	const curveCoverage = new Float32Array(width * height);
-	for (const item of [...series].sort((a, b) => a.opacity - b.opacity)) {
+	for (const item of [...curves].sort((a, b) => a.opacity - b.opacity)) {
 		coverage = curveCoverage;
 		touched = [];
-		const observations = item.series.points.map((point) => ({
-			x: left + ((point.at - item.series.startedAt) / duration) * (right - left),
-			y: bottom - (maxCost > 0 ? point.cost / maxCost : 0) * (bottom - top),
+		const observations = item.points.map(({ u, v }) => ({
+			x: left + u * (right - left),
+			y: bottom - v * (bottom - top),
 		}));
 		const smooth = interpolateCostCurve(observations);
 		for (let index = 1; index < smooth.length; index++) {
@@ -183,13 +170,14 @@ export function drawCostPlot(
 const cache = new WeakMap<object, { imageId: number; signature: string; lines: string[] }>();
 export function renderCostImage(
 	owner: object,
-	series: readonly CostImageSeries[],
+	curves: readonly CostImageCurve[],
 	columns: number,
 	rows: number,
 ): string[] | undefined {
 	// Kitty supports reliable placement replacement/deletion during overlay changes.
 	if (getCapabilities().images !== "kitty") return undefined;
 	const cell = getCellDimensions();
+	// The scale keeps the raster within 1400x800 pixels.
 	const scale = Math.min(2, 1400 / (columns * cell.widthPx), 800 / (rows * cell.heightPx));
 	const width = Math.max(40, Math.round(columns * cell.widthPx * scale));
 	const height = Math.max(40, Math.round(rows * cell.heightPx * scale));
@@ -198,12 +186,12 @@ export function renderCostImage(
 		rows,
 		width,
 		height,
-		series.map((item) => [item.series.id, item.series.points, item.color, item.opacity, item.selectedPoint]),
+		curves.map((item) => [item.id, item.points, item.color, item.opacity, item.selectedPoint]),
 	]);
 	const previous = cache.get(owner);
 	if (previous?.signature === signature) return previous.lines;
 	const imageId = previous?.imageId ?? allocateImageId();
-	const png = drawCostPlot(series, width, height, scale);
+	const png = drawCostPlot(curves, width, height, scale);
 	const image = new Image(
 		png.toString("base64"),
 		"image/png",

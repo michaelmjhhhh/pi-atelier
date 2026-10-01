@@ -128,7 +128,7 @@ describe("AtelierEditor", () => {
 
 		editor.render(40);
 		expect(editor.statusLineVisible).toBe(true);
-		delete editor.renderStatusLine;
+		editor.renderStatusLine = undefined;
 		expect(editor.render(40)[0]).toMatch(/^╭─+╮$/);
 		expect(editor.statusLineVisible).toBe(false);
 	});

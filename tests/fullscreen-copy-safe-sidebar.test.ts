@@ -1,8 +1,8 @@
 import { ScrollView, TuiAltScreen } from "@earendil-works/pi-tui";
+import { DEFAULT_CONFIG } from "../src/config.js";
 import { describe, expect, it, vi } from "vitest";
 import { createSidebarController } from "../src/sidebar.js";
 import { createSplitPaneController } from "../src/split-pane.js";
-import { DEFAULT_CONFIG } from "../src/types.js";
 import { stableTuiReference } from "./helpers/stable-tui-reference.js";
 
 const press = (x: number, y: number) => `\u001b[<0;${x};${y}M`;
@@ -57,7 +57,7 @@ describe("fullscreen Sidebar selection", () => {
 				}),
 		);
 		const controller = createSidebarController({
-			ctx: { mode: "tui", ui: { custom } } as never,
+			ctx: { cwd: "/tmp/project", mode: "tui", ui: { custom } } as never,
 			getSnapshot: () => {
 				throw new Error("render lifecycle marker");
 			},

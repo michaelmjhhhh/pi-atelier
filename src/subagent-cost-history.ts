@@ -1,8 +1,12 @@
-import { constants } from "node:fs";
-import { open } from "node:fs/promises";
 import { join } from "node:path";
+import { readBoundedFile } from "./bounded-file.js";
+import { isRecord } from "./text.js";
 
-export interface SubagentCostPoint {
+const MAX_EVENTS_BYTES = 2 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 8 * 1024 * 1024;
+const MAX_POINTS = 2048;
+
+interface SubagentCostPoint {
 	at: number;
 	cost: number;
 }
@@ -21,10 +25,7 @@ export interface SubagentCostSource {
 	startedAt?: number | undefined;
 	steps: { agent: string; startedAt?: number | undefined }[];
 }
-const object = (value: unknown): Record<string, unknown> | undefined =>
-	value !== null && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: undefined;
+const object = (value: unknown): Record<string, unknown> | undefined => (isRecord(value) ? value : undefined);
 const numeric = (value: unknown): value is number =>
 	typeof value === "number" && Number.isFinite(value) && value >= 0;
 
@@ -35,28 +36,19 @@ export async function readSubagentCostHistory(
 ): Promise<{ series: SubagentCostSeries[]; unavailable: number }> {
 	const series: SubagentCostSeries[] = [];
 	let unavailable = 0;
-	let remainingBytes = 8 * 1024 * 1024;
+	let remainingBytes = MAX_TOTAL_BYTES;
 	for (const source of sources) {
 		if (signal?.aborted) break;
 		const runs = new Map<number, SubagentCostSeries>();
-		let file: Awaited<ReturnType<typeof open>> | undefined;
 		try {
-			file = await open(join(source.directory, "events.jsonl"), constants.O_RDONLY | constants.O_NONBLOCK);
-			const stat = await file.stat();
-			if (!stat.isFile() || stat.size > 2 * 1024 * 1024 || stat.size > remainingBytes) {
-				unavailable++;
-				continue;
-			}
-			remainingBytes -= stat.size;
-			const buffer = Buffer.alloc(stat.size);
-			let length = 0;
-			while (length < buffer.length && !signal?.aborted) {
-				const result = await file.read(buffer, length, buffer.length - length, null);
-				if (!result.bytesRead) break;
-				length += result.bytesRead;
-			}
+			const buffer = await readBoundedFile(
+				join(source.directory, "events.jsonl"),
+				Math.min(MAX_EVENTS_BYTES, remainingBytes),
+				signal,
+			);
+			remainingBytes -= buffer.length;
 			if (signal?.aborted) break;
-			const text = buffer.subarray(0, length).toString("utf8");
+			const text = buffer.toString("utf8");
 			// Ignore an append in progress. Re-reading after the next refresh recovers it.
 			const lines = text.slice(0, text.lastIndexOf("\n") + 1).split("\n");
 			let corrupt = false;
@@ -85,14 +77,14 @@ export async function readSubagentCostHistory(
 					corrupt = true;
 					continue;
 				}
+				const index = event?.subagentStepIndex;
 				if (
 					event?.type !== "message_end" ||
 					event.subagentSource !== "child" ||
 					event.subagentRunId !== source.runId ||
-					!Number.isSafeInteger(event.subagentStepIndex)
+					typeof index !== "number"
 				)
 					continue;
-				const index = event.subagentStepIndex as number;
 				const step = source.steps[index];
 				const message = object(event.message);
 				if (!step || event.subagentAgent !== step.agent || message?.role !== "assistant") continue;
@@ -109,8 +101,9 @@ export async function readSubagentCostHistory(
 				const key = JSON.stringify([index, at, message.timestamp, cost]);
 				if (seen.has(key)) continue;
 				seen.add(key);
-				const previous = run.points.at(-1);
-				if (!previous || at < previous.at || run.points.length >= 2048) {
+				// Every run starts with its zero-cost baseline, so a previous point always exists.
+				const previous = run.points[run.points.length - 1] ?? { at: run.startedAt, cost: 0 };
+				if (at < previous.at || run.points.length >= MAX_POINTS) {
 					run.partial = true;
 					continue;
 				}
@@ -128,8 +121,6 @@ export async function readSubagentCostHistory(
 			}
 		} catch {
 			unavailable++;
-		} finally {
-			await file?.close();
 		}
 	}
 	const unique = new Map<string, SubagentCostSeries>();

@@ -1,3 +1,4 @@
+import { plainTheme } from "./helpers/render.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { deferred, settleMicrotasks } from "./helpers/async.js";
@@ -166,20 +167,12 @@ describe("extension activity", () => {
 			workspace.handleInput(" ");
 
 			const footerRequestRender = vi.fn();
-			const footer = h.setFooter.mock.calls[0]?.[0](
-				{ requestRender: footerRequestRender },
-				{
-					fg: (_color: string, text: string) => text,
-					bold: (text: string) => text,
-					italic: (text: string) => text,
-				},
-				{
-					getGitBranch: () => undefined,
-					getExtensionStatuses: () => new Map(),
-					onBranchChange: () => () => undefined,
-				},
-			);
-			expect(footer.render(160).join("\n")).toContain("\uf017 ~  \uf0e7 ~");
+			const footer = h.setFooter.mock.calls[0]?.[0]({ requestRender: footerRequestRender }, plainTheme, {
+				getGitBranch: () => undefined,
+				getExtensionStatuses: () => new Map(),
+				onBranchChange: () => () => undefined,
+			});
+			expect(footer.render(160).join("\n")).toContain("\uf017 —  \uf0e7 —");
 
 			vi.setSystemTime(1_100);
 			await h.dispatch("before_provider_request", { type: "before_provider_request", payload: {} });
@@ -191,7 +184,7 @@ describe("extension activity", () => {
 			});
 
 			expect(footerRequestRender).toHaveBeenCalled();
-			expect(footer.render(160).join("\n")).toContain("\uf017 820ms  \uf0e7 ~");
+			expect(footer.render(160).join("\n")).toContain("\uf017 820ms  \uf0e7 —");
 			expect(renderOverlayText(h)).toMatch(/First token\s+820ms/);
 
 			vi.setSystemTime(2_920);

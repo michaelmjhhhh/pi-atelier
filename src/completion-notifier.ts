@@ -1,9 +1,9 @@
 import { spawn as nodeSpawn, type SpawnOptions } from "node:child_process";
+import { sanitizeInline } from "./text.js";
 
-export type CompletionNotificationKind = "turn-settled" | "input-requested";
+type CompletionNotificationKind = "turn-settled" | "input-requested";
 
 export interface CompletionNotification {
-	kind: CompletionNotificationKind;
 	projectName: string;
 	sessionName?: string;
 	completedToolCount?: number;
@@ -54,61 +54,63 @@ const WINDOWS_TOAST_SCRIPT = [
 	"[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Pi Atelier').Show($toast)",
 ].join("; ");
 
-const defaultSpawn: SpawnNotificationProcess = (command, args, options) => nodeSpawn(command, args, options);
-
 export function createCompletionNotifier(options: CompletionNotifierOptions): CompletionNotifier {
 	const platform = options.platform ?? process.platform;
-	const spawn = options.spawn ?? defaultSpawn;
+	const spawn = options.spawn ?? nodeSpawn;
 	let settledNotified = false;
-	let inputRequests = new Set<string>();
+	const inputRequests = new Set<string>();
 	const pendingSystemNotifications = new Set<() => void>();
 
-	const deliver = (notification: CompletionNotification): void => {
+	const deliver = (kind: CompletionNotificationKind, notification: CompletionNotification): void => {
 		if (!options.isEnabled()) return;
-		const title = formatTitle(notification);
-		const body = formatBody(notification);
 		let cancel: (() => void) | undefined;
-		cancel = deliverSystemNotification(platform, spawn, title, body, () => {
-			if (cancel) pendingSystemNotifications.delete(cancel);
-		});
+		cancel = deliverSystemNotification(
+			platform,
+			spawn,
+			formatTitle(notification),
+			formatBody(kind, notification),
+			() => {
+				if (cancel) pendingSystemNotifications.delete(cancel);
+			},
+		);
 		if (cancel) pendingSystemNotifications.add(cancel);
+	};
+	const runStarted = (): void => {
+		settledNotified = false;
+		inputRequests.clear();
 	};
 
 	return {
-		runStarted() {
-			settledNotified = false;
-			inputRequests = new Set<string>();
-		},
+		runStarted,
 		inputRequested(toolCallId, notification) {
 			const id = sanitize(toolCallId, 160);
 			if (id.length === 0 || inputRequests.has(id)) return;
 			inputRequests.add(id);
-			deliver({ ...notification, kind: "input-requested" });
+			deliver("input-requested", notification);
 		},
 		turnSettled(notification) {
 			if (settledNotified) return;
 			settledNotified = true;
-			deliver({ ...notification, kind: "turn-settled" });
+			deliver("turn-settled", notification);
 		},
 		reset() {
-			settledNotified = false;
-			inputRequests = new Set<string>();
+			runStarted();
 			for (const cancel of pendingSystemNotifications) cancel();
 			pendingSystemNotifications.clear();
 		},
 	};
 }
 
-export function formatTitle(notification: CompletionNotification): string {
+function formatTitle(notification: CompletionNotification): string {
 	const project = sanitize(notification.projectName, 80);
 	return project.length > 0 ? `Pi Atelier · ${project}` : "Pi Atelier";
 }
 
-export function formatBody(notification: CompletionNotification): string {
-	const parts = [notification.kind === "input-requested" ? "Input requested" : "Turn settled"];
+function formatBody(kind: CompletionNotificationKind, notification: CompletionNotification): string {
+	const parts = [kind === "input-requested" ? "Input requested" : "Turn settled"];
 	const session = sanitize(notification.sessionName ?? "", 100);
 	if (session.length > 0) parts.push(session);
-	if (notification.kind === "turn-settled") {
+	if (kind === "turn-settled") {
 		const completed = normalizeCount(notification.completedToolCount);
 		const failed = normalizeCount(notification.failedToolCount);
 		if (completed > 0) parts.push(`${completed} done`);
@@ -156,7 +158,7 @@ function spawnDetached(
 	spawn: SpawnNotificationProcess,
 	command: string,
 	args: string[],
-	extra: Pick<SpawnOptions, "env" | "windowsHide"> = {},
+	extra: Pick<SpawnOptions, "env" | "windowsHide">,
 	onFinished: () => void,
 ): (() => void) | undefined {
 	try {
@@ -172,7 +174,7 @@ function spawnDetached(
 				try {
 					child.kill();
 				} catch {
-					// System notifications are best effort and fail silently.
+					// Best effort, like delivery itself.
 				}
 			}
 			onFinished();
@@ -181,7 +183,7 @@ function spawnDetached(
 		child.once("exit", () => finish(false));
 		child.unref();
 		timer = setTimeout(() => finish(true), PROCESS_TIMEOUT_MS);
-		timer.unref?.();
+		timer.unref();
 		return () => finish(true);
 	} catch {
 		// System notifications are best effort and fail silently.
@@ -189,14 +191,8 @@ function spawnDetached(
 	}
 }
 
-function sanitize(value: string, maximumLength: number): string {
-	return value
-		.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
-		.replace(/\s+/g, " ")
-		.trim()
-		.slice(0, maximumLength);
-}
+const sanitize = (value: string, maximumLength: number): string =>
+	sanitizeInline(value).slice(0, maximumLength);
 
-function normalizeCount(value: number | undefined): number {
-	return Number.isFinite(value) ? Math.max(0, Math.trunc(value ?? 0)) : 0;
-}
+const normalizeCount = (value: number | undefined): number =>
+	value !== undefined && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;

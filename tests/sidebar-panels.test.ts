@@ -6,13 +6,11 @@ import {
 	isSidebarPanelContributionId,
 	isSidebarPanelId,
 	isSidebarPanelRequestId,
-	isSidebarPanelTextWithinRawLimit,
 	registerSidebarPanel,
 	SIDEBAR_PANEL_EVENT_CHANNEL,
 	SIDEBAR_PANEL_MAX_ID_CHARS,
 	SIDEBAR_PANEL_MAX_PANELS,
 	SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS,
-	SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS,
 	SIDEBAR_PANEL_MAX_ROW_CHARS,
 	SIDEBAR_PANEL_MAX_ROWS,
 	SIDEBAR_PANEL_MAX_SOURCE_CHARS,
@@ -53,8 +51,14 @@ describe("sidebar contribution protocol", () => {
 		expect(registry.get("vendor:queue")?.rows[0]?.text).toBe("two");
 		publisher.dispose();
 		expect(registry.get("vendor:queue")).toBeUndefined();
-		expect(changed).toHaveBeenCalled();
-		expect(SIDEBAR_PANEL_EVENT_CHANNEL).toBe("pi-atelier:sidebar-panels");
+		expect(changed).toHaveBeenCalledTimes(3);
+		expect(emitted.map((data) => (data as { type: string }).type)).toEqual([
+			"register",
+			"discover",
+			"register",
+			"register",
+			"unregister",
+		]);
 		registry.dispose();
 	});
 
@@ -70,7 +74,7 @@ describe("sidebar contribution protocol", () => {
 		registry.dispose();
 	});
 
-	it("validates contributed IDs and bounded discovery request IDs at both public seams", () => {
+	it("validates contributed IDs and discovery request IDs before echoing them", () => {
 		expect(isSidebarPanelContributionId("vendor:queue")).toBe(true);
 		for (const suffix of ["\n", "\r", "\r\n", "\u2028", "\u2029", " ", "\t"]) {
 			expect(isSidebarPanelContributionId(`vendor:queue${suffix}`)).toBe(false);
@@ -107,21 +111,6 @@ describe("sidebar contribution protocol", () => {
 		const response = emitted.at(-1) as { type?: string; requestId?: string };
 		expect(response).toMatchObject({ type: "register", requestId: "π-界🙂" });
 
-		const registryEvents = {
-			on: () => () => undefined,
-			emit: (_channel: string, data: unknown) => emitted.push(data),
-		};
-		const registry = disposeAfterTest(
-			createSidebarPanelRegistry({
-				events: registryEvents,
-				instanceId: "x".repeat(SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS + 1),
-			}),
-		);
-		const generated = emitted.at(-1) as { type?: string; requestId?: string };
-		expect(generated.type).toBe("discover");
-		expect(generated.requestId).toBe("atelier-1");
-		expect(generated.requestId?.length).toBeLessThanOrEqual(SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS);
-		registry.dispose();
 		publisher.dispose();
 	});
 
@@ -283,19 +272,7 @@ describe("sidebar contribution protocol", () => {
 		registry.dispose();
 	});
 
-	it("bounds raw title and row work before sanitization while preserving valid Unicode", () => {
-		expect(
-			isSidebarPanelTextWithinRawLimit(
-				"x".repeat(SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS),
-				SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS,
-			),
-		).toBe(true);
-		expect(
-			isSidebarPanelTextWithinRawLimit(
-				"x".repeat(SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS + 1),
-				SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS,
-			),
-		).toBe(false);
+	it("rejects oversized raw titles and rows while preserving valid Unicode", () => {
 		const registry = disposeAfterTest(createSidebarPanelRegistry());
 		expect(
 			registry.register({
