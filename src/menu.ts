@@ -120,7 +120,7 @@ export function createMenuActions(
 				let restored = true;
 				if (previous) {
 					try {
-						await pi.setModel(previous);
+						restored = await pi.setModel(previous);
 					} catch {
 						restored = false;
 					}

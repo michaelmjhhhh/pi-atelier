@@ -523,6 +523,27 @@ describe("sidebar snapshot and layout", () => {
 		expect(completed).toContainEqual(expect.stringMatching(/^Output speed\s+47\.3 tok\/s$/));
 	});
 
+	it("keeps the run summary and response placeholders when height drops tool activity", () => {
+		const performanceActivity = withActivity({
+			...activeActivity(),
+			performance: { ttftMs: 820, tokensPerSecond: 48 },
+		});
+		let constrainedRows: string[] | undefined;
+		for (let height = 60; height > 0; height -= 1) {
+			const rows = renderRows(performanceActivity, { height: height, color: false, now: 20_000 });
+			if (
+				rows.some((row) => /^Output speed\s+48\.0 tok\/s$/.test(row)) &&
+				rows.some((row) => row.includes("Turn 3")) &&
+				!rows.some((row) => /^read\s+src\/state\.ts/.test(row))
+			) {
+				constrainedRows = rows;
+				break;
+			}
+		}
+
+		expect(constrainedRows).toBeDefined();
+	});
+
 	it.each<{
 		name: string;
 		activity: Partial<RunActivitySnapshot>;

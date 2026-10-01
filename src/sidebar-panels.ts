@@ -26,7 +26,7 @@ export const SIDEBAR_PANEL_MAX_ROW_CHARS = 160;
  */
 export const SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS = SIDEBAR_PANEL_MAX_TITLE_CHARS * 8;
 /** Maximum raw UTF-16 code units inspected for a contributed row string or row.text. */
-const SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS = SIDEBAR_PANEL_MAX_ROW_CHARS * 8;
+export const SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS = SIDEBAR_PANEL_MAX_ROW_CHARS * 8;
 /** Maximum characters accepted for a namespaced contributed panel ID. */
 export const SIDEBAR_PANEL_MAX_ID_CHARS = 128;
 /** Maximum raw UTF-16 code units accepted for a discovery correlation token. */
@@ -171,7 +171,7 @@ export const isBuiltinSidebarPanelId = (value: unknown): value is BuiltinSidebar
 	typeof value === "string" && BUILTIN_IDS.has(value);
 
 /** Validate the source name retained with a contributed panel and its events. */
-function isSidebarPanelSource(value: unknown): value is string {
+export function isSidebarPanelSource(value: unknown): value is string {
 	return typeof value === "string" && value.length <= SIDEBAR_PANEL_MAX_SOURCE_CHARS && value.trim() !== "";
 }
 
@@ -198,7 +198,7 @@ export function isSidebarPanelRequestId(value: unknown): value is string {
 	return true;
 }
 
-function isSidebarPanelRole(value: unknown): value is SidebarPanelRole {
+export function isSidebarPanelRole(value: unknown): value is SidebarPanelRole {
 	return typeof value === "string" && PANEL_ROLES.has(value);
 }
 
@@ -237,14 +237,14 @@ export function normalizeSidebarPanelLayout(
 	return normalized;
 }
 
-const isWithinRawLimit = (value: unknown, maxCodeUnits: number): value is string =>
+export const isSidebarPanelTextWithinRawLimit = (value: unknown, maxCodeUnits: number): value is string =>
 	typeof value === "string" && value.length <= maxCodeUnits;
 
 function sanitizeContribution(value: unknown): SanitizedSidebarPanelContribution | undefined {
 	if (
 		!isRecord(value) ||
 		!isSidebarPanelContributionId(value.id) ||
-		!isWithinRawLimit(value.title, SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS) ||
+		!isSidebarPanelTextWithinRawLimit(value.title, SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS) ||
 		!Array.isArray(value.rows) ||
 		value.rows.length > SIDEBAR_PANEL_MAX_ROWS
 	)
@@ -255,7 +255,7 @@ function sanitizeContribution(value: unknown): SanitizedSidebarPanelContribution
 	for (const row of value.rows) {
 		const text =
 			typeof row === "string" ? row : isRecord(row) && typeof row.text === "string" ? row.text : undefined;
-		if (!isWithinRawLimit(text, SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS)) return undefined;
+		if (!isSidebarPanelTextWithinRawLimit(text, SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS)) return undefined;
 		const cleaned = sanitizeInline(text);
 		if (Array.from(cleaned).length > SIDEBAR_PANEL_MAX_ROW_CHARS) return undefined;
 		rows.push({
