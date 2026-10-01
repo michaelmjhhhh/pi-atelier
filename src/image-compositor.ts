@@ -1,6 +1,8 @@
 import { compositeTuiLine, type OverlayOptions, type TUI, visibleWidth } from "@earendil-works/pi-tui";
 
 const RESET = "\u001b[0m\u001b]8;;\u0007";
+const KITTY_IMAGE = "\u001b_G";
+const ITERM_IMAGE = "\u001b]1337;File=";
 // Keep multipart Kitty transmissions together. iTerm2's cursor-up belongs to
 // the image, not the text row: leaving it behind would move the settings panel.
 const IMAGE_COMMAND =
@@ -18,7 +20,7 @@ interface ImageRenderer {
 	isOverlayVisible(entry: OverlayEntry): boolean;
 }
 
-export interface ImageSidebarFrame {
+interface ImageSidebarFrame {
 	column: number;
 	width: number;
 	lines: string[];
@@ -27,7 +29,7 @@ export interface ImageSidebarFrame {
 type SidebarFrameReader = (width: number) => ImageSidebarFrame | undefined;
 
 interface Client {
-	getSidebar?: SidebarFrameReader;
+	getSidebar: SidebarFrameReader | undefined;
 }
 
 interface ImagePlane {
@@ -46,19 +48,26 @@ interface Adapter {
 
 const IMAGE_COMPOSITOR = Symbol("pi-atelier.image-compositor");
 
-function findBaseCompositor(renderer: ImageRenderer): ImageRenderer["compositeOverlays"] | undefined {
-	// Pi exposes a stable Proxy whose method getters forward to the CURRENT
-	// renderer. Capturing such a getter would recurse after installing our hook.
-	let target: object | null = renderer;
-	while (target) {
-		const descriptor = Object.getOwnPropertyDescriptor(target, "compositeOverlays");
-		if (typeof descriptor?.value === "function") return descriptor.value;
-		target = Object.getPrototypeOf(target) as object | null;
+/**
+ * The first method named `name` defined directly on `start` or its prototype chain.
+ * Pi exposes a stable Proxy whose method getters forward to the CURRENT renderer;
+ * capturing such a getter instead would recurse once a hook is installed.
+ */
+export function findOwnMethod<T>(start: object | null, name: string): T | undefined {
+	for (let target = start; target; target = Object.getPrototypeOf(target) as object | null) {
+		const value: unknown = Object.getOwnPropertyDescriptor(target, name)?.value;
+		if (typeof value === "function") return value as T;
 	}
 	return undefined;
 }
-const isImageLine = (line: string): boolean =>
-	line.includes("\u001b_G") || line.includes("\u001b]1337;File=");
+
+const asRenderer = (tui: TUI): ImageRenderer => tui as unknown as ImageRenderer;
+
+const isImageLine = (line: string): boolean => line.includes(KITTY_IMAGE) || line.includes(ITERM_IMAGE);
+
+/** Whether a visible overlay captures input; such dialogs must not be painted over. */
+const hasModal = (renderer: ImageRenderer): boolean =>
+	renderer.overlayStack.some((entry) => !entry.options?.nonCapturing && renderer.isOverlayVisible(entry));
 
 function separateImages(lines: string[]): { text: string[]; images: ImagePlane[] } {
 	const images: ImagePlane[] = [];
@@ -69,7 +78,7 @@ function separateImages(lines: string[]): { text: string[]; images: ImagePlane[]
 		for (const match of line.matchAll(IMAGE_COMMAND)) {
 			result += line.slice(offset, match.index);
 			const sequence = match[0];
-			const iterm = sequence.includes("\u001b]1337;File=");
+			const iterm = sequence.includes(ITERM_IMAGE);
 			const up = iterm ? Number(/^\u001b\[(\d+)A/.exec(sequence)?.[1] ?? 0) : 0;
 			const rows = iterm ? up + 1 : Number(/(?:^|,)r=(\d+)(?:,|;)/.exec(sequence)?.[1] ?? 1);
 			images.push({
@@ -87,13 +96,11 @@ function separateImages(lines: string[]): { text: string[]; images: ImagePlane[]
 	return { text, images };
 }
 
-/** Native sidebar graphics must not paint over a capturing dialog. */
+/** Native sidebar graphics must not paint over a capturing dialog; an unknown renderer counts as one. */
 export function hasCapturingOverlay(tui: TUI): boolean {
-	const renderer = tui as unknown as ImageRenderer;
+	const renderer = asRenderer(tui);
 	if (!Array.isArray(renderer.overlayStack) || typeof renderer.isOverlayVisible !== "function") return true;
-	return renderer.overlayStack.some(
-		(entry) => !entry.options?.nonCapturing && renderer.isOverlayVisible(entry),
-	);
+	return hasModal(renderer);
 }
 
 /**
@@ -108,8 +115,8 @@ export function hasCapturingOverlay(tui: TUI): boolean {
  * every reserved row, and let Pi's existing diff/deletion path restore images
  * when the last visible dialog closes. Model input and session data never change.
  */
-function acquireImageCompositor(tui: TUI, getSidebar?: SidebarFrameReader): () => void {
-	const renderer = tui as unknown as ImageRenderer;
+function acquireImageCompositor(tui: TUI, getSidebar: SidebarFrameReader | undefined): () => void {
+	const renderer = asRenderer(tui);
 	if (
 		typeof renderer.compositeOverlays !== "function" ||
 		typeof renderer.isOverlayVisible !== "function" ||
@@ -120,7 +127,7 @@ function acquireImageCompositor(tui: TUI, getSidebar?: SidebarFrameReader): () =
 
 	let adapter = renderer[IMAGE_COMPOSITOR];
 	if (!adapter) {
-		const base = findBaseCompositor(renderer);
+		const base = findOwnMethod<ImageRenderer["compositeOverlays"]>(renderer, "compositeOverlays");
 		if (!base) return () => undefined;
 		const clients = new Set<Client>();
 		let concreteRenderer = renderer;
@@ -152,9 +159,7 @@ function acquireImageCompositor(tui: TUI, getSidebar?: SidebarFrameReader): () =
 			}
 
 			const result = base.call(this, text, width, height);
-			const modalVisible = this.overlayStack.some(
-				(entry) => !entry.options?.nonCapturing && this.isOverlayVisible(entry),
-			);
+			const modalVisible = hasModal(this);
 			const viewportTop = Math.max(0, result.length - height);
 			for (const image of images) {
 				if (modalVisible && image.bottom > viewportTop && image.top < result.length) {
@@ -192,7 +197,7 @@ function acquireImageCompositor(tui: TUI, getSidebar?: SidebarFrameReader): () =
 		renderer[IMAGE_COMPOSITOR] = adapter;
 	}
 
-	const client: Client = getSidebar ? { getSidebar } : {};
+	const client: Client = { getSidebar };
 	adapter.clients.add(client);
 	let released = false;
 	return () => {
@@ -204,17 +209,22 @@ function acquireImageCompositor(tui: TUI, getSidebar?: SidebarFrameReader): () =
 	};
 }
 
+export interface ImageCompositorBinding {
+	sync(): void;
+	dispose(): void;
+}
+
 /** Rebind when Pi switches the renderer behind its stable TUI reference. */
 export function createImageCompositorBinding(
 	tui: TUI,
 	getSidebar?: SidebarFrameReader,
-): { sync(): void; dispose(): void } {
+): ImageCompositorBinding {
 	let current: Adapter | undefined;
 	let release: (() => void) | undefined;
 	let disposed = false;
 	const sync = (): void => {
 		if (disposed) return;
-		const renderer = tui as unknown as ImageRenderer;
+		const renderer = asRenderer(tui);
 		if (current && renderer[IMAGE_COMPOSITOR] === current) return;
 		release?.();
 		release = acquireImageCompositor(tui, getSidebar);

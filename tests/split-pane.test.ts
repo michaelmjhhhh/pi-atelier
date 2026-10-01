@@ -34,6 +34,7 @@ function concreteHarness(columns = 120) {
 	return { tui: renderer as unknown as TUI, baseRender, requestRender, write };
 }
 
+// Named like Pi's class: the render adapter recognizes the regular main screen by constructor name.
 class TuiMainScreen {
 	readonly mode: "regular" | "fullscreen" = "regular";
 	readonly requestRender = vi.fn();
@@ -92,7 +93,7 @@ describe("temporary Resize mode", () => {
 		expect(h.split.beginResize()).toBe(true);
 		expect(h.write).toHaveBeenCalledWith("\u001b[?1002h\u001b[?1006h");
 		expect(h.split.isResizing()).toBe(true);
-		h.split.finishResize();
+		expect(h.send("\r")).toEqual({ consume: true });
 		expect(h.write).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
 		expect(h.unsubscribe).toHaveBeenCalledOnce();
 		expect(h.split.isResizing()).toBe(false);
@@ -170,7 +171,7 @@ describe("temporary Resize mode", () => {
 		split.show();
 
 		expect(split.beginResize()).toBe(true);
-		split.finishResize();
+		split.cancelResize();
 		split.hide();
 		split.show();
 		renderer.renderNow();
@@ -188,7 +189,7 @@ describe("temporary Resize mode", () => {
 		split.show();
 
 		expect(split.beginResize()).toBe(true);
-		split.finishResize();
+		split.cancelResize();
 
 		expect(renderer.terminal.write.mock.calls).toEqual([
 			["\u001b[?1002h\u001b[?1006h"],
@@ -208,7 +209,7 @@ describe("temporary Resize mode", () => {
 		renderer = new FullscreenRenderer() as unknown as TUI;
 		const fullscreenRenderer = renderer as unknown as FullscreenRenderer;
 
-		split.finishResize();
+		split.cancelResize();
 
 		expect(resizeRenderer.terminal.write).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
 		expect(fullscreenRenderer.terminal.write).not.toHaveBeenCalled();
@@ -284,27 +285,36 @@ describe("temporary Resize mode", () => {
 		expect(h.write).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
 		expect(h.unsubscribe).toHaveBeenCalledOnce();
 	});
-	it("attempts remaining cleanup when disabling mouse reporting throws", () => {
+	it.each([
+		[
+			"disabling mouse reporting",
+			(h: ReturnType<typeof resizeHarness>) =>
+				h.write.mockImplementation((sequence: string) => {
+					if (sequence === "\u001b[?1006l\u001b[?1002l") throw new Error("disable failed");
+				}),
+		],
+		[
+			"unsubscribing input",
+			(h: ReturnType<typeof resizeHarness>) =>
+				h.unsubscribe.mockImplementation(() => {
+					throw new Error("unsubscribe failed");
+				}),
+		],
+		[
+			"the resize callback",
+			(h: ReturnType<typeof resizeHarness>) =>
+				h.onResizeChange.mockImplementation((resizing: boolean) => {
+					if (!resizing) throw new Error("resize callback failed");
+				}),
+		],
+	] as const)("finishes every cleanup step when %s throws", (_step, breakStep) => {
 		const h = resizeHarness();
-		h.write.mockImplementation((sequence: string) => {
-			if (sequence === "\u001b[?1006l\u001b[?1002l") throw new Error("disable failed");
-		});
 		h.split.beginResize();
+		breakStep(h);
 
-		expect(() => h.split.finishResize()).not.toThrow();
-		expect(h.unsubscribe).toHaveBeenCalledOnce();
-		expect(h.onResizeChange).toHaveBeenLastCalledWith(false);
-		expect(h.split.isResizing()).toBe(false);
-	});
-	it("attempts remaining cleanup when unsubscribe throws", () => {
-		const h = resizeHarness();
-		h.unsubscribe.mockImplementation(() => {
-			throw new Error("unsubscribe failed");
-		});
-		h.split.beginResize();
-
-		expect(() => h.split.finishResize()).not.toThrow();
+		expect(() => h.send("\r")).not.toThrow();
 		expect(h.write).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
+		expect(h.unsubscribe).toHaveBeenCalledOnce();
 		expect(h.onResizeChange).toHaveBeenLastCalledWith(false);
 		expect(h.split.isResizing()).toBe(false);
 	});
@@ -333,18 +343,6 @@ describe("temporary Resize mode", () => {
 		expect(h.onResizeChange).toHaveBeenLastCalledWith(false);
 		expect(onError).toHaveBeenCalledWith(error);
 		expect(split.isResizing()).toBe(false);
-	});
-	it("continues cleanup when onResizeChange throws", () => {
-		const h = resizeHarness();
-		h.onResizeChange.mockImplementation(() => {
-			throw new Error("resize callback failed");
-		});
-		h.split.beginResize();
-
-		expect(() => h.split.finishResize()).not.toThrow();
-		expect(h.write).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
-		expect(h.unsubscribe).toHaveBeenCalledOnce();
-		expect(h.split.isResizing()).toBe(false);
 	});
 	it("reclamps while resizing and exits safely when terminal becomes too narrow", () => {
 		const h = resizeHarness();
@@ -621,28 +619,19 @@ describe("sidebar overlay sizing", () => {
 		expect(h.tui.render(120)).toEqual(["base:120"]);
 	});
 
-	it("keeps main rendering at full width when hidden or too narrow", () => {
-		const h = harness(120);
+	it("reserves no width when the terminal is too narrow or the pane is hidden", () => {
+		const h = concreteHarness();
 		const split = disposeAfterTest(createSplitPaneController());
 		split.attach(h.tui);
 		split.show();
 
-		expect(h.tui.render(MIN_MAIN_WIDTH + MIN_SIDEBAR_WIDTH - 1)).toEqual(["base:91"]);
-		expect(split.isVisibleAtWidth(91)).toBe(false);
-		expect(h.tui.render(120)).toEqual(["base:120"]);
+		const minimum = MIN_MAIN_WIDTH + MIN_SIDEBAR_WIDTH;
+		expect(h.tui.render(minimum - 1)).toEqual([`base:${minimum - 1}`]);
+		expect(h.tui.render(minimum)).toEqual([`base:${MIN_MAIN_WIDTH}`]);
+		expect(h.tui.render(120)).toEqual([`base:${120 - DEFAULT_SIDEBAR_WIDTH}`]);
 
 		split.hide();
 		expect(h.tui.render(120)).toEqual(["base:120"]);
-	});
-
-	it("shows the pane at the exact minimum terminal width", () => {
-		const h = harness();
-		const split = disposeAfterTest(createSplitPaneController());
-		split.attach(h.tui);
-		split.show();
-
-		expect(split.isVisibleAtWidth(MIN_MAIN_WIDTH + MIN_SIDEBAR_WIDTH)).toBe(true);
-		expect(h.tui.render(MIN_MAIN_WIDTH + MIN_SIDEBAR_WIDTH)).toEqual(["base:92"]);
 	});
 
 	it("passes zero and negative widths through the concrete renderer", () => {
@@ -655,22 +644,22 @@ describe("sidebar overlay sizing", () => {
 	});
 
 	it("clamps configured and runtime widths while preserving the main pane", () => {
-		const h = harness(100);
+		const h = concreteHarness(100);
 		const split = disposeAfterTest(createSplitPaneController());
 		split.attach(h.tui);
 		split.show();
 
 		split.setSidebarWidth(999);
 		expect(split.getSidebarWidth()).toBe(MAX_SIDEBAR_WIDTH);
-		expect(h.tui.render(100)).toEqual(["base:100"]);
-		expect(split.overlayOptions()).toMatchObject({ width: 36 });
+		expect(h.tui.render(100)).toEqual([`base:${MIN_MAIN_WIDTH}`]);
+		expect(split.overlayOptions()).toMatchObject({ width: 100 - MIN_MAIN_WIDTH });
 
 		split.setSidebarWidth(Number.NaN);
 		expect(split.getSidebarWidth()).toBe(MAX_SIDEBAR_WIDTH);
 
 		split.setSidebarWidth(-10);
 		expect(split.getSidebarWidth()).toBe(MIN_SIDEBAR_WIDTH);
-		expect(h.tui.render(100)).toEqual(["base:100"]);
+		expect(h.tui.render(100)).toEqual([`base:${100 - MIN_SIDEBAR_WIDTH}`]);
 	});
 });
 
@@ -704,19 +693,20 @@ describe("split pane render lifecycle", () => {
 		expect(h.tui.render).toBe(original);
 	});
 
-	it("keeps show, hide, width updates, and requests idempotent", () => {
-		const h = harness();
+	it("ignores repeated show and hide calls", () => {
+		const h = concreteHarness();
 		const split = disposeAfterTest(createSplitPaneController());
 		split.attach(h.tui);
 		split.show();
+		const rendersAfterShow = h.requestRender.mock.calls.length;
 		split.show();
-		split.setSidebarWidth(44);
-		split.requestRender();
-		split.hide();
-		split.hide();
+		expect(h.requestRender).toHaveBeenCalledTimes(rendersAfterShow);
 
+		split.hide();
+		const rendersAfterHide = h.requestRender.mock.calls.length;
+		split.hide();
+		expect(h.requestRender).toHaveBeenCalledTimes(rendersAfterHide);
 		expect(split.isEnabled()).toBe(false);
 		expect(h.tui.render(120)).toEqual(["base:120"]);
-		expect(h.requestRender.mock.calls.length).toBeGreaterThan(0);
 	});
 });
