@@ -73,7 +73,6 @@ describe("tool_result handler for todos", () => {
 
 		await command(h, "sidebar off");
 		await command(h, "sidebar on");
-		expect(h.overlays.at(-1)).toBeDefined();
 		const sidebarText = renderOverlayText(h, h.overlays.length - 1, 44);
 		expect(sidebarText).toContain("Initial task");
 		expect(sidebarText).not.toContain("Failed task");
@@ -139,7 +138,6 @@ describe("sidebar todos integration", () => {
 		await start(h);
 		await command(h, "sidebar on");
 
-		expect(h.overlays[0]).toBeDefined();
 		const sidebarText = renderOverlayText(h, 0, 44);
 		expect(sidebarText).toContain("Successful task");
 		expect(sidebarText).not.toContain("Failed task");
@@ -152,7 +150,6 @@ describe("sidebar todos integration", () => {
 		]);
 		await start(h);
 		await command(h, "sidebar on");
-		expect(h.overlays[0]).toBeDefined();
 		const sidebarOverlay = h.overlays[0]!;
 		expect(sidebarOverlay.component.render(44).join("\n")).toContain("First branch task");
 
@@ -253,7 +250,6 @@ describe("sidebar todos integration", () => {
 		expect(result).toBeUndefined();
 
 		await command(h, "sidebar on");
-		expect(h.overlays.at(-1)).toBeDefined();
 		const sidebarText = renderOverlayText(h, h.overlays.length - 1, 44);
 		expect(sidebarText).toContain("Hidden update");
 		expect(sidebarText).not.toContain("Initial task");
@@ -279,7 +275,6 @@ describe("sidebar todos integration", () => {
 
 		await command(h, "sidebar off");
 		await command(h, "sidebar on");
-		expect(h.overlays.at(-1)).toBeDefined();
 		const sidebarText = renderOverlayText(h, h.overlays.length - 1, 44);
 		expect(sidebarText).not.toContain("Stale task");
 		expect(sidebarText).not.toContain("TODOS");
@@ -299,7 +294,6 @@ describe("sidebar todos integration", () => {
 			]);
 
 			await start(h);
-			expect(h.overlays[0]).toBeDefined();
 			const initialSidebar = renderOverlayText(h, 0, 44);
 			expect(initialSidebar).not.toContain("AGENT");
 			expect(initialSidebar).toContain("TODOS");
@@ -308,7 +302,6 @@ describe("sidebar todos integration", () => {
 
 			await start(h, replacementContext(h.ctx, "Reloaded session"));
 			expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
-			expect(h.overlays[1]).toBeDefined();
 			const reloadedSidebar = renderOverlayText(h, 1, 44);
 			expect(reloadedSidebar).not.toContain("AGENT");
 			expect(reloadedSidebar).toContain("TODOS");
@@ -326,7 +319,6 @@ describe("sidebar todos integration", () => {
 			await start(h);
 			await command(h, "sidebar on");
 
-			expect(h.overlays[0]).toBeDefined();
 			const sidebarText = renderOverlayText(h, 0, 44);
 			expect(sidebarText).not.toContain("TODOS");
 

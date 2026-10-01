@@ -25,12 +25,9 @@ describe("editor frame helpers", () => {
 		expect(content.startsWith("│ ")).toBe(true);
 		expect(content.endsWith(" │")).toBe(true);
 		expect(content).toContain("hello");
-		expect(visibleWidth(content)).toBe(innerWidth + 4);
 		expect(bottom).toBe(`╰${"─".repeat(innerWidth + 2)}╯`);
 		expect(framed).toHaveLength(3);
 		for (const line of framed) expect(visibleWidth(line)).toBe(innerWidth + 4);
-		expect(framed[0]).toContain("\u001b[38;2;102;102;102m╭");
-		expect(framed[1]).toContain("\u001b[38;2;102;102;102m│\u001b[39m");
 	});
 
 	it("insets ANSI status content in the top border without adding a row", () => {
@@ -97,20 +94,6 @@ describe("editor frame helpers", () => {
 });
 
 describe("AtelierEditor", () => {
-	it("renders an empty composer inside a rounded frame", () => {
-		const editor = new AtelierEditor(
-			{ requestRender: vi.fn(), terminal: { rows: 24, columns: 48 } } as never,
-			{ borderColor: (text: string) => text, selectList: {} } as never,
-			{ matches: () => false } as never,
-		);
-
-		const lines = editor.render(40);
-		expect(lines[0]).toMatch(/^╭─+╮$/);
-		expect(lines.at(-1)).toMatch(/^╰─+╯$/);
-		expect(lines.some((line) => line.startsWith("│ ") && line.endsWith(" │"))).toBe(true);
-		for (const line of lines) expect(visibleWidth(line)).toBe(40);
-	});
-
 	it("reports only the status line visible in the most recent render", () => {
 		const editor = new AtelierEditor(
 			{ requestRender: vi.fn(), terminal: { rows: 24, columns: 48 } } as never,

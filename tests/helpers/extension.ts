@@ -22,9 +22,9 @@ export function loadConfigAfter(gate: ReturnType<typeof deferred<void>>): typeof
 	};
 }
 
-export const execResult = (stdout: string, code = 0) => ({
+export const execResult = (stdout = "", code = 0, stderr = "") => ({
 	stdout,
-	stderr: "",
+	stderr,
 	code,
 	killed: false,
 });

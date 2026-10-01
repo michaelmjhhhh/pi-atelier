@@ -23,7 +23,7 @@ describe("metrics", () => {
 		expect(result.cacheHitPercent).toBeCloseTo(90, 5);
 	});
 
-	it("handles missing and zero prompt usage without NaN", () => {
+	it("handles zero prompt usage without NaN", () => {
 		const result = aggregateMetrics(
 			[{ usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } } }],
 			{

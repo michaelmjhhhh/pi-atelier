@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { describe, expect, it, vi, onTestFinished } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
 	createCompletionNotifier,
 	type CompletionNotification,
@@ -47,49 +47,35 @@ function harness(platform: NodeJS.Platform = "linux") {
 }
 
 describe("completion notifier", () => {
-	it("delivers one macOS system notification when a run settles without a duration threshold", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it.each([true, false])("delivers one settlement per run (agent_start observed: %s)", (observed) => {
 		const h = harness("darwin");
-		h.notifier.runStarted();
+		if (observed) h.notifier.runStarted();
 		h.notifier.turnSettled(settled);
 		h.notifier.turnSettled(settled);
 
 		expect(h.spawn).toHaveBeenCalledOnce();
 	});
 
-	it("delivers one Windows system notification per explicit input-request tool call", () => {
-		const h = harness("win32");
-		h.notifier.runStarted();
-		const notification: CompletionNotification = {
-			projectName: "pi-atelier",
-			sessionName: "Notification work",
-		};
-		h.notifier.inputRequested("question-1", notification);
-		h.notifier.inputRequested("question-1", notification);
-		h.notifier.inputRequested("question-2", notification);
+	it.each([true, false])(
+		"delivers one notification per input request (agent_start observed: %s)",
+		(observed) => {
+			const h = harness("win32");
+			if (observed) h.notifier.runStarted();
+			const notification: CompletionNotification = {
+				projectName: "pi-atelier",
+				sessionName: "Notification work",
+			};
+			h.notifier.inputRequested("question-1", notification);
+			h.notifier.inputRequested("question-1", notification);
+			h.notifier.inputRequested("question-2", notification);
 
-		expect(h.spawn).toHaveBeenCalledTimes(2);
-	});
-
-	it("delivers an authoritative settlement event even when agent_start was not observed", () => {
-		const h = harness("darwin");
-
-		h.notifier.turnSettled(settled);
-		h.notifier.turnSettled(settled);
-
-		expect(h.spawn).toHaveBeenCalledOnce();
-	});
-
-	it("delivers and deduplicates input requests even when agent_start was not observed", () => {
-		const h = harness("darwin");
-		const notification: CompletionNotification = {
-			projectName: "pi-atelier",
-		};
-
-		h.notifier.inputRequested("question-1", notification);
-		h.notifier.inputRequested("question-1", notification);
-
-		expect(h.spawn).toHaveBeenCalledOnce();
-	});
+			expect(h.spawn).toHaveBeenCalledTimes(2);
+		},
+	);
 
 	it("does nothing while completion notifications are disabled", () => {
 		const h = harness("darwin");
@@ -146,31 +132,23 @@ describe("completion notifier", () => {
 
 	it("kills a native notification that exceeds its delivery timeout", () => {
 		vi.useFakeTimers();
-		try {
-			const h = harness("darwin");
-			h.notifier.runStarted();
-			h.notifier.turnSettled(settled);
+		const h = harness("darwin");
+		h.notifier.runStarted();
+		h.notifier.turnSettled(settled);
 
-			vi.advanceTimersByTime(5_000);
-			expect(h.process.kill).toHaveBeenCalledOnce();
-		} finally {
-			vi.useRealTimers();
-		}
+		vi.advanceTimersByTime(5_000);
+		expect(h.process.kill).toHaveBeenCalledOnce();
 	});
 
 	it("clears the process timeout after native delivery exits", () => {
 		vi.useFakeTimers();
-		try {
-			const h = harness("darwin");
-			h.notifier.runStarted();
-			h.notifier.turnSettled(settled);
-			h.process.emit("exit", 0);
+		const h = harness("darwin");
+		h.notifier.runStarted();
+		h.notifier.turnSettled(settled);
+		h.process.emit("exit", 0);
 
-			vi.advanceTimersByTime(10_000);
-			expect(h.process.kill).not.toHaveBeenCalled();
-		} finally {
-			vi.useRealTimers();
-		}
+		vi.advanceTimersByTime(10_000);
+		expect(h.process.kill).not.toHaveBeenCalled();
 	});
 
 	it("does not notify on platforms without native system delivery", () => {

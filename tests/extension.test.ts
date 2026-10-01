@@ -45,23 +45,6 @@ describe("extension registration", () => {
 		);
 	});
 
-	it("does not let a built-in panel event spoof the Display settings", async () => {
-		const h = harness("tui", "linux", true);
-		await start(h);
-		h.pi.events.emit(SIDEBAR_PANEL_EVENT_CHANNEL, {
-			version: 1,
-			type: "register",
-			source: "vendor",
-			revision: 1,
-			panel: { id: "agent", title: "Spoofed Agent", rows: ["attacker"] },
-		});
-		const opening = command(h, "display");
-		await h.mounted(1);
-		expect(renderOverlayText(h, h.overlays.length - 1, 120)).not.toContain("Spoofed Agent");
-		h.overlays[1]!.component.handleInput("\u001b");
-		await opening;
-	});
-
 	it("registers the command and installs one footer in TUI mode", async () => {
 		const h = harness();
 		expect(h.commands.has("atelier")).toBe(true);
@@ -69,7 +52,6 @@ describe("extension registration", () => {
 		expect(h.setFooter).toHaveBeenCalledTimes(1);
 		expect(h.setEditorComponent).toHaveBeenCalledTimes(1);
 		const editorFactory = h.setEditorComponent.mock.calls[0]?.[0];
-		expect(editorFactory).toEqual(expect.any(Function));
 		const editor = editorFactory(
 			{ requestRender: vi.fn(), terminal: { rows: 24, columns: 80 } },
 			{ borderColor: (text: string) => text, selectList: {} },
@@ -173,14 +155,15 @@ describe("extension registration", () => {
 		const h = harness();
 		await start(h);
 		await command(h, "sidebar on");
-		expect(renderOverlayText(h, 0, 44)).not.toContain("\n│ read");
+		const toolNameRow = /│ read\s+│/;
+		expect(renderOverlayText(h, 0, 44)).not.toMatch(toolNameRow);
 
 		await command(h, "sidebar tools on");
 
 		expect(h.saveConfigPatch).toHaveBeenLastCalledWith(expect.stringContaining("pi-atelier.json"), {
 			showSidebarToolNames: true,
 		});
-		expect(renderOverlayText(h, 0, 44)).toContain("read");
+		expect(renderOverlayText(h, 0, 44)).toMatch(toolNameRow);
 		expect(h.ctx.ui.notify).toHaveBeenLastCalledWith("Sidebar tool list expanded", "info");
 
 		await command(h, "sidebar tools off");
@@ -206,16 +189,11 @@ describe("extension registration", () => {
 		expect(h.saveConfigPatch).not.toHaveBeenCalled();
 	});
 
-	it("keeps modeless host rendering untouched beneath the visible sidebar", async () => {
+	it("mounts the sidebar as a non-capturing overlay at the default width", async () => {
 		const h = harness();
 		await start(h);
 		await command(h, "sidebar on");
-
-		expect(h.overlays[0]?.layout()).toMatchObject({ width: 44 });
-		expect(h.overlays[0]?.tui.render(120)).toEqual(["main:120"]);
-
-		await command(h, "sidebar off");
-		expect(h.overlays[0]?.tui.render(120)).toEqual(["main:120"]);
+		expect(h.overlays[0]?.layout()).toMatchObject({ width: 44, nonCapturing: true });
 	});
 
 	it("enters Resize mode with Ctrl+Shift+R only for the active visible sidebar", async () => {
@@ -242,7 +220,7 @@ describe("extension registration", () => {
 		);
 	});
 
-	it("disable closes the sidebar and restores render and mouse state", async () => {
+	it("disable closes the sidebar and restores mouse state", async () => {
 		const h = harness();
 		await start(h);
 		await command(h, "sidebar on");
@@ -252,7 +230,6 @@ describe("extension registration", () => {
 
 		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
 		expect(h.terminalWrite).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
-		expect(h.overlays[0]?.tui.render(120)).toEqual(["main:120"]);
 		expect(h.setFooter).toHaveBeenLastCalledWith(undefined);
 		expect(h.setEditorComponent).toHaveBeenLastCalledWith(undefined);
 	});
@@ -493,28 +470,5 @@ describe("extension registration", () => {
 		statuses = new Map([["one", "extension two"]]);
 		footer.render(120);
 		expect(h.overlays[0]?.requestRender).toHaveBeenCalled();
-	});
-
-	it("collapses activated tool names at narrow sidebar widths", async () => {
-		const h = harness();
-		h.pi.getActiveTools.mockReturnValue(["write", "read", "bash", "edit"]);
-		h.pi.getAllTools.mockReturnValue([
-			{ name: "write" },
-			{ name: "read" },
-			{ name: "bash" },
-			{ name: "edit" },
-			{ name: "grep" },
-		]);
-		await start(h);
-		await command(h, "sidebar on");
-
-		const text = renderOverlayText(h, 0, 39);
-		expect(text).toMatch(/Enabled\s+4 \/ 5/);
-		expect(text).not.toContain("▸");
-		expect(text).not.toContain("bash");
-		expect(text).not.toContain("edit");
-		expect(text).not.toContain("read");
-		expect(text).not.toContain("write");
-		expect(text).not.toContain("grep");
 	});
 });

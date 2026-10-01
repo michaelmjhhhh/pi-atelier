@@ -10,16 +10,10 @@ import {
 	inspectWorkspacePulse,
 	type WorkspacePulseInspection,
 } from "../src/workspace-pulse.js";
+import { execResult as result } from "./helpers/extension.js";
 
 afterEach(() => {
 	vi.useRealTimers();
-});
-
-const result = (stdout = "", code = 0, stderr = "") => ({
-	stdout,
-	stderr,
-	code,
-	killed: false,
 });
 
 describe("createWorkspacePulseRefresh", () => {
