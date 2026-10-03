@@ -411,8 +411,8 @@ function toolActivityRow(
 	const status = TOOL_STATUS[tool.status];
 	const live = tool.status === "running";
 	const elapsed = tool.durationMs ?? now - tool.startedAt;
-	// Finished tools under a second carry no timing worth reading.
-	const duration = live || elapsed >= 1_000 ? formatDuration(elapsed) : "";
+	// Successful tools under a second carry no timing worth reading; failures always keep theirs.
+	const duration = tool.status !== "done" || elapsed >= 1_000 ? formatDuration(elapsed) : "";
 	const trailing = live && extraLive > 0 ? `${duration} · +${extraLive}` : duration;
 	const trailingWidth = trailing ? visibleWidth(trailing) + 1 : 0;
 	const summaryWidth = Math.max(0, contentWidth - nameWidth - trailingWidth - 3);
