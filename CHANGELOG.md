@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Give each Sidebar panel its own resting color (Activity green, Context cyan, Usage gold, Tools pink) and tint panel frames to match their headers; status colors still take over while working, on failures, and at context thresholds ([#86](https://github.com/michaelmjhhhh/pi-atelier/pull/86)).
+- Show the Workspace branch on its own full-width row, color added and removed lines, and combine changed files and lines into one row when they fit ([#86](https://github.com/michaelmjhhhh/pi-atelier/pull/86)).
+- Start the Sidebar in Manual mode instead of Auto; the startup preference now reads On/Off ([#86](https://github.com/michaelmjhhhh/pi-atelier/pull/86)).
+
 ## 0.14.0 — 2026-10-03
 
 - Automatically collapse the Sidebar when terminal width is limited and restore it when space returns. Add independent Auto/Manual modes and show/hide controls; preserve preferred width and full TODO output while collapsed ([#76](https://github.com/michaelmjhhhh/pi-atelier/issues/76)).
