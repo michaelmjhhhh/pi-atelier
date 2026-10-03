@@ -534,6 +534,8 @@ interface SidebarGroup {
 	panel?: PanelChrome;
 	rows: string[];
 	dropRank: number;
+	/** Shown only once one of these groups has been dropped; a summary of rows still visible adds nothing. */
+	summarizes?: readonly string[];
 }
 
 function activityGroups(
@@ -554,11 +556,11 @@ function activityGroups(
 	const extraLive = sortedActive.length - visibleActive.length;
 	const recent = liveTurn ? [] : activity.recentTools.filter((tool) => !activeIds.has(tool.id)).slice(0, 3);
 	const nameWidth = toolNameWidth([...visibleActive, ...recent], contentWidth);
-	// The count only adds information once it exceeds the tool rows listed above it.
-	const aggregate =
-		liveTurn || activity.completedCount + activity.failedCount <= recent.length
-			? []
-			: [toolCountRow(activity, contentWidth, palette)];
+	const toolCount = activity.completedCount + activity.failedCount;
+	const aggregate = liveTurn || toolCount === 0 ? [] : [toolCountRow(activity, contentWidth, palette)];
+	// When every counted tool has its own row, the count only matters once a row is dropped for height.
+	const summarizes =
+		toolCount > recent.length ? undefined : recent.map((tool) => `activityRecent:${tool.id}`);
 	return [
 		{
 			name: "activityCore",
@@ -582,7 +584,13 @@ function activityGroups(
 			dropRank:
 				index === 0 ? DROP_RANK.latestRecentTool : DROP_RANK.olderRecentTool + (recent.length - index - 1),
 		})),
-		{ name: "activityAggregate", panel, rows: aggregate, dropRank: DROP_RANK.aggregate },
+		{
+			name: "activityAggregate",
+			panel,
+			rows: aggregate,
+			dropRank: DROP_RANK.aggregate,
+			...(summarizes ? { summarizes } : {}),
+		},
 	];
 }
 
@@ -598,13 +606,18 @@ function measureGroups(groups: readonly SidebarGroup[]): number {
 	return height;
 }
 
+function withoutRedundantSummaries(groups: readonly SidebarGroup[]): SidebarGroup[] {
+	const names = new Set(groups.map((group) => group.name));
+	return groups.filter((group) => !group.summarizes || group.summarizes.some((name) => !names.has(name)));
+}
+
 function composeGroups(groups: readonly SidebarGroup[], height: number): SidebarGroup[] {
 	let candidate = groups.filter((group) => group.rows.length > 0);
 	// Recount cheap row metadata after removal so newly adjacent groups share panel chrome.
 	// Painting happens only after selection, never for the discarded candidates.
-	while (measureGroups(candidate) > height) {
+	while (measureGroups(withoutRedundantSummaries(candidate)) > height) {
 		let drop: SidebarGroup | undefined;
-		for (const group of candidate) {
+		for (const group of withoutRedundantSummaries(candidate)) {
 			if (group.dropRank < (drop?.dropRank ?? DROP_RANK.required)) drop = group;
 		}
 		if (drop) {
@@ -621,12 +634,12 @@ function composeGroups(groups: readonly SidebarGroup[], height: number): Sidebar
 		].find(({ name, minimum }) =>
 			candidate.some((group) => group.name === name && group.rows.length > minimum),
 		);
-		if (!compact) return candidate;
+		if (!compact) break;
 		candidate = candidate.map((group) =>
 			group.name === compact.name ? { ...group, rows: group.rows.slice(0, -1) } : group,
 		);
 	}
-	return candidate;
+	return withoutRedundantSummaries(candidate);
 }
 
 function renderGroups(
