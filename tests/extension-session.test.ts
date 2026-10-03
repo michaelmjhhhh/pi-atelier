@@ -902,7 +902,7 @@ describe("extension session", () => {
 			expect(activeText).toContain("Replacement session");
 			expect(activeText).toContain("ACTIVITY");
 			expect(activeText).toContain("Turn 7");
-			expect(activeText).toContain("running");
+			expect(activeText).toContain("◐ bash");
 			expect(activeText).toContain("bash");
 			expect(activeText).toContain("npm run current");
 			expect(activeText).toContain("Working");
@@ -939,10 +939,10 @@ describe("extension session", () => {
 
 			expect(h.overlays[1]?.requestRender.mock.calls.length).toBeGreaterThan(activeRenderCount);
 			const settledText = renderOverlayText(h, 1, 44);
-			expect(settledText).toContain("Last run · <1s");
+			expect(settledText).toMatch(/Last run\s+<1s/);
 			expect(settledText).not.toContain("Turn 7");
 			expect(settledText).not.toContain("settled");
-			expect(settledText).toContain("done");
+			expect(settledText).toContain("✓ bash");
 			expect(settledText).toContain("Ready");
 			expect(settledText).not.toContain("stale.ts");
 		} finally {

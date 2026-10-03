@@ -116,7 +116,7 @@ describe("extension activity", () => {
 		const sidebarText = renderOverlayText(h, 0, 44);
 		expect(sidebarText).toContain("ACTIVITY");
 		expect(sidebarText).toContain("Turn 3");
-		expect(sidebarText).toContain("running");
+		expect(sidebarText).toContain("◐ bash");
 		expect(sidebarText).toContain("bash");
 		expect(sidebarText).toContain("npm test");
 		expect(sidebarText).toContain("Working");
@@ -267,10 +267,10 @@ describe("extension activity", () => {
 		});
 
 		const withResult = renderOverlayText(h, 0, 44);
-		expect(withResult).toContain("Run · running");
+		expect(withResult).toMatch(/Run\s+(<1s|\d+s)/);
 		expect(withResult).not.toContain("src/run-activity.ts");
-		expect(withResult).not.toContain("done 1s");
-		expect(withResult).not.toContain("tools 1 done · 0 failed");
+		expect(withResult).not.toContain("✓ read");
+		expect(withResult).not.toMatch(/Tools\s+1 done/);
 
 		const rendersBeforeTick = h.overlays[0]?.requestRender.mock.calls.length ?? 0;
 		vi.advanceTimersByTime(1_000);
@@ -280,12 +280,12 @@ describe("extension activity", () => {
 		await h.dispatch("agent_settled", { type: "agent_settled" });
 		const settledRenderCount = h.overlays[0]?.requestRender.mock.calls.length ?? 0;
 		const settledText = renderOverlayText(h, 0, 44);
-		expect(settledText).toContain("Last run · 3s");
+		expect(settledText).toMatch(/Last run\s+3s/);
 		expect(settledText).not.toContain("settled 3s");
 		expect(settledText).toContain("Ready");
 		expect(settledText).toContain("read");
 		expect(settledText).toContain("src/run-activity.ts");
-		expect(settledText).toContain("done 1s");
+		expect(settledText).toMatch(/✓ read\s+src\/run-activity\.ts\s+1s/);
 
 		vi.advanceTimersByTime(3_000);
 		expect(h.overlays[0]?.requestRender.mock.calls.length).toBe(settledRenderCount);
@@ -321,7 +321,7 @@ describe("extension activity", () => {
 		});
 
 		const live = renderOverlayText(h);
-		expect(live).toContain("Turn 2 · running");
+		expect(live).toMatch(/Turn 2\s+(<1s|\d+s)/);
 		expect(live).toContain("newer.ts");
 		expect(live).toContain("+1");
 		expect(live).not.toContain("older.ts");

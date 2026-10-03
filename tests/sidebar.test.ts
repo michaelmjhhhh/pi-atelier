@@ -227,7 +227,7 @@ describe("sidebar snapshot and layout", () => {
 	])("renders the %s Pulse state explicitly", (workspacePulse, expected) => {
 		const { branch: _branch, ...withoutBranch } = snapshot();
 		const rows = renderRows({ ...withoutBranch, workspacePulse, dirty: false }, { color: false, now: 0 });
-		expect(rows).toContain(expected);
+		expect(rows).toContainEqual(expect.stringMatching(expected));
 	});
 
 	it("keeps conflict and stale signals visible without expanding every Git category", () => {
@@ -453,16 +453,16 @@ describe("sidebar snapshot and layout", () => {
 	it("keeps a live Turn's ACTIVITY to current work without tool history", () => {
 		const rows = renderRows(withActivity(activeActivity()), { color: false, now: 20_000 });
 		expect(rows).toContain("ACTIVITY");
-		expect(rows).toContain("Turn 3 · running 19s");
-		expect(rows).toEqual(expect.arrayContaining([expect.stringMatching(/^read\s+src\/state\.ts\s+18s$/)]));
-		expect(rows).not.toEqual(expect.arrayContaining([expect.stringMatching(/^bash\s+npm test\s+done 4s$/)]));
-		expect(rows).not.toContain("tools 2 done · 1 failed");
+		expect(rows).toContainEqual(expect.stringMatching(/^Turn 3\s+19s$/));
+		expect(rows).toEqual(expect.arrayContaining([expect.stringMatching(/^◐ read\s+src\/state\.ts\s+18s$/)]));
+		expect(rows).not.toEqual(expect.arrayContaining([expect.stringMatching(/^✓ bash\s+npm test/)]));
+		expect(rows).not.toContainEqual(expect.stringMatching(/^Tools\s/));
 	});
 
 	it.each([
-		{ completedCount: 2, failedCount: 0, expected: "tools 2 done · 0 failed" },
-		{ completedCount: 0, failedCount: 1, expected: "tools 0 done · 1 failed" },
-	])("renders both aggregate sides for %#", ({ completedCount, failedCount, expected }) => {
+		{ completedCount: 2, failedCount: 0, expected: /^Tools\s+2 done$/ },
+		{ completedCount: 0, failedCount: 1, expected: /^Tools\s+0 done · 1 failed$/ },
+	])("renders the tool count for %#", ({ completedCount, failedCount, expected }) => {
 		const rows = renderRows(
 			withActivity({
 				phase: "settled",
@@ -475,7 +475,7 @@ describe("sidebar snapshot and layout", () => {
 			}),
 			{ color: false, now: 20_000 },
 		);
-		expect(rows).toContain(expected);
+		expect(rows).toContainEqual(expect.stringMatching(expected));
 	});
 
 	it("renders labeled response performance in Activity", () => {
@@ -571,8 +571,8 @@ describe("sidebar snapshot and layout", () => {
 					},
 				],
 			},
-			present: ["Last run · 6s", /^edit\s+src\/sidebar\.ts\s+failed 2s$/],
-			absent: ["Turn 4 · settled 6s"],
+			present: [/^Last run\s+6s$/, /^✗ edit\s+src\/sidebar\.ts\s+2s$/],
+			absent: ["Turn 4"],
 		},
 		{
 			name: "idle recent tools",
@@ -589,7 +589,7 @@ describe("sidebar snapshot and layout", () => {
 					},
 				],
 			},
-			present: [/^bash\s+npm test\s+done 1s$/, "tools 1 done · 0 failed"],
+			present: [/^✓ bash\s+npm test\s+1s$/],
 			absent: [],
 		},
 		{
@@ -600,10 +600,15 @@ describe("sidebar snapshot and layout", () => {
 					{ id: "idle-active", name: "read", summary: "src/a.ts", status: "running", startedAt: 15_000 },
 				],
 			},
-			present: [/^read\s+src\/a\.ts\s+5s$/],
+			present: [/^◐ read\s+src\/a\.ts\s+5s$/],
 			absent: [],
 		},
-		{ name: "idle counts", activity: { failedCount: 2 }, present: ["tools 0 done · 2 failed"], absent: [] },
+		{
+			name: "idle counts",
+			activity: { failedCount: 2 },
+			present: [/^Tools\s+0 done · 2 failed$/],
+			absent: [],
+		},
 	])("renders $name", ({ activity, present, absent }) => {
 		const rows = renderRows(withActivity(activity), { color: false, now: 20_000 });
 		expect(rows).toContain("ACTIVITY");
@@ -639,10 +644,10 @@ describe("sidebar snapshot and layout", () => {
 			}),
 			{ color: false, now: 20_000 },
 		);
-		expect(rows).toEqual(expect.arrayContaining([expect.stringMatching(/^grep\s+later\s+7s · \+2$/)]));
-		expect(rows).not.toEqual(expect.arrayContaining([expect.stringMatching(/^read\s+same-a/)]));
-		expect(rows).not.toEqual(expect.arrayContaining([expect.stringMatching(/^bash\s+same-b/)]));
-		expect(rows.findIndex((row) => /^write\s+recent/.test(row))).toBe(-1);
+		expect(rows).toEqual(expect.arrayContaining([expect.stringMatching(/^◐ grep\s+later\s+7s · \+2$/)]));
+		expect(rows).not.toEqual(expect.arrayContaining([expect.stringMatching(/^◐ read\s+same-a/)]));
+		expect(rows).not.toEqual(expect.arrayContaining([expect.stringMatching(/^◐ bash\s+same-b/)]));
+		expect(rows.findIndex((row) => /write\s+recent/.test(row))).toBe(-1);
 	});
 
 	it("caps recent tools, deduplicates active IDs, and bounds long summaries", () => {
@@ -698,11 +703,11 @@ describe("sidebar snapshot and layout", () => {
 			}),
 			{ width: 34, color: false, now: 20_000 },
 		);
-		const recentRows = rows.filter((row) => /^(bash|edit|write)\s+/.test(row));
+		const recentRows = rows.filter((row) => /^✓ (bash|edit|write)\s+/.test(row));
 		expect(recentRows).toHaveLength(3);
-		expect(recentRows[0]).toMatch(/^bash\s+n+/);
-		expect(recentRows[1]).toMatch(/^edit\s+middle\s+done 1s$/);
-		expect(recentRows[2]).toMatch(/^write\s+older\s+done 1s$/);
+		expect(recentRows[0]).toMatch(/^✓ bash\s+n+…\s+1s$/);
+		expect(recentRows[1]).toMatch(/^✓ edit\s+middle\s+1s$/);
+		expect(recentRows[2]).toMatch(/^✓ write\s+older\s+1s$/);
 		expect(rows).not.toEqual(expect.arrayContaining([expect.stringContaining("duplicate")]));
 		expect(rows).not.toEqual(expect.arrayContaining([expect.stringContaining("oldest")]));
 		expect(rows.every((row) => visibleWidth(row) <= 32)).toBe(true);
@@ -749,8 +754,9 @@ describe("sidebar snapshot and layout", () => {
 			60,
 			{ colorEnabled: true, now: 20_000 },
 		);
-		expect(settledFg).toHaveBeenCalledWith("thinkingLow", "done 1s");
-		expect(settledFg).toHaveBeenCalledWith("error", "failed 1s");
+		expect(settledFg).toHaveBeenCalledWith("thinkingLow", "✓");
+		expect(settledFg).toHaveBeenCalledWith("error", "✗");
+		expect(settledFg).toHaveBeenCalledWith("error", "1s");
 	});
 
 	it("drops workspace details, tools, then usage as height contracts", () => {
@@ -798,8 +804,8 @@ describe("sidebar snapshot and layout", () => {
 		expect(fullRows).toContain("TOOLS");
 		expect(fullRows).toContain("USAGE");
 		expect(fullRows).toContain("WORKSPACE");
-		expect(fullRows.findIndex((row) => /^bash\s+active-b/.test(row))).toBeGreaterThanOrEqual(0);
-		expect(fullRows.findIndex((row) => /^bash\s+active-b/.test(row))).toBeLessThan(
+		expect(fullRows.findIndex((row) => /^◐ bash\s+active-b/.test(row))).toBeGreaterThanOrEqual(0);
+		expect(fullRows.findIndex((row) => /^◐ bash\s+active-b/.test(row))).toBeLessThan(
 			fullRows.indexOf("CONTEXT"),
 		);
 
