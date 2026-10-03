@@ -5,6 +5,7 @@
 - Give each Sidebar panel its own resting color (Activity green, Context cyan, Usage gold, Tools pink) and tint panel frames to match their headers; status colors still take over while working, on failures, and at context thresholds ([#86](https://github.com/michaelmjhhhh/pi-atelier/pull/86)).
 - Show the Workspace branch on its own full-width row, color added and removed lines, and combine changed files and lines into one row when they fit ([#86](https://github.com/michaelmjhhhh/pi-atelier/pull/86)).
 - Start the Sidebar in Manual mode instead of Auto; the startup preference now reads On/Off ([#86](https://github.com/michaelmjhhhh/pi-atelier/pull/86)).
+- Simplify the Activity panel: tool rows lead with ✓/✗/◐ status glyphs instead of `done`/`failed` text, hide sub-second durations, ellipsize long summaries, and align summaries in one column. The run header puts its duration on the right, and the tool count reads `Tools  N done`, shown only when more tools ran than are listed ([#87](https://github.com/michaelmjhhhh/pi-atelier/pull/87)).
 
 ## 0.14.0 — 2026-10-03
 
