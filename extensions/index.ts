@@ -773,7 +773,7 @@ export default function atelierExtension(
 			published = session;
 			if (previousSession) disposeSession(previousSession, { clearFooter: true });
 			registerCustomShortcut(ctx, loaded.config.shortcut);
-			session.sidebar.setMode("auto");
+			session.sidebar.setMode("manual");
 			if (enabled) {
 				installFooter(session);
 				if (loaded.config.showSidebarOnStartup) session.sidebar.show();

@@ -125,10 +125,10 @@ function panelRows(
 		role,
 		`${crownFill}╮`,
 	)}`;
-	const body = rows.map(
-		(row) => `${palette.paint("dim", "│")} ${fitToWidth(row, innerWidth)} ${palette.paint("dim", "│")}`,
-	);
-	return [top, ...body, palette.paint("dim", `╰${"─".repeat(safeWidth - 2)}╯`), ""];
+	// The frame carries a quiet shade of the crown's hue so each panel reads as one object.
+	const edge = palette.paintTint(role, "│");
+	const body = rows.map((row) => `${edge} ${fitToWidth(row, innerWidth)} ${edge}`);
+	return [top, ...body, palette.paintTint(role, `╰${"─".repeat(safeWidth - 2)}╯`), ""];
 }
 
 /** Align names and values consistently across all built-in panels. */
@@ -179,6 +179,9 @@ function agentRows(
 	];
 }
 
+/** nf-oct-git_branch, matching the footer's Git icon. */
+const BRANCH_ICON = "";
+
 const PULSE_STATUS_LABEL = {
 	clean: "Clean",
 	stale: "Stale",
@@ -203,16 +206,16 @@ function workspacePulseRows(
 	const clean = pulse.status === "clean";
 	const statusRole = pulse.status === "conflict" ? "error" : clean ? "muted" : "warning";
 	const core = [labeledRow("Git", PULSE_STATUS_LABEL[pulse.status], width, palette, statusRole)];
-	if (!clean)
-		core.push(
-			labeledRow("Changed", `${formatTokens(git.trackedFiles)} tracked`, width, palette),
-			labeledRow(
-				"Lines",
-				`+${formatTokens(git.linesAdded)}  −${formatTokens(git.linesRemoved)}`,
-				width,
-				palette,
-			),
-		);
+	if (!clean) {
+		const files = `${formatTokens(git.trackedFiles)} ${git.trackedFiles === 1 ? "file" : "files"}`;
+		const added = `+${formatTokens(git.linesAdded)}`;
+		const removed = `−${formatTokens(git.linesRemoved)}`;
+		const lines = `${palette.paint("chartGreen", added)}  ${palette.paint("error", removed)}`;
+		// One "4 files  +54  −20" row when it fits, otherwise files and lines on their own rows.
+		if (visibleWidth(`Changed ${files}  ${added}  ${removed}`) <= width)
+			core.push(labeledRow("Changed", `${files}  ${lines}`, width, palette));
+		else core.push(labeledRow("Changed", files, width, palette), labeledRow("Lines", lines, width, palette));
+	}
 	if (git.conflicts > 0)
 		core.push(labeledRow("Conflicts", formatTokens(git.conflicts), width, palette, "error"));
 	const details = (
@@ -227,6 +230,12 @@ function workspacePulseRows(
 	return { core, details };
 }
 
+/** Context rests in its own hue in the sidebar; the warning and danger roles stay shared. */
+function sidebarContextRole(percent: number | null, config: AtelierConfig): PaletteRole {
+	const role = contextRole(percent, config, "dim");
+	return role === "context" ? "cache" : role;
+}
+
 function contextRows(
 	snapshot: SidebarSnapshot,
 	config: AtelierConfig,
@@ -238,7 +247,7 @@ function contextRows(
 	if (metrics.contextTokens === null || metrics.contextPercent === null) {
 		return [palette.paint("dim", "Context unavailable")];
 	}
-	const role = contextRole(metrics.contextPercent, config, "dim");
+	const role = sidebarContextRole(metrics.contextPercent, config);
 	const percent = Math.max(0, metrics.contextPercent);
 	const percentText = `${percent.toFixed(1)}%`;
 	const percentWidth = Math.max(6, visibleWidth(percentText));
@@ -410,7 +419,7 @@ function toolActivityRow(
 
 function runPhaseRole(activity: RunActivitySnapshot): PaletteRole {
 	if (activity.phase === "running") return "working";
-	return activity.failedCount > 0 ? "error" : "ready";
+	return activity.failedCount > 0 ? "error" : "chartGreen";
 }
 
 function runSummaryRow(activity: RunActivitySnapshot, palette: AtelierPalette, now: number): string {
@@ -673,7 +682,7 @@ export function renderSidebarLines(
 				panel: {
 					id: "context",
 					title: "CONTEXT",
-					role: contextRole(snapshot.metrics.contextPercent, config, "dim"),
+					role: sidebarContextRole(snapshot.metrics.contextPercent, config),
 				},
 				rows: contextRows(snapshot, config, panelWidth, palette, theme),
 				dropRank: DROP_RANK.required,
@@ -700,14 +709,12 @@ export function renderSidebarLines(
 					panel,
 					rows: [
 						theme.bold(valueRow(snapshot.projectName, palette, "primary")),
+						// The branch takes the full row so long names are not cut short by a label column.
 						...(snapshot.branch
 							? [
-									labeledRow(
-										"Branch",
-										sanitizeInline(snapshot.branch) || PLACEHOLDER,
-										panelWidth,
-										palette,
+									palette.paint(
 										"accent",
+										`${config.nerdFont ? BRANCH_ICON : "⎇"} ${sanitizeInline(snapshot.branch) || PLACEHOLDER}`,
 									),
 								]
 							: []),
@@ -732,7 +739,7 @@ export function renderSidebarLines(
 		usage: () => [
 			{
 				name: "usage",
-				panel: { id: "usage", title: "USAGE", role: "output" },
+				panel: { id: "usage", title: "USAGE", role: "chartGold" },
 				rows: usageRows(snapshot, config, panelWidth, palette),
 				dropRank: DROP_RANK.usage,
 			},
@@ -746,7 +753,7 @@ export function renderSidebarLines(
 			},
 		],
 		tools: () => {
-			const panel = { id: "tools", title: "TOOLS", role: "cache" } as const;
+			const panel = { id: "tools", title: "TOOLS", role: "chartPink" } as const;
 			const showToolNames = config.showSidebarToolNames && safeWidth > COMPACT_SIDEBAR_MAX_WIDTH;
 			const nameRows = showToolNames ? activeToolNameRows(snapshot, panelWidth, palette) : [];
 			return [
@@ -844,7 +851,12 @@ function renderSidebarError(error: unknown, width: number, height: number, resiz
 	const safeWidth = Math.max(0, Math.trunc(width));
 	const safeHeight = Math.max(0, Math.trunc(height));
 	if (safeWidth <= 0 || safeHeight <= 0) return [];
-	const plain: AtelierPalette = { colorEnabled: false, paint: (_role, text) => text };
+	const plain: AtelierPalette = {
+		colorEnabled: false,
+		tinted: false,
+		paint: (_role, text) => text,
+		paintTint: (_role, text) => text,
+	};
 	return renderDock(["Sidebar unavailable", detail], safeWidth, safeHeight, plain, resizing);
 }
 

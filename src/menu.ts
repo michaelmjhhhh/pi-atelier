@@ -172,7 +172,7 @@ export function createMenuActions(
 			persistPreference(
 				{ showSidebarOnStartup: enabled },
 				{
-					saved: `Sidebar will start ${enabled ? "in Auto mode" : "hidden"}`,
+					saved: `Sidebar will start ${enabled ? "shown" : "hidden"}`,
 					failed: "Sidebar startup preference could not be saved",
 				},
 				true,
@@ -398,7 +398,7 @@ export async function openAtelierControlCenter(
 				},
 				{
 					value: "sidebar-startup",
-					label: `Sidebar on startup: ${config.showSidebarOnStartup ? "Auto" : "Off"}`,
+					label: `Sidebar on startup: ${config.showSidebarOnStartup ? "On" : "Off"}`,
 					description: "Global user preference",
 				},
 				{

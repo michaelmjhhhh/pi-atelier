@@ -10,7 +10,7 @@ Pi Atelier adds a responsive status rail to the composer and a live activity sid
 
 [Quick start](#quick-start) · [Features](#features) · [Use](#use) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
 
-[![Pi Atelier status rail and activity sidebar demo](https://raw.githubusercontent.com/michaelmjhhhh/pi-atelier/main/assets/demo.png?v=0.10.0)](https://github.com/michaelmjhhhh/pi-atelier/releases/download/v0.10.0/demo.mp4)
+[![Pi Atelier status rail and activity sidebar demo](https://raw.githubusercontent.com/michaelmjhhhh/pi-atelier/main/assets/demo.png?v=0.15.0)](https://github.com/michaelmjhhhh/pi-atelier/releases/download/v0.10.0/demo.mp4)
 
 [Watch the demo (v0.10.0)](https://github.com/michaelmjhhhh/pi-atelier/releases/download/v0.10.0/demo.mp4)
 
@@ -70,9 +70,9 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 /atelier enable|disable     # set extension state
 ```
 
-The sidebar starts in **Auto** mode: it collapses when space is tight and reopens when there is room. At the default width, it collapses below 124 terminal columns and reopens at 132. Auto disables manual width adjustment. Choose **Manual** to adjust a visible sidebar with `Ctrl+Shift+R`. Showing or hiding the sidebar is independent of its mode; a manually hidden sidebar stays hidden when the terminal grows. Its TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension.
+The sidebar starts in **Manual** mode: resize a visible sidebar with `Ctrl+Shift+R`, using the arrow keys or by dragging the divider; Enter or mouse release confirms, and Escape cancels. It hides below 92 terminal columns and returns at 92. Choose **Auto** to collapse it when space is tight and reopen it when there is room; at the default width it collapses below 124 columns and reopens at 132, and manual width adjustment is disabled. Showing or hiding the sidebar is independent of its mode; a manually hidden sidebar stays hidden when the terminal grows. Its TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension.
 
-In Manual mode, the sidebar hides below 92 columns and returns at 92. Resize with the arrow keys or drag the divider; Enter or mouse release confirms, and Escape cancels. The preferred width survives terminal resizing and mode changes. Mode, width, and visibility are session-scoped; the startup visibility preference remains configurable in Settings. Hidden TODO results keep their full output.
+The preferred width survives terminal resizing and mode changes. Mode, width, and visibility are session-scoped; the startup visibility preference remains configurable in Settings. Hidden TODO results keep their full output.
 
 Choose a status rail preset in the display settings:
 

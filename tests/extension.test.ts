@@ -346,7 +346,7 @@ describe("extension registration", () => {
 		await h.mounted(1);
 		expect(h.overlays).toHaveLength(2);
 		const menu = renderOverlayText(h, 1, 80);
-		expect(menu).toContain("Sidebar: Auto");
+		expect(menu).toContain("Sidebar: Manual");
 		h.overlays[1]?.component.handleInput("\u001b");
 		await opening;
 	});

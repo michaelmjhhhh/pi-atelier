@@ -206,14 +206,14 @@ describe("sidebar snapshot and layout", () => {
 		expect(text).toContain("╭─ ✦ CONTEXT ");
 		expect(text).toContain("╰────────────────");
 		expect(contentRows(lines)[0]).toBe("AGENT");
-		expect(contentRows(lines)).toContainEqual(expect.stringMatching(/^Branch\s+feature\/sidebar$/));
+		expect(contentRows(lines)).toContainEqual(expect.stringMatching(/^. feature\/sidebar$/u));
 		expect(contentRows(lines)).toContainEqual(expect.stringMatching(/^gpt-5\.6-sol$/));
 	});
 
 	it("renders a scan-first Workspace Pulse without repeating the repository root path", () => {
 		const rows = renderRows(snapshot(), { color: false, now: 0 });
 
-		expect(rows).toContainEqual(expect.stringMatching(/^Changed\s+5 tracked$/));
+		expect(rows).toContainEqual(expect.stringMatching(/^Changed\s+5 files  \+182  −47$/));
 		expect(rows).toContainEqual(expect.stringMatching(/^Untracked\s+2$/));
 		expect(rows).not.toContain("/Users/example/projects/pi-atelier");
 		expect(rows).toContainEqual(expect.stringMatching(/^Session\s+Sidebar implementation$/));
@@ -269,8 +269,8 @@ describe("sidebar snapshot and layout", () => {
 		const rows = renderRows(snapshot(), { height: 27, color: false, now: 0 });
 
 		expect(rows).toContain("WORKSPACE");
-		expect(rows).toContainEqual(expect.stringMatching(/^Branch\s+feature\/sidebar$/));
-		expect(rows).toContainEqual(expect.stringMatching(/^Changed\s+5 tracked$/));
+		expect(rows).toContainEqual(expect.stringMatching(/^. feature\/sidebar$/u));
+		expect(rows).toContainEqual(expect.stringMatching(/^Changed\s+5 files  \+182  −47$/));
 		expect(rows).not.toContainEqual(expect.stringMatching(/^Untracked\s+2$/));
 		expect(rows).not.toContainEqual(expect.stringMatching(/^Session\s+Sidebar implementation$/));
 		expect(rows).not.toContainEqual(expect.stringMatching(/^History\s+38 entries$/));
@@ -298,9 +298,10 @@ describe("sidebar snapshot and layout", () => {
 			now: 0,
 		});
 		expect(fg).toHaveBeenCalledWith("mdHeading", "╭─ ✦ ");
-		expect(fg).toHaveBeenCalledWith("thinkingLow", "╭─ ✦ ");
-		expect(fg).toHaveBeenCalledWith("thinkingHigh", "╭─ ✦ ");
+		expect(fg).toHaveBeenCalledWith("success", "╭─ ✦ ");
 		expect(fg).toHaveBeenCalledWith("syntaxType", "╭─ ✦ ");
+		expect(fg).toHaveBeenCalledWith("accent", "╭─ ✦ ");
+		expect(fg).toHaveBeenCalledWith("syntaxString", "╭─ ✦ ");
 	});
 
 	it("renders organized sections without exceeding width", () => {
@@ -328,7 +329,7 @@ describe("sidebar snapshot and layout", () => {
 		expect(compact[compactContext + 1]).toMatch(/^[█░]+\s+8\.1%$/);
 		expect(compact[compactContext + 2]).toMatch(/^Tokens\s+32k \/ 400k$/);
 		expect(compact).toContain("pi-atelier");
-		expect(compact).toContainEqual(expect.stringMatching(/^Branch\s+feature\/sidebar$/));
+		expect(compact).toContainEqual(expect.stringMatching(/^. feature\/sidebar$/u));
 		expect(compact).toContainEqual(expect.stringMatching(/^Input\s+50\.0k$/));
 		expect(compact).toContainEqual(expect.stringMatching(/^Cache read\s+100\.0k$/));
 		expect(compact).toContainEqual(expect.stringMatching(/^Enabled\s+8 \/ 12$/));
@@ -336,7 +337,7 @@ describe("sidebar snapshot and layout", () => {
 		const regular = renderRows(snapshot(), { config: expandedConfig, color: false });
 		expect(regular).toContainEqual(expect.stringMatching(/^gpt-5\.6-sol$/));
 		expect(regular).toContainEqual(expect.stringMatching(/^Billing\s+Subscription$/));
-		expect(regular).toContainEqual(expect.stringMatching(/^Branch\s+feature\/sidebar$/));
+		expect(regular).toContainEqual(expect.stringMatching(/^. feature\/sidebar$/u));
 		expect(regular).toContainEqual(expect.stringMatching(/^Enabled\s+8 \/ 12$/));
 	});
 
@@ -818,7 +819,7 @@ describe("sidebar snapshot and layout", () => {
 		expect(coreOnly).not.toContain("TOOLS");
 		expect(coreOnly).not.toContain("USAGE");
 		expect(coreOnly).toContain("WORKSPACE");
-		expect(coreOnly).toContainEqual(expect.stringMatching(/^Changed\s+5 tracked$/));
+		expect(coreOnly).toContainEqual(expect.stringMatching(/^Changed\s+5 files  \+182  −47$/));
 		expect(coreOnly).not.toContainEqual(expect.stringMatching(/^Session\s+Sidebar implementation$/));
 		expect(coreOnly).not.toContainEqual(expect.stringMatching(/^History\s+38 entries$/));
 		expect(coreOnly).toContain("AGENT");

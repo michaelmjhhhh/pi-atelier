@@ -609,7 +609,7 @@ describe("extension session", () => {
 		await settleMicrotasks();
 		// Positive control: a published pulse does reach the sidebar.
 		expect(renderOverlayText(active)).toContain("stale-branch");
-		expect(renderOverlayText(active)).toContain("1 tracked");
+		expect(renderOverlayText(active)).toContain("1 file");
 		await active.dispatch("session_shutdown", { reason: "quit" }, active.ctx);
 		expect(active.overlays[0]?.done).toHaveBeenCalledOnce();
 
