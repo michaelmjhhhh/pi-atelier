@@ -394,6 +394,8 @@ const TOOL_STATUS = {
 	failed: { role: "error", glyph: "✗" },
 } as const satisfies Record<ToolActivity["status"], { role: PaletteRole; glyph: string }>;
 
+const MIN_TOOL_SUMMARY_COLUMNS = 6;
+
 /** Shared across rows so summaries line up in one column. */
 function toolNameWidth(tools: readonly ToolActivity[], contentWidth: number): number {
 	const widest = Math.max(4, ...tools.map((tool) => visibleWidth(tool.name || "tool")));
@@ -415,19 +417,36 @@ function toolActivityRow(
 	const duration = tool.status !== "done" || elapsed >= 1_000 ? formatDuration(elapsed) : "";
 	const trailing = live && extraLive > 0 ? `${duration} · +${extraLive}` : duration;
 	const trailingWidth = trailing ? visibleWidth(trailing) + 1 : 0;
-	const summaryWidth = Math.max(0, contentWidth - nameWidth - trailingWidth - 3);
+	// Glyph and trailing timing are kept whole. On narrow rows the name gives way
+	// first, then the summary is dropped rather than shown as a lone ellipsis.
+	const available = Math.max(0, contentWidth - trailingWidth - 2);
+	let fittedNameWidth = Math.min(
+		nameWidth,
+		Math.max(Math.min(4, available), available - MIN_TOOL_SUMMARY_COLUMNS - 1),
+	);
+	let summaryWidth = available - fittedNameWidth - 1;
+	if (summaryWidth < 3) {
+		fittedNameWidth = Math.min(nameWidth, available);
+		summaryWidth = 0;
+	}
+	const name = palette.paint(
+		"dim",
+		sanitizeInline(truncateToWidth(tool.name || "tool", fittedNameWidth, "…")),
+	);
 	const summary = tool.summary
 		? palette.paint(
 				tool.status === "done" ? "muted" : "primary",
 				sanitizeInline(truncateToWidth(tool.summary, summaryWidth, "…")),
 			)
 		: palette.paint("dim", PLACEHOLDER);
-	const row = `${palette.paint(status.role, status.glyph)} ${fitToWidth(
-		palette.paint("dim", tool.name || "tool"),
-		nameWidth,
-	)} ${fitToWidth(summary, summaryWidth)}${
-		trailing ? ` ${palette.paint(tool.status === "done" ? "dim" : status.role, trailing)}` : ""
-	}`;
+	const row = [
+		palette.paint(status.role, status.glyph),
+		fittedNameWidth > 0 ? fitToWidth(name, fittedNameWidth) : "",
+		summaryWidth > 0 ? fitToWidth(summary, summaryWidth) : "",
+		trailing ? palette.paint(tool.status === "done" ? "dim" : status.role, trailing) : "",
+	]
+		.filter(Boolean)
+		.join(" ");
 	return truncateToWidth(row, contentWidth, "");
 }
 
