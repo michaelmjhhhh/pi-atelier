@@ -15,6 +15,7 @@ function harness(
 		title: string;
 		available: boolean;
 		visible: boolean;
+		collapsible?: boolean;
 	}[] = () =>
 		DEFAULT_CONFIG.sidebarPanelLayout.map((entry) => ({
 			id: entry.id,
@@ -344,5 +345,61 @@ describe("Display Settings Workspace", () => {
 		const sideBySide = wide.find((line) => line.includes(" Display ") && line.includes(" Segment Editor "));
 		expect(sideBySide).toBeDefined();
 		expect(wide.some((line) => (line.match(/└/g) ?? []).length === 2)).toBe(true);
+	});
+});
+
+describe("contributed panel collapse settings (REQ-ATELIER-006)", () => {
+	const configuredLayout = [
+		{ id: "vendor:rich" as const, visible: true },
+		...DEFAULT_CONFIG.sidebarPanelLayout,
+	];
+	const renderConfig = {
+		...DEFAULT_CONFIG,
+		sidebarPanelLayout: configuredLayout,
+		contributedPanelCollapsed: { "vendor:rich": true },
+	};
+	const settings = () =>
+		configuredLayout.map((entry) => ({
+			id: entry.id,
+			title: entry.id,
+			available: true,
+			visible: entry.visible,
+			collapsible: entry.id === "vendor:rich",
+		}));
+
+	// The Sidebar Editor row (not the preview/guidance echoes) carries the state suffix.
+	const richRow = (component: ReturnType<typeof createSettingsWorkspace>) =>
+		text(component)
+			.split("\n")
+			.find(
+				(line) => line.includes("vendor:rich") && (line.includes("collapsed") || line.includes("expanded")),
+			) ?? "";
+
+	it("toggles and persists Atelier-local collapse state per panel ID", async () => {
+		const h = harness({}, renderConfig, settings);
+		expect(richRow(h.component)).toContain("collapsed");
+		// Two display rows, nine segments, and three actions precede the layout.
+		for (let index = 0; index < 14; index += 1) h.component.handleInput("\u001b[B");
+		h.component.handleInput("c");
+		expect(text(h.component)).toContain("vendor:rich expanded");
+		expect(richRow(h.component)).toContain("expanded");
+		expect(richRow(h.component)).not.toContain("collapsed");
+		h.component.handleInput("s");
+		await settleMicrotasks();
+		expect(h.persist).toHaveBeenCalledOnce();
+		expect(h.persist.mock.calls[0]?.[0].contributedPanelCollapsed).toEqual({ "vendor:rich": false });
+		expect(h.layers.user).toMatchObject({ contributedPanelCollapsed: { "vendor:rich": false } });
+	});
+
+	it("warns instead of toggling when no panel row is selected or the panel is not collapsible", () => {
+		const h = harness({}, renderConfig, settings);
+		// Focus starts on the preset row: no sidebar panel selected.
+		h.component.handleInput("c");
+		expect(text(h.component)).toContain("Select a contributed panel");
+		// Focus a built-in panel row (fifteen rows: 14 precede the layout, then vendor:rich, then agent).
+		for (let index = 0; index < 15; index += 1) h.component.handleInput("\u001b[B");
+		h.component.handleInput("c");
+		expect(text(h.component)).toContain("does not offer a compact representation");
+		expect(h.persist).not.toHaveBeenCalled();
 	});
 });

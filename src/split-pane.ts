@@ -1,10 +1,12 @@
 import type { Component, OverlayHandle, OverlayOptions, TUI } from "@earendil-works/pi-tui";
-import { compositeTuiLine, HStack, isViewportTUI, matchesKey, sliceByColumn } from "@earendil-works/pi-tui";
+import { matchesKey, sliceByColumn } from "@earendil-works/pi-tui";
+import { compositeTuiLine, HStack, isViewportTUI } from "./pi-tui-host.js";
 import {
 	createImageCompositorBinding,
 	findOwnMethod,
 	type ImageCompositorBinding,
 } from "./image-compositor.js";
+import { hasCapturingOverlay } from "./image-compositor.js";
 import { clamp } from "./text.js";
 
 const ENABLE_MOUSE = "\u001b[?1002h\u001b[?1006h";
@@ -17,7 +19,7 @@ const MOUSE_WHEEL_BIT = 64;
 const PI_084_REGULAR_RENDER_ADAPTER = Symbol("pi-atelier.regular-render-adapter");
 const PI_084_FULLSCREEN_LAYOUT_ADAPTER = Symbol("pi-atelier.fullscreen-layout-adapter");
 const PI_084_FULLSCREEN_OVERLAY_ADAPTER = Symbol("pi-atelier.fullscreen-overlay-adapter");
-const PI_084_FULLSCREEN_SELECTION_ADAPTER = Symbol("pi-atelier.fullscreen-selection-adapter");
+const PI_084_SELECTION_ADAPTER = Symbol("pi-atelier.selection-adapter");
 
 type SelectionColumns = (
 	line: string,
@@ -28,7 +30,7 @@ type SelectionColumns = (
 ) => { start: number; end: number };
 type ApplySelection = (screen: string[], layout?: unknown) => string[];
 
-interface FullscreenSelectionAdapterState {
+interface SelectionAdapterState {
 	owner: object;
 	baseSelectionColumns: SelectionColumns;
 	baseApplySelection?: ApplySelection;
@@ -57,7 +59,7 @@ type AdaptedTui = TUI & {
 	[PI_084_REGULAR_RENDER_ADAPTER]: RegularRenderAdapterState | undefined;
 	[PI_084_FULLSCREEN_LAYOUT_ADAPTER]: FullscreenLayoutAdapterState | undefined;
 	[PI_084_FULLSCREEN_OVERLAY_ADAPTER]: FullscreenOverlayAdapterState | undefined;
-	[PI_084_FULLSCREEN_SELECTION_ADAPTER]: FullscreenSelectionAdapterState | undefined;
+	[PI_084_SELECTION_ADAPTER]: SelectionAdapterState | undefined;
 	getSelectionColumns?: SelectionColumns;
 	applySelection?: ApplySelection;
 	layoutRoot?: Component;
@@ -99,6 +101,20 @@ export interface SidebarStatus {
 	presentation: SidebarPresentation;
 }
 
+/**
+ * Whether the attached TUI belongs to a host built from Pi's TUI package,
+ * which publishes `TuiMode` (`"regular" | "fullscreen"`) on every renderer.
+ * A host built from another TUI reports no `mode`; such a host also routes
+ * focused-overlay input without a fall-through, so a persistent sidebar
+ * overlay without `handleInput` would swallow every keystroke (see
+ * docs/upstream-pi-atelier-overlay-input.md). The gate is on the surface,
+ * not on fullscreen: Pi's regular renderer legally mounts the same
+ * nonCapturing overlay.
+ */
+export const isPiTuiSurface = (tui: TUI | undefined): boolean =>
+	(tui as { mode?: unknown } | undefined)?.mode === "regular" ||
+	(tui as { mode?: unknown } | undefined)?.mode === "fullscreen";
+
 export interface SplitPaneControllerOptions {
 	onError?(error: unknown): void;
 	subscribeInput?(handler: (data: string) => { consume?: boolean; data?: string } | undefined): () => void;
@@ -116,6 +132,8 @@ export interface SplitPaneController {
 	setSidebarWidth(width: number): void;
 	getSidebarWidth(): number;
 	isEnabled(): boolean;
+	/** Whether the attached host serves Pi's TUI surface and tolerates a persistent nonCapturing overlay. */
+	isPiTuiSurface(): boolean;
 	beginResize(): boolean;
 	cancelResize(): void;
 	isResizing(): boolean;
@@ -152,12 +170,40 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 	let imageCompositor: ImageCompositorBinding | undefined;
 	const adapterOwner = {};
 
-	/** Only Pi's regular main screen renders the transcript through a replaceable `render`. */
-	const findPrototypeRender = (nextTui: TUI): TUI["render"] | undefined => {
-		const prototype = Object.getPrototypeOf(nextTui) as { constructor?: { name?: string } } | null;
-		if (prototype?.constructor?.name !== "TuiMainScreen") return undefined;
-		return findOwnMethod<TUI["render"]>(prototype, "render");
+	/**
+	 * The host's regular transcript renderer, detected structurally rather
+	 * than by class name: the surface reports `mode: "regular"` (Pi's class
+	 * field, instance- or prototype-side) and provides a `render` plus a
+	 * terminal accessor. A renderer class prototype owns its `constructor`;
+	 * an ad-hoc `Object.create(base)` surface does not, and re-binding such a
+	 * bag's inherited render could hijack unrelated children sharing the base.
+	 */
+	const resolveRendererShape = (nextTui: TUI): { prototype: object; render: TUI["render"] } | undefined => {
+		const instance = nextTui as { mode?: unknown; terminal?: unknown };
+		const prototype = Object.getPrototypeOf(nextTui) as {
+			constructor?: unknown;
+			mode?: unknown;
+		} | null;
+		if (!prototype) return undefined;
+		if (
+			instance.mode !== "regular" &&
+			prototype.mode !== "regular" &&
+			(prototype as { constructor?: { name?: string } }).constructor?.name !== "TuiMainScreen"
+		) {
+			return undefined;
+		}
+		// A real renderer class owns its constructor on the prototype; an
+		// `Object.create(base)` bag only inherits Object's.
+		if (!Object.prototype.hasOwnProperty.call(prototype, "constructor")) return undefined;
+		const render = findOwnMethod<TUI["render"]>(prototype, "render");
+		if (!render) return undefined;
+		// Without a terminal the adapter loses its resize-reconciliation signal.
+		if (typeof instance.terminal !== "object") return undefined;
+		return { prototype, render };
 	};
+
+	const findPrototypeRender = (nextTui: TUI): TUI["render"] | undefined =>
+		resolveRendererShape(nextTui)?.render;
 
 	const findPrototypeOverlayMethods = (
 		nextTui: TUI,
@@ -260,27 +306,43 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		adaptedTui[PI_084_FULLSCREEN_LAYOUT_ADAPTER] = undefined;
 	};
 
-	const syncFullscreenSelectionAdapter = () => {
-		if (!isPiFullscreenRenderer() || !tui) return;
+	/**
+	 * Clip screen selection to the reserved main pane whenever the host
+	 * exposes the selection machinery, branded Pi or not: a non-branded
+	 * regular host still runs selection and OSC-52 copies across the full
+	 * terminal, including the sidebar's columns.
+	 */
+	const syncSelectionAdapter = () => {
+		if (!tui) return;
 		const adaptedTui = tui as AdaptedTui;
-		if (adaptedTui[PI_084_FULLSCREEN_SELECTION_ADAPTER]) return;
+		if (adaptedTui[PI_084_SELECTION_ADAPTER]) return;
+		if (tui.mode !== "regular" && !isPiFullscreenRenderer()) return;
 		// Read the concrete methods, not forwarding functions from Pi's stable proxy.
 		const prototype = Object.getPrototypeOf(tui) as object | null;
 		const baseSelectionColumns = findOwnMethod<SelectionColumns>(prototype, "getSelectionColumns");
 		if (!baseSelectionColumns) return;
 		const baseApplySelection = findOwnMethod<ApplySelection>(prototype, "applySelection");
-		adaptedTui[PI_084_FULLSCREEN_SELECTION_ADAPTER] = {
+		adaptedTui[PI_084_SELECTION_ADAPTER] = {
 			owner: adapterOwner,
 			baseSelectionColumns,
 			...(baseApplySelection ? { baseApplySelection } : {}),
 		};
+		// How many columns this host currently reserves for the sidebar:
+		// the fullscreen HStack absconds it behind the overlay component,
+		// while a regular host reserves it purely through the layout.
+		const reservedColumns = (width: number): number =>
+			isPiFullscreenRenderer()
+				? fullscreenSidebarWidth(width)
+				: visibleAt(width)
+					? effectiveSidebarWidth(width)
+					: 0;
 		adaptedTui.getSelectionColumns = function (line, row, selection, minColumn, maxColumn) {
 			const columns = baseSelectionColumns.call(this, line, row, selection, minColumn, maxColumn);
 			// Pi falls back to screen selection when a drag starts outside a ScrollView
 			// (e.g. the editor). This method serves both highlighting and OSC 52 copying.
 			if (selection.start.scrollView || this.hasOverlay()) return columns;
 			const width = this.terminal.columns;
-			const sidebar = fullscreenSidebarWidth(width);
+			const sidebar = reservedColumns(width);
 			if (sidebar <= 0) return columns;
 			const mainWidth = width - sidebar;
 			return { start: Math.min(columns.start, mainWidth), end: Math.min(columns.end, mainWidth) };
@@ -289,7 +351,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		adaptedTui.applySelection = function (screen, layout) {
 			const selected = baseApplySelection.call(this, screen, layout);
 			const width = this.terminal.columns;
-			const sidebar = fullscreenSidebarWidth(width);
+			const sidebar = reservedColumns(width);
 			if (sidebar <= 0 || this.hasOverlay()) return selected;
 			const mainWidth = width - sidebar;
 			return selected.map((line, row) => {
@@ -303,14 +365,14 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		};
 	};
 
-	const restoreFullscreenSelectionAdapter = () => {
+	const restoreSelectionAdapter = () => {
 		if (!tui) return;
 		const adaptedTui = tui as AdaptedTui;
-		const state = adaptedTui[PI_084_FULLSCREEN_SELECTION_ADAPTER];
+		const state = adaptedTui[PI_084_SELECTION_ADAPTER];
 		if (state?.owner !== adapterOwner) return;
 		adaptedTui.getSelectionColumns = state.baseSelectionColumns;
 		if (state.baseApplySelection) adaptedTui.applySelection = state.baseApplySelection;
-		adaptedTui[PI_084_FULLSCREEN_SELECTION_ADAPTER] = undefined;
+		adaptedTui[PI_084_SELECTION_ADAPTER] = undefined;
 	};
 
 	const syncFullscreenOverlayAdapter = () => {
@@ -463,7 +525,13 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 	const observeWidth = (terminalWidth: number): boolean => {
 		reconcileResizeWidth(terminalWidth);
 		syncOverlayWidth(terminalWidth);
-		return visibleAt(terminalWidth);
+		const shown = visibleAt(terminalWidth);
+		if (!shown) return false;
+		// A capturing host dialog opens over these columns: the sidebar steps
+		// aside for the frame instead of painting over the host's modal, and
+		// returns once the dialog closes. Rechecked per frame, so no extra
+		// state survives a missed transition.
+		return tui ? !hasCapturingOverlay(tui) : true;
 	};
 
 	const visibleAt = (terminalWidth: number): boolean => resolveLayout(terminalWidth).presentation === "shown";
@@ -488,7 +556,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		syncRegularRenderAdapter();
 		syncFullscreenLayoutAdapter();
 		syncFullscreenOverlayAdapter();
-		syncFullscreenSelectionAdapter();
+		syncSelectionAdapter();
 		tui?.requestRender();
 	};
 
@@ -663,6 +731,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		cancelResize: () => stopResize(true),
 		isResizing: () => resizing,
 		isEnabled: () => enabled,
+		isPiTuiSurface: () => isPiTuiSurface(tui),
 		overlayOptions: () => overlayLayout,
 		requestRender,
 		dispose() {
@@ -673,7 +742,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			clearFullscreenSidebar();
 			restoreRegularRenderAdapter();
 			restoreFullscreenOverlayAdapter();
-			restoreFullscreenSelectionAdapter();
+			restoreSelectionAdapter();
 			restoreFullscreenLayoutAdapter();
 			imageCompositor?.dispose();
 			imageCompositor = undefined;

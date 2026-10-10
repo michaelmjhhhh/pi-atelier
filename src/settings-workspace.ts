@@ -29,6 +29,8 @@ export interface SidebarPanelSetting {
 	title: string;
 	available: boolean;
 	visible: boolean;
+	/** True when a contributed panel supplies compact/expanded rich representations. */
+	collapsible?: boolean;
 }
 
 const OVERLAY_MAX_HEIGHT_PERCENT = 95;
@@ -230,10 +232,14 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 	let focus = 0;
 	let undo:
 		| { kind: "display"; value: SessionDisplayOverride | undefined }
-		| { kind: "sidebar"; value: SidebarPanelLayout }
+		| { kind: "sidebar"; value: { layout: SidebarPanelLayout; collapsed: Record<string, boolean> } }
 		| undefined;
 	let sidebarDraft: SidebarPanelLayout = cloneLayout(options.getRenderConfig().sidebarPanelLayout);
 	let sidebarDirty = false;
+	let collapseDraft: Record<string, boolean> = {
+		...(options.getRenderConfig().contributedPanelCollapsed ?? {}),
+	};
+	let collapseDirty = false;
 	let feedback = "";
 	let saving = false;
 	let scrollOffset = 0;
@@ -284,8 +290,17 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 		tell(message);
 		request(true);
 	};
+	const recordSidebarUndo = (): void => {
+		undo = {
+			kind: "sidebar",
+			value: {
+				layout: cloneLayout(sidebarDraft),
+				collapsed: { ...collapseDraft },
+			},
+		};
+	};
 	const changeSidebar = (next: SidebarPanelLayout, message: string): void => {
-		undo = { kind: "sidebar", value: cloneLayout(sidebarDraft) };
+		recordSidebarUndo();
 		sidebarDraft = next;
 		sidebarDirty = true;
 		tell(message);
@@ -306,8 +321,10 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 		}
 		undo = undefined;
 		if (previous.kind === "sidebar") {
-			sidebarDraft = previous.value;
+			sidebarDraft = previous.value.layout;
+			collapseDraft = previous.value.collapsed;
 			sidebarDirty = true;
+			collapseDirty = true;
 			tell("Undid the last Sidebar change");
 			request();
 		} else {
@@ -330,6 +347,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 		const patch: DisplayPatch = {
 			...cloneDisplay(display),
 			...(sidebarDirty ? { sidebarPanelLayout: cloneLayout(sidebarDraft) } : {}),
+			...(collapseDirty ? { contributedPanelCollapsed: { ...collapseDraft } } : {}),
 		};
 		try {
 			await options.persistUserDisplayPatch(patch);
@@ -339,6 +357,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 				sidebarDirty = false;
 				if (undo?.kind === "sidebar") undo = undefined;
 			}
+			if (collapseDirty) collapseDirty = false;
 			tell("Saved as User default");
 		} catch (error) {
 			tell(`Save failed: ${errorMessage(error)}`, "error");
@@ -391,6 +410,25 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 			case "action":
 				runAction(row.id);
 		}
+	};
+	const toggleCollapse = (): void => {
+		const row = rows()[focus];
+		if (!row || row.kind !== "sidebarPanel") {
+			tell("Select a contributed panel to collapse or expand", "warning");
+			request();
+			return;
+		}
+		const available = options.getSidebarPanelSettings().find((entry) => entry.id === row.id);
+		if (available?.collapsible !== true) {
+			tell(`${row.id} does not offer a compact representation`, "warning");
+			request();
+			return;
+		}
+		recordSidebarUndo();
+		collapseDraft[row.id] = collapseDraft[row.id] !== true;
+		collapseDirty = true;
+		tell(`${row.id} ${collapseDraft[row.id] ? "collapsed" : "expanded"}`);
+		request();
 	};
 	const move = (direction: "earlier" | "later"): void => {
 		const row = rows()[focus];
@@ -458,7 +496,12 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 			{ line: "" },
 			...sidebarDraft.map((entry, index) => {
 				const setting = sidebarSettings.get(entry.id);
-				const suffix = setting?.available === false ? "  unavailable" : "";
+				const suffix =
+					setting?.available === false
+						? "  unavailable"
+						: setting?.collapsible
+							? `  ${collapseDraft[entry.id] === true ? "collapsed" : "expanded"}`
+							: "";
 				return rowLine(
 					{ kind: "sidebarPanel", id: entry.id },
 					`${String(index + 1).padStart(2)}  ${entry.visible ? "●" : "○"} ${setting?.title || entry.id}${suffix}`,
@@ -532,8 +575,14 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 			guidance = `${selected.kind} · source:${provenance[selected.kind]} · Enter Change · U Undo`;
 		} else if (selected?.kind === "sidebarPanel") {
 			const entry = sidebarDraft.find((item) => item.id === selected.id);
-			const available = sidebarSettings.get(selected.id)?.available !== false;
-			guidance = `${selected.id} · ${entry?.visible ? "shown" : "hidden"} · ${available ? "available" : "unavailable"} · Enter Toggle · Shift+↑/↓ Reorder`;
+			const setting = sidebarSettings.get(selected.id);
+			const available = setting?.available !== false;
+			const collapseHint =
+				setting?.collapsible === true
+					? ` · ${collapseDraft[selected.id] === true ? "collapsed" : "expanded"}`
+					: "";
+			const collapseKey = setting?.collapsible === true ? " · C Collapse" : "";
+			guidance = `${selected.id} · ${entry?.visible ? "shown" : "hidden"} · ${available ? "available" : "unavailable"}${collapseHint} · Enter Toggle${collapseKey} · Shift+↑/↓ Reorder`;
 		} else if (selected?.kind === "action") {
 			guidance = `${selected.id} · Enter or ${ACTION_KEYS[selected.id]}`;
 		}
@@ -572,6 +621,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 			else if (matchesKey(data, "shift+down")) move("later");
 			else if (matchesKey(data, "enter") || data === " ") activate();
 			else if (matchesKey(data, "escape")) options.close();
+			else if (data.toLowerCase() === "c") toggleCollapse();
 			else if (action) runAction(action);
 		},
 		render(width: number): string[] {

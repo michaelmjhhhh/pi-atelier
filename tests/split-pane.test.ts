@@ -710,3 +710,231 @@ describe("split pane render lifecycle", () => {
 		expect(h.tui.render(120)).toEqual(["base:120"]);
 	});
 });
+
+describe("host-shaped regular render reservation", () => {
+	// An omp-style host: the adapter must NOT depend on the class name.
+	class HostMainScreen {
+		readonly mode = "regular" as const;
+		readonly requestRender = vi.fn();
+		readonly terminal = { columns: 120, rows: 36, write: vi.fn() };
+		readonly widths: number[] = [];
+
+		render(width: number): string[] {
+			this.widths.push(width);
+			return [`host:${width}`];
+		}
+	}
+
+	it("reserves width on an unnamed host main screen with its own render and terminal", () => {
+		const renderer = new HostMainScreen();
+		const tui = stableTuiReference(() => renderer as unknown as TUI);
+		const split = disposeAfterTest(createSplitPaneController());
+
+		split.attach(tui);
+		split.show();
+
+		expect(tui.render(120)).toEqual(["host:76"]);
+		expect(renderer.widths).toEqual([76]);
+
+		split.dispose();
+		expect(renderer.render(120)).toEqual(["host:120"]);
+	});
+
+	it("does not reserve width on a modeless host object with only own render", () => {
+		const originalRender = (width: number): string[] => [`shell:${width}`];
+		const host = { render: originalRender, terminal: { columns: 120, rows: 36 }, requestRender: vi.fn() };
+		const tui = stableTuiReference(() => host as unknown as TUI);
+		const split = disposeAfterTest(createSplitPaneController());
+		split.attach(tui);
+		split.show();
+
+		// No `mode`: cannot tell a main screen from a shell surface. Leave it alone.
+		expect(host.render(120)).toEqual(["shell:120"]);
+		expect((host.render as unknown as { mock?: unknown }).mock).toBeUndefined();
+	});
+
+	it("does not reserve width when the host render inherits from another object", () => {
+		const base = {
+			render(width: number): string[] {
+				return [`inherited:${width}`];
+			},
+		};
+		const renderer = Object.create(base) as {
+			mode: string;
+			terminal: unknown;
+			widths: number[];
+			requestRender: () => void;
+		} & Record<string, unknown>;
+		renderer.mode = "regular";
+		renderer.terminal = { columns: 120, rows: 36, write: vi.fn() };
+		renderer.requestRender = vi.fn();
+		const originalRender = base.render;
+		const tui = stableTuiReference(() => renderer as unknown as TUI);
+		const split = disposeAfterTest(createSplitPaneController());
+		split.attach(tui);
+		split.show();
+
+		expect(tui.render(120)).toEqual(["inherited:120"]);
+		expect(base.render).toBe(originalRender);
+	});
+});
+
+describe("memoized adapter resolution", () => {
+	it("resolves the host render method once per attach, not per rendered frame", () => {
+		const renderer = new TuiMainScreen();
+		const tui = stableTuiReference(() => renderer as unknown as TUI);
+		const split = disposeAfterTest(createSplitPaneController());
+
+		const descriptorReads = { count: 0 };
+		const originalGetOwn = Object.getOwnPropertyDescriptor;
+		const countingGetOwn: typeof Object.getOwnPropertyDescriptor = (target, key) => {
+			descriptorReads.count += 1;
+			return originalGetOwn(target, key);
+		};
+		Object.getOwnPropertyDescriptor = countingGetOwn;
+		try {
+			split.attach(tui);
+			split.show();
+
+			// Warm the adapter with a burst of frames.
+			for (let frame = 0; frame < 50; frame += 1) tui.render(120);
+
+			const readsAfterWarmup = descriptorReads.count;
+			expect(readsAfterWarmup).toBeGreaterThan(0);
+
+			for (let frame = 0; frame < 50; frame += 1) tui.render(120);
+
+			// Frame renders must not re-walk the prototype chain.
+			expect(descriptorReads.count).toBe(readsAfterWarmup);
+		} finally {
+			Object.getOwnPropertyDescriptor = originalGetOwn;
+		}
+	});
+});
+
+describe("regular-mode selection clipping", () => {
+	// Host with selection machinery like Pi's concrete renderer, but no Pi brand.
+	class HostSelectableScreen {
+		readonly mode = "regular" as const;
+		readonly requestRender = vi.fn();
+		readonly terminal = { columns: 120, rows: 36, write: vi.fn() };
+
+		render(width: number): string[] {
+			return [`host:${width}`];
+		}
+
+		getSelectionColumns(
+			line: string,
+			row: number,
+			selection: {
+				start: { col: number; row: number; scrollView?: unknown };
+				end: { col: number; row: number };
+			},
+		): { start: number; end: number } {
+			const width = Math.max(0, selection.end.col + 8);
+			return { start: Math.min(selection.start.col, width), end: Math.min(width, 120) };
+		}
+
+		applySelection(screen: string[], layout?: unknown): string[] {
+			return screen.map((line) => `sel:${line}`);
+		}
+
+		hasOverlay(): boolean {
+			return false;
+		}
+	}
+
+	it("clips screen-selection columns to the main pane under a non-branded regular host", () => {
+		const renderer = new HostSelectableScreen();
+		void renderer; // ensure regular shape
+		const tui = stableTuiReference(() => renderer as unknown as TUI);
+		const split = disposeAfterTest(createSplitPaneController());
+		split.attach(tui);
+		split.show();
+
+		const selection = { start: { col: 70, row: 0 }, end: { col: 100, row: 0 } };
+		const clipped = (
+			tui as unknown as {
+				getSelectionColumns: (
+					line: string,
+					row: number,
+					selection: unknown,
+				) => { start: number; end: number };
+			}
+		).getSelectionColumns("a".repeat(120), 0, selection);
+
+		// Sidebar (76..120) must be excluded: end clamped into the main pane.
+		expect(clipped.end).toBe(76);
+		expect(clipped.start).toBe(70);
+	});
+
+	it("restores the sidebar columns in applySelection output under a non-branded host", () => {
+		const renderer = new HostSelectableScreen();
+		const tui = stableTuiReference(() => renderer as unknown as TUI);
+		const split = disposeAfterTest(createSplitPaneController());
+		split.attach(tui);
+		split.show();
+
+		const screen = ["o".repeat(120)];
+		const applied = (
+			tui as unknown as { applySelection: (screen: string[], layout?: unknown) => string[] }
+		).applySelection(screen as unknown as string[]);
+		const composed = applied[0] ?? "";
+
+		// Main pane keeps the host's highlighted form; the sidebar region keeps
+		// its original, unhighlighted content via the compositor's suffix restore.
+		expect(composed.startsWith(String.fromCharCode(27) + "[0m")).toBe(true); // compositor's seam protector
+		// The visible payload: highlighted main pane (76 cols incl. the sel: prefix),
+		// then the untouched original sidebar columns 76..120.
+		expect(composed).toContain("sel:" + "o".repeat(72));
+	});
+
+	it("leaves selection untouched when the sidebar is hidden", () => {
+		const renderer = new HostSelectableScreen();
+		const tui = stableTuiReference(() => renderer as unknown as TUI);
+		const split = disposeAfterTest(createSplitPaneController());
+		split.attach(tui);
+		split.show();
+		split.hide();
+
+		const selection = { start: { col: 70, row: 0 }, end: { col: 100, row: 0 } };
+		const columns = (
+			tui as unknown as {
+				getSelectionColumns: (
+					line: string,
+					row: number,
+					selection: unknown,
+				) => { start: number; end: number };
+			}
+		).getSelectionColumns("a".repeat(120), 0, selection);
+		// No reservation while hidden: the host's own answer passes through.
+		expect(columns).toEqual({ start: 70, end: 108 });
+	});
+});
+
+describe("host-modal yielding", () => {
+	it("reports the sidebar hidden while a capturing overlay is open", () => {
+		const renderer = new TuiMainScreen();
+		let overlayVisible = false;
+		// Minimal capturing-overlay surface: overlayStack + isOverlayVisible,
+		// the same shape hasCapturingOverlay probes.
+		(renderer as unknown as { overlayStack: unknown[]; isOverlayVisible: () => boolean }).overlayStack = [
+			{ capture: true },
+		];
+		(renderer as unknown as { isOverlayVisible: () => boolean }).isOverlayVisible = () => overlayVisible;
+		const tui = stableTuiReference(() => renderer as unknown as TUI);
+		const split = disposeAfterTest(createSplitPaneController());
+		split.attach(tui);
+		split.show();
+
+		const visible = split.overlayOptions().visible as (width: number, height: number) => boolean;
+		expect(visible(120, 36)).toBe(true);
+
+		overlayVisible = true;
+		expect(visible(120, 36)).toBe(false);
+
+		// Recovers when the dialog closes.
+		overlayVisible = false;
+		expect(visible(120, 36)).toBe(true);
+	});
+});

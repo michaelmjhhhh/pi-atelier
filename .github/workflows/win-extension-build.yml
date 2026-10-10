@@ -1,0 +1,86 @@
+name: Windows extension build
+
+# Manual, on-demand build of a Windows artifact of the Atelier extension.
+#
+# Atelier ships as TypeScript source, not a bundle: Pi/OMP discovers
+# `extensions/index.ts` and executes it with Bun. The artifact is therefore
+# the source tree, packaged exactly as it would be published — this workflow
+# builds, verifies and uploads that package so it can be installed from a
+# fork without a local Node toolchain.
+#
+# Not a CI gate: pushing a commit does not run this. Run it by hand
+# (Actions -> Windows extension build -> Run workflow).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or tag to build (defaults to the dispatched ref)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Atelier extension (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The workflow file lives on the default branch, which may be behind
+          # the branch holding the rich-panel work; the input builds a ref.
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Pack
+        shell: bash
+        # npm does not create the destination on Windows, so make it first.
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          npm pack --pack-destination artifacts
+
+      - name: Verify the packed extension
+        shell: bash
+        # `npm run check:pack` asserts the same required entries, but it
+        # crashes on Windows, so check the real tarball instead of a dry run.
+        run: |
+          set -euo pipefail
+          tarball=$(ls artifacts/*.tgz)
+          listing=$(tar -tzf "$tarball")
+          for required in \
+            extensions/index.ts \
+            src/sidebar-panels.ts \
+            src/footer.ts \
+            assets/preview.png \
+            README.md \
+            LICENSE
+          do
+            echo "$listing" | grep -qx "package/$required" || {
+              echo "MISSING from the package: $required"
+              exit 1
+            }
+          done
+          echo "verified $(echo "$listing" | wc -l) entries in $tarball"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pi-atelier-windows
+          path: artifacts/*.tgz
+          if-no-files-found: error
+          retention-days: 14

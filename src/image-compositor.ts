@@ -1,4 +1,5 @@
-import { compositeTuiLine, type OverlayOptions, type TUI, visibleWidth } from "@earendil-works/pi-tui";
+import { type OverlayOptions, type TUI, visibleWidth } from "@earendil-works/pi-tui";
+import { compositeTuiLine } from "./pi-tui-host.js";
 
 const RESET = "\u001b[0m\u001b]8;;\u0007";
 const KITTY_IMAGE = "\u001b_G";

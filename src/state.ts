@@ -245,6 +245,12 @@ export class AtelierRuntime {
 		if (patch.sidebarPanelLayout) {
 			this.#config = { ...this.#config, sidebarPanelLayout: cloneLayout(patch.sidebarPanelLayout) };
 		}
+		if (patch.contributedPanelCollapsed) {
+			this.#config = {
+				...this.#config,
+				contributedPanelCollapsed: { ...patch.contributedPanelCollapsed },
+			};
+		}
 		// Drop each Session key whose removal no longer changes the effective Display.
 		const target = resolveDisplayLayers(this.#displayLayers).display;
 		let session = { ...this.#displayLayers.session };

@@ -11,7 +11,11 @@ import {
 	normalizeSegmentLayout,
 	PRODUCT_SEGMENT_ORDER,
 } from "./display.js";
-import { DEFAULT_SIDEBAR_PANEL_LAYOUT, normalizeSidebarPanelLayout } from "./sidebar-panels.js";
+import {
+	DEFAULT_SIDEBAR_PANEL_LAYOUT,
+	isSidebarPanelContributionId,
+	normalizeSidebarPanelLayout,
+} from "./sidebar-panels.js";
 import { errorMessage, isRecord } from "./text.js";
 import type {
 	AtelierConfig,
@@ -37,6 +41,7 @@ export const DEFAULT_CONFIG: AtelierConfig = {
 	showSidebarToolNames: false,
 	showSidebarOnStartup: true,
 	sidebarPanelLayout: cloneLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT),
+	contributedPanelCollapsed: {},
 	completionNotifications: true,
 };
 
@@ -57,6 +62,12 @@ export interface LoadConfigOptions {
 
 type Ornament = "none" | "restrained";
 const isOrnament = (value: unknown): value is Ornament => value === "none" || value === "restrained";
+
+interface SidebarResolution {
+	layout: SidebarPanelLayout;
+	collapsed: AtelierConfig["contributedPanelCollapsed"];
+	warnings: string[];
+}
 
 /** Settings that only the global User layer may change. */
 const USER_ONLY_KEYS: ReadonlySet<string> = new Set([
@@ -89,12 +100,46 @@ function parseSidebarLayout(value: unknown, warnings: string[]): SidebarPanelLay
 	return normalizeSidebarPanelLayout(entries, warnings);
 }
 
-function resolveSidebarLayout(layers: DisplayLayerState): { layout: SidebarPanelLayout; warnings: string[] } {
+/**
+ * Parse the user-layer contributed-panel collapse map. Unknown panel IDs and
+ * non-boolean values are dropped with a warning, mirroring sidebarPanelLayout.
+ */
+function resolveSidebarCollapse(
+	user: Record<string, unknown> | undefined,
+	warnings: string[],
+): AtelierConfig["contributedPanelCollapsed"] {
+	if (!user || !("contributedPanelCollapsed" in user)) return { ...DEFAULT_CONFIG.contributedPanelCollapsed };
+	const parsed = user.contributedPanelCollapsed;
+	if (!isRecord(parsed)) {
+		warnings.push("contributedPanelCollapsed must be an object");
+		return { ...DEFAULT_CONFIG.contributedPanelCollapsed };
+	}
+	const collapsed: AtelierConfig["contributedPanelCollapsed"] = {};
+	for (const [id, flag] of Object.entries(parsed)) {
+		if (!isSidebarPanelContributionId(id)) {
+			warnings.push(`Ignoring contributedPanelCollapsed entry: ${id}`);
+			continue;
+		}
+		if (typeof flag !== "boolean") {
+			warnings.push(`contributedPanelCollapsed.${id} must be boolean`);
+			continue;
+		}
+		collapsed[id] = flag;
+	}
+	return collapsed;
+}
+
+function resolveSidebarLayout(layers: DisplayLayerState): SidebarResolution {
 	const warnings: string[] = [];
 	const user = layers.user;
+	const collapsed = resolveSidebarCollapse(user, warnings);
 	if (user && "sidebarPanelLayout" in user) {
 		const parsed = parseSidebarLayout(user.sidebarPanelLayout, warnings);
-		return { layout: parsed ?? cloneLayout(DEFAULT_CONFIG.sidebarPanelLayout), warnings };
+		return {
+			layout: parsed ?? cloneLayout(DEFAULT_CONFIG.sidebarPanelLayout),
+			collapsed,
+			warnings,
+		};
 	}
 	const layout = cloneLayout(DEFAULT_CONFIG.sidebarPanelLayout);
 	// Legacy Agent and TODOS visibility are global-user-only compatibility inputs.
@@ -107,9 +152,8 @@ function resolveSidebarLayout(layers: DisplayLayerState): { layout: SidebarPanel
 		const entry = layout.find((item) => item.id === id);
 		if (typeof visible === "boolean" && entry) entry.visible = visible;
 	}
-	return { layout, warnings };
+	return { layout, collapsed, warnings };
 }
-
 function parsePersistedLayout(value: unknown, warnings: string[]): SegmentLayout | undefined {
 	if (!Array.isArray(value)) {
 		warnings.push("segmentLayout must be an array");
@@ -371,6 +415,7 @@ export function resolveConfig(input: {
 		...DEFAULT_CONFIG,
 		segmentLayout: cloneLayout(DEFAULT_CONFIG.segmentLayout),
 		sidebarPanelLayout: cloneLayout(DEFAULT_CONFIG.sidebarPanelLayout),
+		contributedPanelCollapsed: { ...DEFAULT_CONFIG.contributedPanelCollapsed },
 	};
 	const warnings: string[] = [];
 	const displayLayers: DisplayLayerState = {};
@@ -381,7 +426,10 @@ export function resolveConfig(input: {
 	}
 	const resolved = resolveDisplayLayers(displayLayers);
 	const sidebar = resolveSidebarLayout(displayLayers);
-	Object.assign(config, resolved.display, { sidebarPanelLayout: sidebar.layout });
+	Object.assign(config, resolved.display, {
+		sidebarPanelLayout: sidebar.layout,
+		contributedPanelCollapsed: sidebar.collapsed,
+	});
 	return {
 		config,
 		warnings: [...new Set([...warnings, ...resolved.warnings, ...sidebar.warnings])],

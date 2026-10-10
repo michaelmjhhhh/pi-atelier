@@ -252,3 +252,31 @@ describe("configuration files", () => {
 		});
 	});
 });
+
+describe("contributed panel collapse configuration (REQ-ATELIER-006)", () => {
+	it("defaults to an empty collapse map", () => {
+		expect(DEFAULT_CONFIG.contributedPanelCollapsed).toEqual({});
+	});
+
+	it("parses valid collapse entries and drops malformed ones with warnings", () => {
+		const result = validateConfig({
+			contributedPanelCollapsed: { "vendor:rich": true, "not-namespaced": true, "vendor:bad": "yes" },
+		});
+		expect(result.config.contributedPanelCollapsed).toEqual({ "vendor:rich": true });
+		const warnings = result.warnings.join(" ");
+		expect(warnings).toContain("Ignoring contributedPanelCollapsed entry: not-namespaced");
+		expect(warnings).toContain("contributedPanelCollapsed.vendor:bad must be boolean");
+	});
+
+	it("warns when the collapse map is not an object", () => {
+		const result = validateConfig({ contributedPanelCollapsed: [] });
+		expect(result.config.contributedPanelCollapsed).toEqual({});
+		expect(result.warnings.join(" ")).toContain("contributedPanelCollapsed must be an object");
+	});
+
+	it("keeps the product collapse map when the layer omits it", () => {
+		const result = validateConfig({ preset: "minimal" });
+		expect(result.config.contributedPanelCollapsed).toEqual(DEFAULT_CONFIG.contributedPanelCollapsed);
+		expect(result.config.contributedPanelCollapsed).not.toBe(DEFAULT_CONFIG.contributedPanelCollapsed);
+	});
+});

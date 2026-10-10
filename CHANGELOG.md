@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Keep keyboard input alive on hosts not built from Pi's TUI. On omp, showing the Sidebar installed a persistent `ctx.ui.custom({ overlay: true })` component with no `handleInput`; the host focused that overlay and discarded every keystroke, leaving the session rendering-correct but input-dead ([upstream report](../docs/upstream-pi-atelier-overlay-input.md)). The overlay factory now refuses to mount on a TUI that does not serve Pi's `TuiMode` surface (`isPiTuiSurface` in split-pane): the Sidebar stays off on such hosts, the error is surfaced to the user, and the editor keeps its input. Under Pi nothing changes — both regular and fullscreen renderers carry the surface and mount the same overlay exactly as before.
+- Internal: expose `getHomePath`/`setHomePath` on `display-path` so tests can stub the home directory portably instead of faking `process.env.HOME`, which `os.homedir()` ignores on Windows; fix two `run-activity` path tests that only worked on POSIX.
+- Polish the host-side regular-mode Sidebar rendering: recognize the host's transcript renderer structurally (regular mode plus its own `render` and terminal) instead of by Pi's class name, keep selection and OSC-52 copies out of the reserved sidebar columns on any host that exposes the selection machinery, and step the Sidebar aside while a host dialog that captures input is open on screen. Under Pi nothing changes.
+- Load under a host that serves a subset of the Pi TUI. omp replaces the `@earendil-works/pi-tui` specifier with a compatibility surface built from its own TUI, and that surface omits four names Pi publishes: `HStack`, `isViewportTUI`, `allocateImageId`, and `compositeTuiLine`. A named import of a missing export fails while the module graph links — before any of the extension's code runs — so it took the whole extension down. The four names now resolve through `src/pi-tui-host.ts`, which keeps the host's own implementation whenever the host serves one and otherwise falls back to a local one that matches Pi's: the compositor uses Pi's algorithm with every column and length clamped to the row, the viewport predicate answers by Pi's brand, the image id comes from Pi's random range, and the fullscreen `HStack` reports that the host renders no replaceable viewport root. Under omp the extension loads again and keeps its regular-screen Sidebar and image compositor; under Pi nothing changes.
+
 ## 0.15.0 — 2026-10-03
 
 - Give each Sidebar panel its own resting color (Activity green, Context cyan, Usage gold, Tools pink) and tint panel frames to match their headers; status colors still take over while working, on failures, and at context thresholds ([#86](https://github.com/michaelmjhhhh/pi-atelier/pull/86)).
@@ -7,6 +14,7 @@
 - Start the Sidebar in Manual mode instead of Auto; the startup preference now reads On/Off ([#86](https://github.com/michaelmjhhhh/pi-atelier/pull/86)).
 - Simplify the Activity panel: tool rows lead with ✓/✗/◐ status glyphs instead of `done`/`failed` text, hide sub-second durations for successful tools, ellipsize long summaries, and align summaries in one column. The run header puts its duration on the right, and the tool count reads `Tools  N done`, shown only when more tools ran than are listed ([#87](https://github.com/michaelmjhhhh/pi-atelier/pull/87)).
 
+- Add optional bounded `rich` content to contributed sidebar panels: flat text, spans, key/value, heading, segmented bar, progress and spacer nodes with validated `#RRGGBB` true-color, compact/expanded representations and Atelier-local per-panel collapse state (toggle with `C` on the panel row in Display Settings). Protocol-v1 `rows` remain the mandatory fallback and row-only producers behave exactly as before.
 ## 0.14.0 — 2026-10-03
 
 - Automatically collapse the Sidebar when terminal width is limited and restore it when space returns. Add independent Auto/Manual modes and show/hide controls; preserve preferred width and full TODO output while collapsed ([#76](https://github.com/michaelmjhhhh/pi-atelier/issues/76)).

@@ -1,12 +1,14 @@
 import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	isSubagentUsageEventForSession,
 	readSubagentUsage,
 	SUBAGENT_METADATA_ENTRY,
 } from "../src/subagent-usage.js";
+import { openSubagentUsage } from "../src/subagent-usage-view.js";
+import { fakeTui, overlayHost } from "./helpers/overlay-host.js";
 
 let cwd: string;
 let dir: string;
@@ -285,5 +287,38 @@ describe("subagent metadata accounting", () => {
 		expect(
 			(await readSubagentUsage({ cwd, entries: [tool({ runId: "large" })], signal: abort.signal })).runs,
 		).toEqual([]);
+	});
+});
+
+describe("subagent usage overlay", () => {
+	// Regression guard for the foreign-TUI input-starvation audit: every overlay
+	// this extension exposes must own its input. The sidebar was the one component
+	// without handleInput (docs/upstream-issue-overlay-input-draft.md); these
+	// assertions keep the usage view from silently becoming the next one.
+	it("mounts an overlay whose component owns input: Esc through its handleInput closes it", async () => {
+		const requestRender = vi.fn();
+		const tui = fakeTui(requestRender);
+		const { custom, overlays } = overlayHost(() => tui);
+		const snapshot = {
+			runs: [],
+			unavailable: 0,
+			pending: 0,
+			limited: false,
+			costHistory: [],
+			historyUnavailable: 0,
+		};
+		const lifetime = {
+			isActive: () => true,
+			register: () => () => undefined,
+		};
+		const opening = openSubagentUsage({ ui: { custom } } as never, snapshot as never, 4, lifetime as never);
+		await Promise.resolve();
+		expect(overlays).toHaveLength(1);
+		const overlay = overlays[0]!;
+		expect(typeof overlay.component.handleInput).toBe("function");
+		// Escape settles the overlay promise; a component without handleInput would hang.
+		overlay.component.handleInput("");
+		await opening;
+		expect(overlay.done).toHaveBeenCalledOnce();
 	});
 });

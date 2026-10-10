@@ -14,8 +14,21 @@ import {
 	type RunActivitySnapshot,
 	type ToolActivity,
 } from "./run-activity.js";
-import { isBuiltinSidebarPanelId, type SidebarPanelData } from "./sidebar-panels.js";
-import { createSplitPaneController, type SidebarMode, type SidebarStatus } from "./split-pane.js";
+import {
+	isBuiltinSidebarPanelId,
+	SIDEBAR_PANEL_MAX_ROW_CHARS,
+	SIDEBAR_PANEL_MAX_ROWS,
+	type SidebarPanelData,
+	type SidebarPanelNode,
+	type SidebarPanelRole,
+	sanitizeSidebarPanelText,
+} from "./sidebar-panels.js";
+import {
+	createSplitPaneController,
+	isPiTuiSurface,
+	type SidebarMode,
+	type SidebarStatus,
+} from "./split-pane.js";
 import { createInertAtelierState } from "./state.js";
 import { type SubagentCostChartGraphics, subagentCostChart } from "./subagent-cost-chart.js";
 import { errorMessage, fitToWidth, PLACEHOLDER, sanitizeInline } from "./text.js";
@@ -27,6 +40,58 @@ import type {
 	WorkspacePulseState,
 } from "./types.js";
 import type { WorkspacePulseData } from "./workspace-pulse.js";
+
+export type {
+	SidebarBarNode,
+	SidebarBarSegment,
+	SidebarHeadingNode,
+	SidebarKeyValueNode,
+	SidebarPanelContribution,
+	SidebarPanelData,
+	SidebarPanelDiscoveryEvent,
+	SidebarPanelEvent,
+	SidebarPanelEventTransport,
+	SidebarPanelNode,
+	SidebarPanelRegisterEvent,
+	SidebarPanelRegistry,
+	SidebarPanelRegistryOptions,
+	SidebarPanelRichContent,
+	SidebarPanelRole,
+	SidebarPanelRow,
+	SidebarPanelUnregisterEvent,
+	SidebarProgressNode,
+	SidebarSpacerNode,
+	SidebarSpan,
+	SidebarSpansNode,
+	SidebarTextNode,
+} from "./sidebar-panels.js";
+export {
+	BUILTIN_SIDEBAR_PANEL_IDS,
+	createSidebarPanelRegistry,
+	DEFAULT_SIDEBAR_PANEL_LAYOUT,
+	isSidebarPanelContributionId,
+	isSidebarPanelId,
+	isSidebarPanelRequestId,
+	isSidebarPanelSource,
+	isSidebarPanelTextWithinRawLimit,
+	registerSidebarPanel,
+	sanitizeSidebarPanelRich,
+	SIDEBAR_PANEL_EVENT_CHANNEL,
+	SIDEBAR_PANEL_MAX_ID_CHARS,
+	SIDEBAR_PANEL_MAX_PANELS,
+	SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS,
+	SIDEBAR_PANEL_MAX_RICH_NODES,
+	SIDEBAR_PANEL_MAX_RICH_SEGMENTS,
+	SIDEBAR_PANEL_MAX_RICH_SPANS,
+	SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS,
+	SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS,
+	SIDEBAR_PANEL_MAX_ROW_CHARS,
+	SIDEBAR_PANEL_MAX_ROWS,
+	SIDEBAR_PANEL_MAX_SOURCE_CHARS,
+	SIDEBAR_PANEL_MAX_TITLE_CHARS,
+	SIDEBAR_PANEL_MAX_TRACKED_SOURCES,
+	sanitizeSidebarPanelText,
+} from "./sidebar-panels.js";
 
 export interface SidebarSnapshotInput {
 	state: AtelierState;
@@ -386,6 +451,138 @@ function statusAlerts(snapshot: SidebarSnapshot): { role: "error" | "warning"; t
 			if (WARNING_STATUS.test(text)) return [{ role: "warning", text }];
 			return [];
 		});
+}
+
+function padToWidth(text: string, width: number): string {
+	const safeWidth = Math.max(0, Math.trunc(width));
+	const content = truncateToWidth(text, safeWidth, "");
+	return `${content}${" ".repeat(Math.max(0, safeWidth - visibleWidth(content)))}`;
+}
+
+function contributedRows(panel: SidebarPanelData, palette: AtelierPalette): string[] {
+	const rows = panel.rows.slice(0, SIDEBAR_PANEL_MAX_ROWS).map((row) => {
+		const text = sanitizeSidebarPanelText(
+			typeof row === "string" ? row : row.text,
+			SIDEBAR_PANEL_MAX_ROW_CHARS,
+		);
+		const role = typeof row === "string" ? panel.role : (row.role ?? panel.role);
+		return palette.paint((role ?? "primary") as SidebarPanelRole, text);
+	});
+	return rows.filter((row) => visibleWidth(row) > 0);
+}
+/** Literal `#RRGGBB` with semantic role fallback when true-color is unavailable. */
+function paintRich(
+	palette: AtelierPalette,
+	color: string | undefined,
+	role: SidebarPanelRole | undefined,
+	fallback: PaletteRole,
+	text: string,
+): string {
+	if (color) {
+		const painted = palette.paintHex?.(color, text);
+		if (painted !== undefined) return painted;
+	}
+	return palette.paint(role ?? fallback, text);
+}
+
+/** Render flat rich nodes into terminal rows (REQ-ATELIER-003/005). */
+function contributedRichNodes(
+	nodes: readonly SidebarPanelNode[],
+	panel: SidebarPanelData,
+	palette: AtelierPalette,
+): string[] {
+	const fallback: PaletteRole = panel.role ?? "primary";
+	return nodes.map((node) => {
+		switch (node.kind) {
+			case "text":
+				return palette.paint(node.role ?? fallback, node.text);
+			case "spans":
+				return node.spans
+					.map((span) => paintRich(palette, span.color, span.role, fallback, span.text))
+					.join("");
+			case "keyValue": {
+				const labelWidth = Math.min(16, Math.max(1, visibleWidth(node.label)));
+				const label = padToWidth(palette.paint(node.labelRole ?? "muted", node.label), labelWidth);
+				return `${label} ${paintRich(palette, node.valueColor, node.valueRole, fallback, node.value)}`;
+			}
+			case "heading":
+				return palette.paint(node.role ?? "accent", node.text);
+			case "bar": {
+				const BAR_WIDTH = 20;
+				const total = node.segments.reduce((sum, segment) => sum + segment.value, 0);
+				let used = 0;
+				const blocks: string[] = [];
+				for (const segment of node.segments) {
+					const share =
+						total > 0
+							? Math.min(BAR_WIDTH - used, Math.max(0, Math.round((segment.value / total) * BAR_WIDTH)))
+							: 0;
+					if (share <= 0) continue;
+					used += share;
+					blocks.push(paintRich(palette, segment.color, segment.role, fallback, "█".repeat(share)));
+				}
+				const empty = Math.max(0, BAR_WIDTH - used);
+				const bar = `${blocks.join("")}${empty > 0 ? palette.paint("dim", "░".repeat(empty)) : ""}`;
+				const caption = node.label ? ` ${palette.paint("muted", node.label)}` : "";
+
+				// A producer that labels every segment has expressed those
+				// categories as VALUES, not as proportions. A 20-cell strip cannot
+				// also carry them at sidebar widths, and a half-shown list reads as
+				// "the rest are zero", so the values replace the strip.
+				// A partially labelled bar keeps the strip: dropping the unlabelled
+				// entries would misreport them as absent.
+				const labels = node.segments.map((segment) => segment.label?.trim() ?? "");
+				if (labels.length > 0 && labels.every((label) => label.length > 0)) {
+					const values = node.segments.map((segment, index) =>
+						paintRich(palette, segment.color, segment.role, fallback, labels[index] ?? ""),
+					);
+					return `${values.join(" ")}${caption}`;
+				}
+
+				return `${bar}${caption}`;
+			}
+			case "progress": {
+				const percent =
+					node.total !== undefined && node.total > 0
+						? Math.min(100, Math.round((node.current / node.total) * 100))
+						: undefined;
+				const amount =
+					node.total !== undefined
+						? `${node.current}/${node.total}${percent !== undefined ? ` (${percent}%)` : ""}`
+						: String(node.current);
+				const head = `${palette.paint(node.role ?? fallback, node.label)} ${amount}`;
+				return node.detail ? `${head} ${palette.paint("muted", node.detail)}` : head;
+			}
+			case "spacer":
+				return "";
+		}
+	});
+}
+
+/**
+ * Prefer valid rich content; fall back to the mandatory V1 rows whenever rich
+ * is missing, invalid or renders nothing (REQ-ATELIER-008). Collapsed panels
+ * use the producer's `compact` representation when one was supplied.
+ */
+function contributedContent(
+	panel: SidebarPanelData,
+	palette: AtelierPalette,
+	config: AtelierConfig,
+): string[] {
+	const rich = panel.rich;
+	if (rich) {
+		const collapsed = config.contributedPanelCollapsed?.[panel.id] === true;
+		const nodes = collapsed && rich.compact ? rich.compact : rich.expanded;
+		const rendered = contributedRichNodes(nodes, panel, palette);
+		if (rendered.some((row) => visibleWidth(row) > 0)) return rendered;
+	}
+	return contributedRows(panel, palette);
+}
+
+function toolStatusRole(status: ToolActivity["status"]): PaletteRole {
+	if (status === "failed") return "error";
+	if (status === "running") return "working";
+	return "ready";
 }
 
 const TOOL_STATUS = {
@@ -861,9 +1058,7 @@ export function renderSidebarLines(
 		const panel = contributed.get(entry.id);
 		if (!panel) continue;
 		availableVisible = true;
-		const rows = panel.rows
-			.filter((row) => row.text)
-			.map((row) => palette.paint(row.role ?? panel.role ?? "primary", row.text));
+		const rows = contributedContent(panel, palette, config);
 		ordered.push({
 			name: `contributed:${panel.id}`,
 			panel: { id: panel.id, title: (panel.title || panel.id).toUpperCase(), role: panel.role ?? "accent" },
@@ -1103,7 +1298,6 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 			reportError(new Error("Pi Atelier sidebar requires TUI mode"));
 			return;
 		}
-
 		enabled = true;
 		const currentGeneration = ++generation;
 		if (!safely(split.show)) {
@@ -1119,6 +1313,17 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 						closed = true;
 						done(undefined);
 					};
+					// Reject before mounting anything on a host built from a foreign
+					// TUI: such a host focuses a persistent overlay and discards keys
+					// its component does not consume, so the editor would starve
+					// (docs/upstream-pi-atelier-overlay-input.md). Throwing from the
+					// factory keeps the host from ever showing the overlay, and the
+					// rejection surfaces as the controller's error notification.
+					if (!isPiTuiSurface(tui)) {
+						throw new Error(
+							"Pi Atelier sidebar overlay is unavailable on this host: the host TUI would swallow keyboard input",
+						);
+					}
 					if (!safely(() => split.attach(tui))) {
 						generation += 1;
 						abandonShow();

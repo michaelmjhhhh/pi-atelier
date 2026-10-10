@@ -1,5 +1,8 @@
+import nodePath from "node:path";
+import { toDisplayPath } from "../src/display-path.js";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getHomePath, setHomePath } from "../src/display-path.js";
 import {
 	createRunActivityTracker,
 	EMPTY_RUN_ACTIVITY,
@@ -395,19 +398,15 @@ describe("summarizeTool", () => {
 	});
 
 	it("shortens project-relative and home-relative paths", () => {
-		const priorHome = process.env.HOME;
-		process.env.HOME = "/Users/alice";
+		const priorHome = getHomePath();
+		setHomePath("/Users/alice");
 		try {
 			expect(summarizeTool("read", { path: "/repo/src/state.ts" }, "/repo")).toBe("src/state.ts");
 			expect(summarizeTool("read", { path: "/Users/alice/.pi/config.json" }, "/repo")).toBe(
 				"~/.pi/config.json",
 			);
 		} finally {
-			if (priorHome === undefined) {
-				delete process.env.HOME;
-			} else {
-				process.env.HOME = priorHome;
-			}
+			setHomePath(priorHome);
 		}
 	});
 
@@ -448,10 +447,22 @@ describe("summarizeTool", () => {
 	});
 
 	it("normalizes paths before deciding whether they are project relative", () => {
-		expect(summarizeTool("read", { path: "/repo/../secret.txt" }, "/repo")).toBe("/secret.txt");
-		expect(summarizeTool("read", { path: "/repo/src/../package.json" }, "/repo/packages/..")).toBe(
-			"package.json",
+		// node anchors unqualified POSIX-looking paths to the process drive on
+		// Windows, so build platform-honest fixture roots instead of hardcoding a
+		// POSIX prefix, and mirror production's trailing-separator handling: the
+		// drive-root case displays without a doubled separator.
+		const isWindows = nodePath.sep === nodePath.win32.sep;
+		const root = isWindows ? `${"D:"}${nodePath.sep}repo` : "/repo";
+		const parent = isWindows ? `${"D:"}${nodePath.sep}` : "/";
+		const escapedPrefix = isWindows ? "D:" : "";
+		expect(summarizeTool("read", { path: `${root}/../secret.txt` }, root)).toBe(
+			`${escapedPrefix}/secret.txt`,
 		);
-		expect(summarizeTool("read", { path: "/repo-other/secret.txt" }, "/repo")).toBe("/repo-other/secret.txt");
+		// ``${root}/src/../package.json`` normalizes into the repo in both
+		// platforms' resolve, so it must clip to a bare repo-relative name.
+		expect(summarizeTool("read", { path: `${root}/src/../package.json` }, root)).toBe("package.json");
+		expect(summarizeTool("read", { path: `${root}-other/secret.txt` }, root)).toBe(
+			`${escapedPrefix}/repo-other/secret.txt`,
+		);
 	});
 });

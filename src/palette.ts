@@ -78,6 +78,13 @@ export interface AtelierPalette {
 	/** Whether paintTint renders role shades rather than falling back to dim. */
 	readonly tinted: boolean;
 	paint(role: PaletteRole, text: string): string;
+	/**
+	 * Literal `#RRGGBB` true-color paint for contributed rich content
+	 * (REQ-ATELIER-005). Returns undefined when true-color is unavailable so
+	 * callers fall back to the semantic role palette; never emits raw
+	 * producer-supplied escape sequences.
+	 */
+	paintHex?(hex: string, text: string): string | undefined;
 	/** A subdued shade of a role for chrome (panel frames, meter tracks); dim without truecolor. */
 	paintTint(role: PaletteRole, text: string, strength?: number): string;
 }
@@ -95,6 +102,8 @@ export function paintRgb([red, green, blue]: Rgb, text: string): string {
 	return `\u001b[38;2;${red};${green};${blue}m${text}\u001b[39m`;
 }
 
+const HEX_COLOR = /^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/;
+
 export function createPalette(theme: PaletteTheme, colorEnabled: boolean): AtelierPalette {
 	const tinted = colorEnabled && Boolean(theme.name);
 	return {
@@ -104,6 +113,19 @@ export function createPalette(theme: PaletteTheme, colorEnabled: boolean): Ateli
 			if (!colorEnabled) return theme.fg(NO_COLOR_ROLES.has(role) ? role : "text", text);
 			if (!theme.name) return theme.fg(UNNAMED_THEME[role], text);
 			return paintRgb(PALETTE_RGB[role], text);
+		},
+		paintHex(hex, text) {
+			if (!colorEnabled) return undefined;
+			const match = HEX_COLOR.exec(hex);
+			if (!match) return undefined;
+			return paintRgb(
+				[
+					Number.parseInt(match[1] as string, 16),
+					Number.parseInt(match[2] as string, 16),
+					Number.parseInt(match[3] as string, 16),
+				],
+				text,
+			);
 		},
 		paintTint(role, text, strength) {
 			if (!tinted) return theme.fg("dim", text);

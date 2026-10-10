@@ -37,6 +37,12 @@ export const SIDEBAR_PANEL_MAX_SOURCE_CHARS = 128;
 export const SIDEBAR_PANEL_MAX_PANELS = 64;
 /** Maximum distinct event sources tracked by one registry. */
 export const SIDEBAR_PANEL_MAX_TRACKED_SOURCES = SIDEBAR_PANEL_MAX_PANELS;
+/** Maximum nodes retained in one rich representation (`expanded` or `compact`). */
+export const SIDEBAR_PANEL_MAX_RICH_NODES = 48;
+/** Maximum spans retained in one `spans` node. */
+export const SIDEBAR_PANEL_MAX_RICH_SPANS = 16;
+/** Maximum segments retained in one `bar` node. */
+export const SIDEBAR_PANEL_MAX_RICH_SEGMENTS = 16;
 
 /** Built-in panels remain available even when their optional content is empty. */
 export const BUILTIN_SIDEBAR_PANEL_IDS = [
@@ -82,12 +88,93 @@ export interface SidebarPanelRow {
 	role?: SidebarPanelRole;
 }
 
+export interface SidebarTextNode {
+	kind: "text";
+	text: string;
+	role?: SidebarPanelRole;
+}
+
+export interface SidebarSpansNode {
+	kind: "spans";
+	spans: readonly SidebarSpan[];
+}
+
+export interface SidebarSpan {
+	text: string;
+	role?: SidebarPanelRole;
+	color?: `#${string}`;
+}
+
+export interface SidebarKeyValueNode {
+	kind: "keyValue";
+	label: string;
+	value: string;
+	labelRole?: SidebarPanelRole;
+	valueRole?: SidebarPanelRole;
+	valueColor?: `#${string}`;
+}
+
+export interface SidebarHeadingNode {
+	kind: "heading";
+	text: string;
+	role?: SidebarPanelRole;
+}
+
+export interface SidebarBarNode {
+	kind: "bar";
+	segments: readonly SidebarBarSegment[];
+	label?: string;
+}
+
+export interface SidebarBarSegment {
+	key: string;
+	value: number;
+	role?: SidebarPanelRole;
+	color?: `#${string}`;
+	label?: string;
+}
+
+export interface SidebarProgressNode {
+	kind: "progress";
+	label: string;
+	current: number;
+	total?: number;
+	role?: SidebarPanelRole;
+	detail?: string;
+}
+
+export interface SidebarSpacerNode {
+	kind: "spacer";
+}
+
+/**
+ * Flat, bounded, declarative rich primitives. Nodes never nest and carry no
+ * callbacks or component references (REQ-ATELIER-003).
+ */
+export type SidebarPanelNode =
+	| SidebarTextNode
+	| SidebarSpansNode
+	| SidebarKeyValueNode
+	| SidebarHeadingNode
+	| SidebarBarNode
+	| SidebarProgressNode
+	| SidebarSpacerNode;
+
+/** Optional additive rich representation; protocol-v1 `rows` stay mandatory fallback. */
+export interface SidebarPanelRichContent {
+	version: 1;
+	expanded: SidebarPanelNode[];
+	compact?: SidebarPanelNode[];
+	collapsible?: boolean;
+}
+
 /** Structured, presentation-only data accepted from another extension. */
 export interface SidebarPanelContribution {
 	id: ContributedSidebarPanelId;
 	title: string;
 	rows: readonly (string | SidebarPanelRow)[];
 	role?: SidebarPanelRole;
+	rich?: SidebarPanelRichContent;
 }
 
 interface SanitizedSidebarPanelContribution {
@@ -95,6 +182,7 @@ interface SanitizedSidebarPanelContribution {
 	title: string;
 	rows: SidebarPanelRow[];
 	role?: SidebarPanelRole;
+	rich?: SidebarPanelRichContent;
 }
 
 export interface SidebarPanelData extends Omit<SidebarPanelContribution, "rows"> {
@@ -237,8 +325,206 @@ export function normalizeSidebarPanelLayout(
 	return normalized;
 }
 
-export const isSidebarPanelTextWithinRawLimit = (value: unknown, maxCodeUnits: number): value is string =>
-	typeof value === "string" && value.length <= maxCodeUnits;
+const ANSI_ESCAPE =
+	/(?:\u001b\][^\u0007]*(?:\u0007|\u001b\\)|\u001b\[[0-?]*[ -/]*[@-~]|\u009b[0-?]*[ -/]*[@-~])/g;
+
+/** Cheap precondition used before any regex sanitization or Unicode iteration. */
+export function isSidebarPanelTextWithinRawLimit(value: unknown, maxCodeUnits: number): value is string {
+	return typeof value === "string" && value.length <= maxCodeUnits;
+}
+
+function rawCodeUnitLimitFor(maxChars: number): number {
+	return maxChars <= SIDEBAR_PANEL_MAX_TITLE_CHARS
+		? SIDEBAR_PANEL_MAX_RAW_TITLE_CODE_UNITS
+		: SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS;
+}
+
+function boundedRawText(value: string, maxChars: number): string {
+	const limit = rawCodeUnitLimitFor(maxChars);
+	if (value.length <= limit) return value;
+	const bounded = value.slice(0, limit);
+	return /[\ud800-\udbff]$/.test(bounded) ? bounded.slice(0, -1) : bounded;
+}
+
+function cleanSidebarPanelText(value: string, trim = true): string {
+	const cleaned = value
+		.replace(ANSI_ESCAPE, "")
+		.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+		.replace(/\s+/g, " ");
+	return trim ? cleaned.trim() : cleaned;
+}
+
+/** Defensively sanitize text before any Settings or Sidebar interpolation. */
+export function sanitizeSidebarPanelText(value: string, maxChars = SIDEBAR_PANEL_MAX_ROW_CHARS): string {
+	return Array.from(cleanSidebarPanelText(boundedRawText(value, maxChars)))
+		.slice(0, maxChars)
+		.join("");
+}
+
+/** Literal terminal colors are accepted only as validated `#RRGGBB` (REQ-ATELIER-004/SEC-006). */
+const SIDEBAR_PANEL_RICH_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+function sanitizeRichText(value: unknown, trim = true): string | undefined {
+	if (
+		typeof value !== "string" ||
+		!isSidebarPanelTextWithinRawLimit(value, SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS)
+	)
+		return undefined;
+	const cleaned = cleanSidebarPanelText(value, trim);
+	if (Array.from(cleaned).length > SIDEBAR_PANEL_MAX_ROW_CHARS) return undefined;
+	return cleaned;
+}
+
+function sanitizeRichRole(value: unknown): SidebarPanelRole | undefined {
+	return isSidebarPanelRole(value) ? value : undefined;
+}
+
+function sanitizeRichColor(value: unknown): `#${string}` | undefined {
+	return typeof value === "string" && SIDEBAR_PANEL_RICH_COLOR.test(value)
+		? (value as `#${string}`)
+		: undefined;
+}
+
+function sanitizeRichNode(value: unknown): SidebarPanelNode | undefined {
+	if (!isRecord(value)) return undefined;
+	switch (value.kind) {
+		case "text": {
+			const text = sanitizeRichText(value.text);
+			if (text === undefined) return undefined;
+			const role = sanitizeRichRole(value.role);
+			return { kind: "text", text, ...(role ? { role } : {}) };
+		}
+		case "spans": {
+			if (!Array.isArray(value.spans) || value.spans.length > SIDEBAR_PANEL_MAX_RICH_SPANS) return undefined;
+			const spans: SidebarSpan[] = [];
+			for (const raw of value.spans) {
+				if (!isRecord(raw)) return undefined;
+				// Span texts are concatenated verbatim by the renderer, so a
+				// single boundary space is meaningful and must survive.
+				const text = sanitizeRichText(raw.text, false);
+				if (text === undefined) return undefined;
+				const role = sanitizeRichRole(raw.role);
+				const color = raw.color === undefined ? undefined : sanitizeRichColor(raw.color);
+				if (raw.color !== undefined && color === undefined) return undefined;
+				spans.push({ text, ...(role ? { role } : {}), ...(color ? { color } : {}) });
+			}
+			return { kind: "spans", spans };
+		}
+		case "keyValue": {
+			const label = sanitizeRichText(value.label);
+			const rawValue = sanitizeRichText(value.value);
+			if (label === undefined || rawValue === undefined) return undefined;
+			const labelRole = sanitizeRichRole(value.labelRole);
+			const valueRole = sanitizeRichRole(value.valueRole);
+			const valueColor = value.valueColor === undefined ? undefined : sanitizeRichColor(value.valueColor);
+			if (value.valueColor !== undefined && valueColor === undefined) return undefined;
+			return {
+				kind: "keyValue",
+				label,
+				value: rawValue,
+				...(labelRole ? { labelRole } : {}),
+				...(valueRole ? { valueRole } : {}),
+				...(valueColor ? { valueColor } : {}),
+			};
+		}
+		case "heading": {
+			const text = sanitizeRichText(value.text);
+			if (text === undefined) return undefined;
+			const role = sanitizeRichRole(value.role);
+			return { kind: "heading", text, ...(role ? { role } : {}) };
+		}
+		case "bar": {
+			if (
+				!Array.isArray(value.segments) ||
+				value.segments.length === 0 ||
+				value.segments.length > SIDEBAR_PANEL_MAX_RICH_SEGMENTS
+			)
+				return undefined;
+			const segments: SidebarBarSegment[] = [];
+			for (const raw of value.segments) {
+				if (!isRecord(raw)) return undefined;
+				const key = sanitizeRichText(raw.key);
+				if (key === undefined) return undefined;
+				if (typeof raw.value !== "number" || !Number.isFinite(raw.value) || raw.value < 0) return undefined;
+				const role = sanitizeRichRole(raw.role);
+				const color = raw.color === undefined ? undefined : sanitizeRichColor(raw.color);
+				if (raw.color !== undefined && color === undefined) return undefined;
+				const segLabel = raw.label === undefined ? undefined : sanitizeRichText(raw.label);
+				if (raw.label !== undefined && segLabel === undefined) return undefined;
+				segments.push({
+					key,
+					value: raw.value,
+					...(role ? { role } : {}),
+					...(color ? { color } : {}),
+					...(segLabel ? { label: segLabel } : {}),
+				});
+			}
+			const label = value.label === undefined ? undefined : sanitizeRichText(value.label);
+			if (value.label !== undefined && label === undefined) return undefined;
+			return { kind: "bar", segments, ...(label ? { label } : {}) };
+		}
+		case "progress": {
+			const label = sanitizeRichText(value.label);
+			if (label === undefined) return undefined;
+			if (typeof value.current !== "number" || !Number.isFinite(value.current) || value.current < 0)
+				return undefined;
+			if (
+				value.total !== undefined &&
+				(typeof value.total !== "number" || !Number.isFinite(value.total) || value.total < 0)
+			)
+				return undefined;
+			const detail = value.detail === undefined ? undefined : sanitizeRichText(value.detail);
+			if (value.detail !== undefined && detail === undefined) return undefined;
+			const role = sanitizeRichRole(value.role);
+			return {
+				kind: "progress",
+				label,
+				current: value.current,
+				...(value.total !== undefined ? { total: value.total } : {}),
+				...(role ? { role } : {}),
+				...(detail ? { detail } : {}),
+			};
+		}
+		case "spacer":
+			return { kind: "spacer" };
+		default:
+			return undefined;
+	}
+}
+
+function sanitizeRichNodes(value: unknown): SidebarPanelNode[] | undefined {
+	if (!Array.isArray(value) || value.length > SIDEBAR_PANEL_MAX_RICH_NODES) return undefined;
+	const nodes: SidebarPanelNode[] = [];
+	for (const raw of value) {
+		const node = sanitizeRichNode(raw);
+		if (!node) return undefined;
+		nodes.push(node);
+	}
+	return nodes;
+}
+
+/**
+ * Validate a producer-supplied `rich` object into a bounded, cloneable,
+ * ANSI-free representation (REQ-ATELIER-002/003/004).
+ *
+ * Policy: an invalid `expanded` (or `version !== 1`) rejects the whole `rich`
+ * object so the caller keeps the mandatory V1 `rows` fallback; an invalid
+ * optional `compact` is dropped while `expanded` survives; an invalid
+ * `collapsible` type is dropped. Invalid roles fall back per field (matching
+ * V1 row handling), but an invalid literal color, number, text bound, node
+ * kind or count bound invalidates its representation because those cannot be
+ * rendered faithfully.
+ */
+export function sanitizeSidebarPanelRich(value: unknown): SidebarPanelRichContent | undefined {
+	if (!isRecord(value) || value.version !== 1) return undefined;
+	const expanded = sanitizeRichNodes(value.expanded);
+	if (!expanded) return undefined;
+	const rich: SidebarPanelRichContent = { version: 1, expanded };
+	const compact = value.compact === undefined ? undefined : sanitizeRichNodes(value.compact);
+	if (compact) rich.compact = compact;
+	if (typeof value.collapsible === "boolean") rich.collapsible = value.collapsible;
+	return rich;
+}
 
 function sanitizeContribution(value: unknown): SanitizedSidebarPanelContribution | undefined {
 	if (
@@ -263,11 +549,13 @@ function sanitizeContribution(value: unknown): SanitizedSidebarPanelContribution
 			...(isRecord(row) && isSidebarPanelRole(row.role) ? { role: row.role } : {}),
 		});
 	}
+	const rich = sanitizeSidebarPanelRich(value.rich);
 	return {
 		id: value.id,
 		title,
 		rows,
 		...(isSidebarPanelRole(value.role) ? { role: value.role } : {}),
+		...(rich ? { rich } : {}),
 	};
 }
 
@@ -316,8 +604,17 @@ function sidebarPanelDataEqual(first: SidebarPanelData, second: SidebarPanelData
 		first.rows.length === second.rows.length &&
 		first.rows.every(
 			(row, index) => row.text === second.rows[index]?.text && row.role === second.rows[index]?.role,
-		)
+		) &&
+		JSON.stringify(first.rich ?? null) === JSON.stringify(second.rich ?? null)
 	);
+}
+
+function cloneSidebarPanelData(panel: SidebarPanelData): SidebarPanelData {
+	return {
+		...panel,
+		rows: panel.rows.map((row) => ({ text: row.text, ...(row.role ? { role: row.role } : {}) })),
+		...(panel.rich ? { rich: structuredClone(panel.rich) } : {}),
+	};
 }
 
 /** Create a lifecycle-safe registry backed only by Pi's public event bus. */
@@ -428,9 +725,14 @@ export function createSidebarPanelRegistry(options: SidebarPanelRegistryOptions 
 		unregister,
 		handleEvent,
 		requestDiscovery,
-		// Stored panels are rebuilt on every change and never mutated in place.
-		getAvailable: () => [...panels.values()],
-		get: (id) => panels.get(id),
+		// Stored panels are rebuilt on every change and never mutated in place;
+		// readers still receive deep clones so a producer cannot reach back into the
+		// registry through the returned object (REQ-ATELIER-002).
+		getAvailable: () => [...panels.values()].map(cloneSidebarPanelData),
+		get: (id) => {
+			const panel = panels.get(id);
+			return panel ? cloneSidebarPanelData(panel) : undefined;
+		},
 		dispose: () => {
 			if (disposed) return;
 			disposed = true;

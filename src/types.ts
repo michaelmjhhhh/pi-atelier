@@ -42,6 +42,8 @@ export interface DisplayPatch {
 	density?: Density;
 	segmentLayout?: SegmentLayout;
 	sidebarPanelLayout?: SidebarPanelLayout;
+	/** Per-contributed-panel expanded/compact state, keyed by panel ID (REQ-ATELIER-006). */
+	contributedPanelCollapsed?: Record<string, boolean>;
 }
 
 export interface DisplayProvenance {
@@ -80,6 +82,8 @@ export interface AtelierConfig extends DisplaySettings {
 	showSidebarToolNames: boolean;
 	showSidebarOnStartup: boolean;
 	sidebarPanelLayout: SidebarPanelLayout;
+	/** Atelier-owned collapse state for rich contributed panels, keyed by panel ID. */
+	contributedPanelCollapsed: Record<string, boolean>;
 	completionNotifications: boolean;
 }
 

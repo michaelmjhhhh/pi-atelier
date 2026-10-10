@@ -172,7 +172,34 @@ npm run check
 ./node_modules/.bin/pi --no-session --no-extensions -e ./extensions/index.ts
 ```
 
-The last command opens a temporary session with only the checkout's extension loaded, so it does not conflict with an installed copy. See [CONTRIBUTING.md](https://github.com/michaelmjhhhh/pi-atelier/blob/main/CONTRIBUTING.md).
+### Contributed panels draw, they do not narrate
+
+`tests/renderer-semantics-guard.test.ts` asserts that the sidebar renderer never
+*authors* display text that belongs to whoever produced the panel. A fallback
+label, a default section title or a placeholder for a missing value would make
+the two hosts disagree while every other test still passed — that is the
+failure the guard exists to prevent.
+
+The list of reserved words comes from `tests/fixtures/sidepanel-semantics.json`,
+a generated snapshot of the shared semantics contract. It is vendored (not
+imported) so this repository stays clonable on its own; the bridge verifies the
+copy is byte-identical to the module it came from.
+
+Glyphs are exempt here and banned in the bridge: drawing a `█`/`✓` is this
+layer's job, while delegating the drawing is the translator's.
+
+The same snapshot carries the view contract, generated from Magic Context's own
+declarations, plus the ledger of fields consumers deliberately drop and why.
+That ledger is the only hand-written part of it, so this repo checks it can
+still mean something: every acknowledgement must point at something the
+recorded shape declares, and none may still be offered to consumers.
+
+To refresh it after a producer change, run `npm run update:semantics` in
+`omp-sidepanel-bridge` from the monorepo root — it rewrites both copies.
+
+The last command opens a temporary session with only the checkout's extension loaded, so it does not conflict with an installed copy.
+
+See [CONTRIBUTING.md](https://github.com/michaelmjhhhh/pi-atelier/blob/main/CONTRIBUTING.md).
 
 <details>
 <summary>Validation and dependency notes</summary>

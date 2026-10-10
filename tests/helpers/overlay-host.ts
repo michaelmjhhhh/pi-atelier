@@ -4,8 +4,16 @@ import { vi } from "vitest";
 import { deferred } from "./async.js";
 import { plainTheme } from "./render.js";
 
-export function fakeTui(requestRender = vi.fn()) {
+/**
+ * A Pi-regular TUI by default (`mode: "regular"`); every legacy sidebar test
+ * mounts the persistent overlay only on a host serving Pi's TUI surface.
+ * Pass `mode: null` to model a foreign host TUI (no TuiMode), which the
+ * sidebar must not install a persistent overlay onto. (JS default
+ * parameters activate on `undefined`, so null is the explicit escape.)
+ */
+export function fakeTui(requestRender = vi.fn(), mode: "regular" | "fullscreen" | null = "regular") {
 	return {
+		...(mode === null ? {} : { mode }),
 		render: vi.fn((width: number) => [`main:${width}`]),
 		requestRender,
 		terminal: { columns: 120, rows: 36, width: 120, write: vi.fn() },
@@ -53,7 +61,16 @@ export function overlayHost(getTui: () => TestTui = fakeTui, interactive = true)
 				pending.resolve(value);
 			});
 			const handle = { hide: vi.fn() };
-			const component = factory(tui, { ...plainTheme, name: "dark" }, {}, done);
+			// A factory that throws must reject the lifecycle promise, the way
+			// real hosts settle `ctx.ui.custom()`; previously the throw escaped
+			// synchronously and the caller's catch/finally chain never ran.
+			let component: OverlayComponent;
+			try {
+				component = factory(tui, { ...plainTheme, name: "dark" }, {}, done);
+			} catch (error) {
+				pending.reject(error);
+				return pending.promise;
+			}
 			tui.requestRender.mockClear();
 			const layout = () =>
 				typeof options.overlayOptions === "function" ? options.overlayOptions() : options.overlayOptions;
