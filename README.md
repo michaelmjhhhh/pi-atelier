@@ -156,7 +156,8 @@ registerSidebarPanel(pi, {
 Atelier places labels on the left and values on the right at the current panel
 width, recalculating on resize and truncating long fields like its built-in rows.
 Labels default to `muted`; values default to the panel role or `primary`.
-`labelRole` and `valueRole` accept the same semantic roles as plain rows.
+`labelRole` and `valueRole` accept the same semantic roles as plain rows,
+including `success` (green), `caution` (yellow), `warning` (orange), and `error` (red).
 A valid, nonempty `keyValues` list replaces the fallback rows on supporting hosts.
 Empty, malformed or oversized lists fall back to `rows`; older Atelier versions
 ignore the optional representation. The existing row count and text size limits

@@ -71,6 +71,25 @@ describe("sidebar contribution protocol", () => {
 		expect(changed).toHaveBeenCalledTimes(3);
 	});
 
+	it("preserves success and caution roles through the event protocol", () => {
+		const registry = disposeAfterTest(createSidebarPanelRegistry());
+		registry.handleEvent(
+			registration("vendor", 1, {
+				id: "vendor:limits",
+				title: "Limits",
+				rows: ["fallback"],
+				keyValues: [
+					{ label: "Used", value: "25%", valueRole: "success" },
+					{ label: "Used", value: "60%", valueRole: "caution" },
+				],
+			}),
+		);
+		expect(registry.get("vendor:limits")?.keyValues?.map((row) => row.valueRole)).toEqual([
+			"success",
+			"caution",
+		]);
+	});
+
 	it("keeps plain-row fallback for invalid or empty key/value representations", () => {
 		const registry = disposeAfterTest(createSidebarPanelRegistry());
 		const invalid = [

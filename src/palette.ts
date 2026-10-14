@@ -11,6 +11,8 @@ export type PaletteRole =
 	| "cost"
 	| "context"
 	| "menu"
+	| "success"
+	| "caution"
 	| "warning"
 	| "error"
 	| "chartPink"
@@ -29,6 +31,9 @@ export interface ThemeLike extends PaletteTheme {
 
 export type Rgb = readonly [number, number, number];
 
+const GREEN: Rgb = [74, 222, 128];
+const GOLD: Rgb = [234, 200, 110];
+
 /** Truecolor values used for every named theme, and by graphics that need RGB. */
 export const PALETTE_RGB: Record<PaletteRole, Rgb> = {
 	accent: [177, 140, 255],
@@ -43,11 +48,13 @@ export const PALETTE_RGB: Record<PaletteRole, Rgb> = {
 	cost: [255, 159, 67],
 	context: [110, 168, 254],
 	menu: [177, 140, 255],
+	success: GREEN,
+	caution: GOLD,
 	warning: [255, 159, 67],
 	error: [255, 93, 115],
 	chartPink: [244, 114, 182],
-	chartGreen: [74, 222, 128],
-	chartGold: [234, 200, 110],
+	chartGreen: GREEN,
+	chartGold: GOLD,
 };
 
 const UNNAMED_THEME: Record<PaletteRole, string> = {
@@ -63,6 +70,8 @@ const UNNAMED_THEME: Record<PaletteRole, string> = {
 	cost: "mdHeading",
 	context: "thinkingLow",
 	menu: "thinkingHigh",
+	success: "success",
+	caution: "warning",
 	warning: "warning",
 	error: "error",
 	chartPink: "syntaxString",

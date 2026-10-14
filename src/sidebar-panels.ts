@@ -66,6 +66,8 @@ const PANEL_ROLE_VALUES = [
 	"dim",
 	"ready",
 	"working",
+	"success",
+	"caution",
 	"warning",
 	"error",
 	"input",
