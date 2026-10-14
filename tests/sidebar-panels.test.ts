@@ -35,6 +35,65 @@ const removal = (source: string, revision: number, id: string) => ({
 });
 
 describe("sidebar contribution protocol", () => {
+	it("sanitizes key/value payloads and publishes value-only and role-only updates", () => {
+		const { events } = eventTransport();
+		const publisher = disposeAfterTest(
+			registerSidebarPanel(
+				{ events },
+				{
+					id: "vendor:limits",
+					title: "Limits",
+					rows: ["Used 32%"],
+					keyValues: [{ label: "\u001b[31mUsed\u001b[0m", value: "32%", labelRole: "muted" }],
+				},
+			),
+		);
+		const changed = vi.fn();
+		const registry = disposeAfterTest(createSidebarPanelRegistry({ events, onChange: changed }));
+		expect(registry.get("vendor:limits")?.keyValues).toEqual([
+			{ label: "Used", value: "32%", labelRole: "muted" },
+		]);
+		publisher.update({
+			id: "vendor:limits",
+			title: "Limits",
+			rows: ["Used 32%"],
+			keyValues: [{ label: "Used", value: "33%", labelRole: "muted" }],
+		});
+		expect(registry.get("vendor:limits")?.keyValues?.[0]?.value).toBe("33%");
+		expect(changed).toHaveBeenCalledTimes(2);
+		publisher.update({
+			id: "vendor:limits",
+			title: "Limits",
+			rows: ["Used 32%"],
+			keyValues: [{ label: "Used", value: "33%", labelRole: "muted", valueRole: "warning" }],
+		});
+		expect(registry.get("vendor:limits")?.keyValues?.[0]?.valueRole).toBe("warning");
+		expect(changed).toHaveBeenCalledTimes(3);
+	});
+
+	it("keeps plain-row fallback for invalid or empty key/value representations", () => {
+		const registry = disposeAfterTest(createSidebarPanelRegistry());
+		const invalid = [
+			[],
+			[{ label: "", value: "" }],
+			[{ label: 1, value: "value" }],
+			[{ label: "label", value: "x".repeat(SIDEBAR_PANEL_MAX_ROW_CHARS + 1) }],
+			Array.from({ length: SIDEBAR_PANEL_MAX_ROWS + 1 }, () => ({ label: "label", value: "value" })),
+		];
+		for (const keyValues of invalid) {
+			registry.handleEvent(
+				registration("vendor", invalid.indexOf(keyValues) + 1, {
+					id: "vendor:limits",
+					title: "Limits",
+					rows: ["fallback"],
+					keyValues,
+				}),
+			);
+			expect(registry.get("vendor:limits")?.rows).toEqual([{ text: "fallback" }]);
+			expect(registry.get("vendor:limits")?.keyValues).toBeUndefined();
+		}
+	});
+
 	it("supports load-order discovery, updates, and removal through the public event seam", () => {
 		const { events, emitted } = eventTransport();
 		const publisher = disposeAfterTest(

@@ -861,9 +861,20 @@ export function renderSidebarLines(
 		const panel = contributed.get(entry.id);
 		if (!panel) continue;
 		availableVisible = true;
-		const rows = panel.rows
-			.filter((row) => row.text)
-			.map((row) => palette.paint(row.role ?? panel.role ?? "primary", row.text));
+		const rows = panel.keyValues?.length
+			? panel.keyValues.map((row) =>
+					labeledRow(
+						row.label,
+						row.value,
+						panelWidth,
+						palette,
+						row.valueRole ?? panel.role ?? "primary",
+						row.labelRole ?? "muted",
+					),
+				)
+			: panel.rows
+					.filter((row) => row.text)
+					.map((row) => palette.paint(row.role ?? panel.role ?? "primary", row.text));
 		ordered.push({
 			name: `contributed:${panel.id}`,
 			panel: { id: panel.id, title: (panel.title || panel.id).toUpperCase(), role: panel.role ?? "accent" },

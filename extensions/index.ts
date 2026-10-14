@@ -47,6 +47,7 @@ export type {
 	SidebarPanelDiscoveryEvent,
 	SidebarPanelEvent,
 	SidebarPanelEventTransport,
+	SidebarPanelKeyValueRow,
 	SidebarPanelRegisterEvent,
 	SidebarPanelRole,
 	SidebarPanelRow,

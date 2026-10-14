@@ -138,6 +138,30 @@ panel.update({ id: "vendor:queue", title: "Queue", rows: ["idle"] });
 panel.dispose();
 ```
 
+For responsive label/value columns like the built-in Usage panel, supply optional
+`keyValues` alongside the mandatory plain-text `rows` fallback:
+
+```ts
+registerSidebarPanel(pi, {
+	id: "vendor:limits",
+	title: "Subscription",
+	rows: ["Used 32.2%", "Time 50.0%"],
+	keyValues: [
+		{ label: "Used", value: "32.2%" },
+		{ label: "Time", value: "50.0%", valueRole: "muted" },
+	],
+});
+```
+
+Atelier places labels on the left and values on the right at the current panel
+width, recalculating on resize and truncating long fields like its built-in rows.
+Labels default to `muted`; values default to the panel role or `primary`.
+`labelRole` and `valueRole` accept the same semantic roles as plain rows.
+A valid, nonempty `keyValues` list replaces the fallback rows on supporting hosts.
+Empty, malformed or oversized lists fall back to `rows`; older Atelier versions
+ignore the optional representation. The existing row count and text size limits
+apply to both fields. This is a two-column presentation, not a general table.
+
 - Panel IDs are namespaced (`vendor:name`).
 - New panels start hidden; enable them in **Settings → Display**.
 - Titles and rows are plain text. Terminal sequences are stripped and oversized payloads are rejected (see the exported `SIDEBAR_PANEL_MAX_*` limits).

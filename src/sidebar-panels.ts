@@ -82,11 +82,21 @@ export interface SidebarPanelRow {
 	role?: SidebarPanelRole;
 }
 
+/** Responsive label/value rows, laid out by Atelier at the current sidebar width. */
+export interface SidebarPanelKeyValueRow {
+	label: string;
+	value: string;
+	labelRole?: SidebarPanelRole;
+	valueRole?: SidebarPanelRole;
+}
+
 /** Structured, presentation-only data accepted from another extension. */
 export interface SidebarPanelContribution {
 	id: ContributedSidebarPanelId;
 	title: string;
 	rows: readonly (string | SidebarPanelRow)[];
+	/** Optional preferred representation; rows remain the compatibility fallback. */
+	keyValues?: readonly SidebarPanelKeyValueRow[];
 	role?: SidebarPanelRole;
 }
 
@@ -94,6 +104,7 @@ interface SanitizedSidebarPanelContribution {
 	id: ContributedSidebarPanelId;
 	title: string;
 	rows: SidebarPanelRow[];
+	keyValues?: SidebarPanelKeyValueRow[];
 	role?: SidebarPanelRole;
 }
 
@@ -240,6 +251,34 @@ export function normalizeSidebarPanelLayout(
 export const isSidebarPanelTextWithinRawLimit = (value: unknown, maxCodeUnits: number): value is string =>
 	typeof value === "string" && value.length <= maxCodeUnits;
 
+function sanitizeKeyValues(value: unknown): SidebarPanelKeyValueRow[] | undefined {
+	if (!Array.isArray(value) || value.length === 0 || value.length > SIDEBAR_PANEL_MAX_ROWS) return undefined;
+	const rows: SidebarPanelKeyValueRow[] = [];
+	for (const row of value) {
+		if (
+			!isRecord(row) ||
+			!isSidebarPanelTextWithinRawLimit(row.label, SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS) ||
+			!isSidebarPanelTextWithinRawLimit(row.value, SIDEBAR_PANEL_MAX_RAW_ROW_CODE_UNITS)
+		)
+			return undefined;
+		const label = sanitizeInline(row.label);
+		const text = sanitizeInline(row.value);
+		if (
+			Array.from(label).length > SIDEBAR_PANEL_MAX_ROW_CHARS ||
+			Array.from(text).length > SIDEBAR_PANEL_MAX_ROW_CHARS
+		)
+			return undefined;
+		if (!label && !text) continue;
+		rows.push({
+			label,
+			value: text,
+			...(isSidebarPanelRole(row.labelRole) ? { labelRole: row.labelRole } : {}),
+			...(isSidebarPanelRole(row.valueRole) ? { valueRole: row.valueRole } : {}),
+		});
+	}
+	return rows.length ? rows : undefined;
+}
+
 function sanitizeContribution(value: unknown): SanitizedSidebarPanelContribution | undefined {
 	if (
 		!isRecord(value) ||
@@ -263,10 +302,12 @@ function sanitizeContribution(value: unknown): SanitizedSidebarPanelContribution
 			...(isRecord(row) && isSidebarPanelRole(row.role) ? { role: row.role } : {}),
 		});
 	}
+	const keyValues = sanitizeKeyValues(value.keyValues);
 	return {
 		id: value.id,
 		title,
 		rows,
+		...(keyValues ? { keyValues } : {}),
 		...(isSidebarPanelRole(value.role) ? { role: value.role } : {}),
 	};
 }
@@ -316,7 +357,8 @@ function sidebarPanelDataEqual(first: SidebarPanelData, second: SidebarPanelData
 		first.rows.length === second.rows.length &&
 		first.rows.every(
 			(row, index) => row.text === second.rows[index]?.text && row.role === second.rows[index]?.role,
-		)
+		) &&
+		JSON.stringify(first.keyValues) === JSON.stringify(second.keyValues)
 	);
 }
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Accept optional responsive label/value rows for contributed Sidebar panels, with semantic colors and the existing plain-text rows as a compatibility fallback ([#89](https://github.com/michaelmjhhhh/pi-atelier/issues/89)).
+
 ## 0.15.0 — 2026-10-03
 
 - Give each Sidebar panel its own resting color (Activity green, Context cyan, Usage gold, Tools pink) and tint panel frames to match their headers; status colors still take over while working, on failures, and at context thresholds ([#86](https://github.com/michaelmjhhhh/pi-atelier/pull/86)).
