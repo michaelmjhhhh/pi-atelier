@@ -280,11 +280,7 @@ function progressMeter(
 	const full = Math.floor(units / 8);
 	const fraction = units % 8;
 	const fill = "█".repeat(full) + (fraction ? "▏▎▍▌▋▊▉"[fraction - 1] : "");
-	// A shared background covers the unused part of the fractional cell too,
-	// keeping even 1% usage attached to its track. Reset before the percentage.
-	return palette.colorEnabled
-		? `\u001b[48;2;48;53;56m${palette.paint(role, fill)}${" ".repeat(meterWidth - full - (fraction ? 1 : 0))}\u001b[49m`
-		: `${palette.paint(role, "█".repeat(full))}${palette.paint("dim", "░".repeat(meterWidth - full))}`;
+	return `${palette.paint(role, fill)}${palette.paint("dim", "░".repeat(meterWidth - full - (fraction ? 1 : 0)))}`;
 }
 
 /** Usage counts keep one decimal (and reach billions) where the rail rounds harder. */

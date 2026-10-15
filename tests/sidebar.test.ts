@@ -326,7 +326,7 @@ describe("sidebar snapshot and layout", () => {
 		expect(compact).toContain("openai-codex");
 		expect(compact).toContainEqual(expect.stringMatching(/^Thinking\s+medium$/));
 		const compactContext = compact.indexOf("CONTEXT");
-		expect(compact[compactContext + 1]).toMatch(/^[█░]+\s+8\.1%$/);
+		expect(compact[compactContext + 1]).toMatch(/^[█▏▎▍▌▋▊▉░]+\s+8\.1%$/);
 		expect(compact[compactContext + 2]).toMatch(/^Tokens\s+32k \/ 400k$/);
 		expect(compact).toContain("pi-atelier");
 		expect(compact).toContainEqual(expect.stringMatching(/^. feature\/sidebar$/u));
@@ -359,13 +359,13 @@ describe("sidebar snapshot and layout", () => {
 	it("renders a context meter and labeled token count that adapt to width", () => {
 		const narrow = renderRows(snapshot(), { width: 28, color: false });
 		const narrowContext = narrow.indexOf("CONTEXT");
-		expect(narrow[narrowContext + 1]).toMatch(/^[█░]+\s+8\.1%$/);
+		expect(narrow[narrowContext + 1]).toMatch(/^[█▏▎▍▌▋▊▉░]+\s+8\.1%$/);
 		expect(narrow[narrowContext + 2]).toMatch(/^Tokens\s+32k \/ 400k$/);
 
 		for (const width of [40, 44, 72]) {
 			const rows = renderRows(snapshot(), { width: width, color: false });
 			const contextIndex = rows.indexOf("CONTEXT");
-			expect(rows[contextIndex + 1]).toMatch(/^[█░]+\s+8\.1%$/);
+			expect(rows[contextIndex + 1]).toMatch(/^[█▏▎▍▌▋▊▉░]+\s+8\.1%$/);
 			expect(rows[contextIndex + 2]).toMatch(/^Tokens\s+32k \/ 400k$/);
 			expect(visibleWidth(rows[contextIndex + 1] ?? "")).toBeLessThanOrEqual(width - 6);
 		}

@@ -5,6 +5,7 @@
 - Add optional responsive progress bars to contributed label/value rows; narrow panels retain the label and value without a bar ([#93](https://github.com/michaelmjhhhh/pi-atelier/issues/93)).
 
 - Accept optional responsive label/value rows for contributed Sidebar panels, with semantic colors and the existing plain-text rows as a compatibility fallback ([#89](https://github.com/michaelmjhhhh/pi-atelier/issues/89)).
+- Replace the context meter's hardcoded dark background with a dim character track so it works on light backgrounds ([#92](https://github.com/michaelmjhhhh/pi-atelier/issues/92)).
 
 ## 0.15.0 — 2026-10-03
 
