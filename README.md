@@ -147,7 +147,7 @@ registerSidebarPanel(pi, {
 	title: "Subscription",
 	rows: ["Used 32.2%", "Time 50.0%"],
 	keyValues: [
-		{ label: "Used", value: "32.2%" },
+		{ label: "Used", value: "32.2%", progress: 0.322, valueRole: "success" },
 		{ label: "Time", value: "50.0%", valueRole: "muted" },
 	],
 });
@@ -162,6 +162,13 @@ A valid, nonempty `keyValues` list replaces the fallback rows on supporting host
 Empty, malformed or oversized lists fall back to `rows`; older Atelier versions
 ignore the optional representation. The existing row count and text size limits
 apply to both fields. This is a two-column presentation, not a general table.
+
+Optional `progress` adds a bar between the label and value, using the value role.
+It is a finite fraction from `0` (empty) to `1` (full), inclusive. Invalid fractions
+are ignored without dropping the row. Producers should cap over-limit fractions at
+`1` while retaining accurate value text such as `110%`. The bar disappears when
+fewer than four bar columns fit; label/value rendering is retained. Older hosts
+ignore `progress`. No-color mode uses plain filled/empty blocks.
 
 - Panel IDs are namespaced (`vendor:name`).
 - New panels start hidden; enable them in **Settings → Display**.

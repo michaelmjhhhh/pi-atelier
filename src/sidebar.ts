@@ -139,9 +139,14 @@ function labeledRow(
 	palette: AtelierPalette,
 	role: PaletteRole = "primary",
 	labelRole: PaletteRole = "muted",
+	progress?: number,
 ): string {
 	const left = truncateToWidth(label, Math.min(LABEL_COLUMN_WIDTH, Math.max(0, width - 8)), "…");
 	const right = truncateToWidth(value, Math.max(0, width - visibleWidth(left) - 1), "…");
+	const meterWidth = width - visibleWidth(left) - visibleWidth(right) - 2;
+	if (progress !== undefined && meterWidth >= 4) {
+		return `${palette.paint(labelRole, left)} ${progressMeter(progress * 100, meterWidth, palette, role)} ${palette.paint(role, right)}`;
+	}
 	return truncateToWidth(
 		`${palette.paint(labelRole, left)}${" ".repeat(Math.max(1, width - visibleWidth(left) - visibleWidth(right)))}${palette.paint(role, right)}`,
 		width,
@@ -253,6 +258,21 @@ function contextRows(
 	const percentText = `${percent.toFixed(1)}%`;
 	const percentWidth = Math.max(6, visibleWidth(percentText));
 	const meterWidth = Math.max(0, width - percentWidth - 2);
+	const meter = progressMeter(percent, meterWidth, palette, role);
+	const percentage = theme.bold(palette.paint(role, percentText.padStart(percentWidth)));
+	const usage = `${formatTokens(metrics.contextTokens)} / ${metrics.contextWindow > 0 ? formatTokens(metrics.contextWindow) : PLACEHOLDER}`;
+	return [
+		meterWidth > 0 ? `${meter}  ${percentage}` : percentage,
+		labeledRow("Tokens", usage, width, palette, "muted"),
+	];
+}
+
+function progressMeter(
+	percent: number,
+	meterWidth: number,
+	palette: AtelierPalette,
+	role: PaletteRole,
+): string {
 	const units = Math.min(
 		meterWidth * 8,
 		Math.max(percent > 0 ? 1 : 0, Math.round((percent * meterWidth * 8) / 100)),
@@ -262,15 +282,9 @@ function contextRows(
 	const fill = "█".repeat(full) + (fraction ? "▏▎▍▌▋▊▉"[fraction - 1] : "");
 	// A shared background covers the unused part of the fractional cell too,
 	// keeping even 1% usage attached to its track. Reset before the percentage.
-	const meter = palette.colorEnabled
+	return palette.colorEnabled
 		? `\u001b[48;2;48;53;56m${palette.paint(role, fill)}${" ".repeat(meterWidth - full - (fraction ? 1 : 0))}\u001b[49m`
 		: `${palette.paint(role, "█".repeat(full))}${palette.paint("dim", "░".repeat(meterWidth - full))}`;
-	const percentage = theme.bold(palette.paint(role, percentText.padStart(percentWidth)));
-	const usage = `${formatTokens(metrics.contextTokens)} / ${metrics.contextWindow > 0 ? formatTokens(metrics.contextWindow) : PLACEHOLDER}`;
-	return [
-		meterWidth > 0 ? `${meter}  ${percentage}` : percentage,
-		labeledRow("Tokens", usage, width, palette, "muted"),
-	];
 }
 
 /** Usage counts keep one decimal (and reach billions) where the rail rounds harder. */
@@ -870,6 +884,7 @@ export function renderSidebarLines(
 						palette,
 						row.valueRole ?? panel.role ?? "primary",
 						row.labelRole ?? "muted",
+						row.progress,
 					),
 				)
 			: panel.rows

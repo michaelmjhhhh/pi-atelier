@@ -35,6 +35,47 @@ const removal = (source: string, revision: number, id: string) => ({
 });
 
 describe("sidebar contribution protocol", () => {
+	it("retains valid progress and ignores invalid progress without losing rows", () => {
+		const registry = disposeAfterTest(createSidebarPanelRegistry());
+		const values = [0, 0.44, 1, -0.01, 1.01, NaN, Infinity, -Infinity, "0.5", null, true, undefined];
+		for (const [index, progress] of values.entries()) {
+			registry.handleEvent(
+				registration("vendor", index + 1, {
+					id: "vendor:limits",
+					title: "Limits",
+					rows: ["fallback"],
+					keyValues: [{ label: "Used", value: "44%", progress }],
+				}),
+			);
+			expect(registry.get("vendor:limits")?.keyValues).toEqual([
+				{ label: "Used", value: "44%", ...(index < 3 ? { progress } : {}) },
+			]);
+		}
+	});
+
+	it("replays progress and detects progress-only changes, removal and no-op updates", () => {
+		const { events } = eventTransport();
+		const panel = (progress?: number) => ({
+			id: "vendor:limits" as const,
+			title: "Limits",
+			rows: ["fallback"],
+			keyValues: [{ label: "Used", value: "44%", ...(progress !== undefined ? { progress } : {}) }],
+		});
+		const publisher = disposeAfterTest(registerSidebarPanel({ events }, panel(0)));
+		const changed = vi.fn();
+		const registry = disposeAfterTest(createSidebarPanelRegistry({ events, onChange: changed }));
+		expect(registry.get("vendor:limits")?.keyValues?.[0]?.progress).toBe(0);
+		publisher.update(panel(0.44));
+		expect(registry.get("vendor:limits")?.keyValues?.[0]?.progress).toBe(0.44);
+		expect(changed).toHaveBeenCalledTimes(2);
+		publisher.update(panel(0.44));
+		registry.requestDiscovery();
+		expect(changed).toHaveBeenCalledTimes(2);
+		publisher.update(panel());
+		expect(registry.get("vendor:limits")?.keyValues?.[0]?.progress).toBeUndefined();
+		expect(changed).toHaveBeenCalledTimes(3);
+	});
+
 	it("sanitizes key/value payloads and publishes value-only and role-only updates", () => {
 		const { events } = eventTransport();
 		const publisher = disposeAfterTest(

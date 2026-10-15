@@ -90,6 +90,8 @@ export interface SidebarPanelKeyValueRow {
 	value: string;
 	labelRole?: SidebarPanelRole;
 	valueRole?: SidebarPanelRole;
+	/** Optional finite fraction from 0 to 1, inclusive. Invalid values are ignored. */
+	progress?: number;
 }
 
 /** Structured, presentation-only data accepted from another extension. */
@@ -274,6 +276,12 @@ function sanitizeKeyValues(value: unknown): SidebarPanelKeyValueRow[] | undefine
 		rows.push({
 			label,
 			value: text,
+			...(typeof row.progress === "number" &&
+			Number.isFinite(row.progress) &&
+			row.progress >= 0 &&
+			row.progress <= 1
+				? { progress: row.progress }
+				: {}),
 			...(isSidebarPanelRole(row.labelRole) ? { labelRole: row.labelRole } : {}),
 			...(isSidebarPanelRole(row.valueRole) ? { valueRole: row.valueRole } : {}),
 		});

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add optional responsive progress bars to contributed label/value rows; narrow panels retain the label and value without a bar ([#93](https://github.com/michaelmjhhhh/pi-atelier/issues/93)).
+
 - Accept optional responsive label/value rows for contributed Sidebar panels, with semantic colors and the existing plain-text rows as a compatibility fallback ([#89](https://github.com/michaelmjhhhh/pi-atelier/issues/89)).
 
 ## 0.15.0 — 2026-10-03
