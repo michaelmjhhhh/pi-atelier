@@ -95,7 +95,7 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 | **minimal** | Compact layout |
 | **classic** | Detailed telemetry |
 
-Pi supports one custom footer and one custom editor at a time. Extension load order decides which one is visible.
+Pi supports one custom footer and one custom editor at a time. Extension load order decides which one is visible. To keep another extension's footer and use only the Atelier sidebar, choose **Settings → Atelier footer → Off** or set `"showFooter": false`. This also leaves Pi's composer unchanged. The sidebar does not show extension statuses while the Atelier footer is off.
 
 ## Configuration
 
@@ -104,7 +104,7 @@ Pi supports one custom footer and one custom editor at a time. Extension load or
 | User | `~/.pi/agent/pi-atelier.json` |
 | Project (trusted only) | `<project>/.pi/pi-atelier.json` |
 
-Project settings override user settings, and session changes override both. Font mode, sidebar startup, and notification preferences are user-only.
+Project settings override user settings, and session changes override both. Font mode, footer, sidebar startup, and notification preferences are user-only.
 
 ```json
 {
@@ -114,6 +114,7 @@ Project settings override user settings, and session changes override both. Font
   "density": "comfortable",
   "contextWarning": 70,
   "contextDanger": 90,
+  "showFooter": true,
   "showSidebarOnStartup": true,
   "showSidebarToolNames": false,
   "completionNotifications": true
@@ -180,7 +181,7 @@ ignore `progress`. No-color mode uses plain filled/empty blocks.
 | Problem | Fix |
 | --- | --- |
 | Shortcut does nothing | Use `/atelier`, change `shortcut`, then run `/reload`. The default is `f6` on macOS and Windows; media-key keyboards may need Fn+F6. Saved `alt+a` settings resolve to `f6` and Alt+A is no longer registered. Other custom shortcuts add a binding alongside F6. Other extensions or terminal key mappings can still intercept F6. |
-| Status rail missing | Use TUI mode and check for another extension's custom footer. |
+| Status rail missing | Use TUI mode, check **Settings → Atelier footer**, and check for another extension's custom footer. |
 | Icons render as boxes | Choose **Settings → Font mode → Plain text**, or select a Nerd Font in your terminal. |
 | Metrics disagree | Token and cost totals cover the session; context usage covers the current model context. |
 

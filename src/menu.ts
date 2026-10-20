@@ -40,6 +40,8 @@ export function sidebarStatusLabel(status: SidebarStatus): string {
 
 interface MenuOptions {
 	lifetime?: OverlayLifetime;
+	/** Install or remove the Atelier footer to match the current `showFooter` preference. */
+	syncFooter?(): void;
 }
 
 interface ControlCenterOptions extends MenuOptions {
@@ -99,19 +101,26 @@ export function createMenuActions(
 	 * the session value when saving fails, for preferences with no in-session effect.
 	 */
 	const persistPreference = async (
-		patch: Partial<Pick<AtelierConfig, "showSidebarOnStartup" | "completionNotifications" | "nerdFont">>,
+		patch: Partial<
+			Pick<AtelierConfig, "showSidebarOnStartup" | "completionNotifications" | "nerdFont" | "showFooter">
+		>,
 		messages: { saved: string; failed: string },
 		rollback: boolean,
+		apply: () => void = () => undefined,
 	): Promise<void> => {
 		if (!isActive()) return;
 		const previous = runtime.getConfig();
 		runtime.setConfig({ ...previous, ...patch });
+		apply();
 		try {
 			await savePatch(userConfigPath, patch);
 			notify(messages.saved, "info");
 		} catch (error) {
 			if (!isActive()) return;
-			if (rollback) runtime.setConfig(previous);
+			if (rollback) {
+				runtime.setConfig(previous);
+				apply();
+			}
 			notify(`${messages.failed}: ${errorMessage(error)}`, "warning");
 		}
 	};
@@ -194,6 +203,16 @@ export function createMenuActions(
 					failed: "Font mode changed for this session but could not be saved",
 				},
 				false,
+			),
+		setShowFooter: (enabled: boolean): Promise<void> =>
+			persistPreference(
+				{ showFooter: enabled },
+				{
+					saved: `Atelier footer ${enabled ? "enabled" : "disabled; Pi's footer restored"}`,
+					failed: "Atelier footer changed for this session but could not be saved",
+				},
+				false,
+				() => options.syncFooter?.(),
 			),
 	};
 }
@@ -397,6 +416,11 @@ export async function openAtelierControlCenter(
 					description: "Global user preference; plain text needs no Nerd Font",
 				},
 				{
+					value: "footer",
+					label: `Atelier footer: ${onOff(config.showFooter)}`,
+					description: "Global user preference; Off keeps Pi's footer and composer",
+				},
+				{
 					value: "sidebar-startup",
 					label: `Sidebar on startup: ${config.showSidebarOnStartup ? "On" : "Off"}`,
 					description: "Global user preference",
@@ -427,6 +451,9 @@ export async function openAtelierControlCenter(
 					break;
 				case "font-mode":
 					await actions.setNerdFont(!runtime.getConfig().nerdFont);
+					break;
+				case "footer":
+					await actions.setShowFooter(!runtime.getConfig().showFooter);
 					break;
 				case "sidebar-startup":
 					await actions.setShowSidebarOnStartup(!runtime.getConfig().showSidebarOnStartup);

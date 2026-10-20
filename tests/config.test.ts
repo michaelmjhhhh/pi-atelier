@@ -153,6 +153,7 @@ describe("configuration files", () => {
 	it.each<[string, Record<string, unknown>]>([
 		["completionNotifications", { completionNotifications: false }],
 		["showSidebarOnStartup", { showSidebarOnStartup: false }],
+		["showFooter", { showFooter: false }],
 		["showSidebarAgent", { sidebarPanelLayout: expect.arrayContaining([{ id: "agent", visible: false }]) }],
 		["showSidebarTodos", { sidebarPanelLayout: expect.arrayContaining([{ id: "todos", visible: false }]) }],
 	])("keeps %s as a global user preference", async (key, expected) => {

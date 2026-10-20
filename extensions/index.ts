@@ -106,6 +106,8 @@ interface ActiveSession {
 	readonly overlayLifetime: OverlayLifetime;
 	footerDisposer: (() => void) | undefined;
 	footerGeneration: number;
+	/** Whether Atelier owns Pi's footer and composer; when false, they belong to Pi or another extension. */
+	footerInstalled: boolean;
 	unsubscribeAskUserBlocked: (() => void) | undefined;
 	askUserBlocked: boolean;
 	inputRequestSequence: number;
@@ -253,8 +255,11 @@ export default function atelierExtension(
 		session.footerGeneration += 1;
 		const footerDisposer = session.footerDisposer;
 		session.footerDisposer = undefined;
+		const installed = session.footerInstalled;
+		session.footerInstalled = false;
 		// Pi may retain the old footer when removal fails; it is disposed below regardless.
-		if (restoreHostUi) resetHostUi(session.ctx);
+		// Never reset a footer or composer that Atelier does not own.
+		if (restoreHostUi && installed) resetHostUi(session.ctx);
 		if (footerDisposer) attempt(footerDisposer);
 	}
 
@@ -344,6 +349,15 @@ export default function atelierExtension(
 		];
 	}
 
+	/** Install or remove the Atelier footer to match the `showFooter` preference. */
+	function syncFooter(targetSession: ActiveSession): void {
+		if (!enabled || activeSession !== targetSession) return;
+		const wanted = targetSession.runtime.getConfig().showFooter;
+		if (wanted === targetSession.footerInstalled) return;
+		if (wanted) installFooter(targetSession);
+		else clearFooter(targetSession, true);
+	}
+
 	async function openUsage(ctx: ExtensionContext, expected?: ActiveSession): Promise<void> {
 		const current = getActiveSession(ctx);
 		if (ctx.mode !== "tui" || !current || !enabled || (expected && current !== expected)) {
@@ -390,7 +404,11 @@ export default function atelierExtension(
 			},
 			() => requestAllRenders(current),
 			lifecycleGuardedSavePatch(current),
-			{ lifetime: current.overlayLifetime, openUsage: () => openUsage(ctx, current) },
+			{
+				lifetime: current.overlayLifetime,
+				openUsage: () => openUsage(ctx, current),
+				syncFooter: () => syncFooter(current),
+			},
 		);
 	}
 
@@ -415,6 +433,7 @@ export default function atelierExtension(
 	function installFooter(targetSession: ActiveSession): void {
 		const { ctx, token, retiredState, retiredConfig } = targetSession;
 		const generation = ++targetSession.footerGeneration;
+		targetSession.footerInstalled = true;
 		let editor: AtelierEditor | undefined;
 		let footer: AtelierFooterComponent | undefined;
 		let headerRendered = false;
@@ -583,7 +602,7 @@ export default function atelierExtension(
 					enabled = true;
 					current.todos = reconstructTodos(current.ctx);
 					current.runtime.setEnabled(true);
-					installFooter(current);
+					syncFooter(current);
 				}
 				ctx.ui.notify("Pi Atelier enabled", "info");
 			},
@@ -715,6 +734,7 @@ export default function atelierExtension(
 			overlayLifetime: createOverlayLifetime(token, overlayCancellations),
 			footerDisposer: undefined,
 			footerGeneration: 0,
+			footerInstalled: false,
 			unsubscribeAskUserBlocked: undefined,
 			askUserBlocked: false,
 			inputRequestSequence: 0,
@@ -776,7 +796,7 @@ export default function atelierExtension(
 			registerCustomShortcut(ctx, loaded.config.shortcut);
 			session.sidebar.setMode("manual");
 			if (enabled) {
-				installFooter(session);
+				syncFooter(session);
 				if (loaded.config.showSidebarOnStartup) session.sidebar.show();
 			}
 			void session.runtime.flushWorkspacePulseRefresh();

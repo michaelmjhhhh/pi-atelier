@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add a global **Atelier footer** setting. Turn it off in **Settings** or set `"showFooter": false` to keep Pi's or another extension's footer and composer while still using the Sidebar ([#96](https://github.com/michaelmjhhhh/pi-atelier/issues/96)).
+
 ## 0.16.0 — 2026-10-15
 
 - Add optional responsive progress bars to contributed label/value rows; narrow panels retain the label and value without a bar ([#93](https://github.com/michaelmjhhhh/pi-atelier/issues/93)).
