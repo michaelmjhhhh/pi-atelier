@@ -84,7 +84,8 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 
 - Showing or hiding is independent of the mode. A manually hidden sidebar stays hidden when the terminal grows.
 - The preferred width survives terminal resizes and mode changes.
-- Mode, width, and visibility are session-scoped. The startup visibility preference is set in Settings.
+- A confirmed resize is saved as `sidebarWidth` and becomes the starting width for new sessions. Escape keeps the saved width.
+- Mode and visibility are session-scoped. The startup visibility preference is set in Settings.
 - The TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension. Hidden TODO results keep their full output.
 
 ### Status rail presets
@@ -104,7 +105,7 @@ Pi supports one custom footer and one custom editor at a time. Extension load or
 | User | `~/.pi/agent/pi-atelier.json` |
 | Project (trusted only) | `<project>/.pi/pi-atelier.json` |
 
-Project settings override user settings, and session changes override both. Font mode, footer, sidebar startup, and notification preferences are user-only.
+Project settings override user settings, and session changes override both. Font mode, footer, sidebar startup, sidebar width, and notification preferences are user-only.
 
 ```json
 {
@@ -117,12 +118,15 @@ Project settings override user settings, and session changes override both. Font
   "contextDanger": 90,
   "showFooter": true,
   "showSidebarOnStartup": true,
+  "sidebarWidth": 44,
   "showSidebarToolNames": false,
   "completionNotifications": true
 }
 ```
 
 `toggleShortcut` binds a key that shows or hides the Sidebar directly, like `/atelier sidebar`. It is empty (no binding) by default; set a key such as `"ctrl+shift+b"` and run `/reload`.
+
+`sidebarWidth` is the sidebar width in columns when a session starts, from 28 through 72. The sidebar still narrows when the terminal leaves less than 64 columns for the main pane.
 
 Use **Settings → Display** to reorder or hide status rail segments and sidebar panels. Undo restores the latest Display or Sidebar edit, including a Display Revert. The legacy user settings `showSidebarAgent` and `showSidebarTodos` still apply when `sidebarPanelLayout` is absent.
 

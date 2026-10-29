@@ -100,9 +100,13 @@ export interface SidebarStatus {
 }
 
 export interface SplitPaneControllerOptions {
+	/** Preferred sidebar width when the controller starts; clamped to the supported range. */
+	initialWidth?: number;
 	onError?(error: unknown): void;
 	subscribeInput?(handler: (data: string) => { consume?: boolean; data?: string } | undefined): () => void;
 	onResizeChange?(resizing: boolean): void;
+	/** A confirmed resize changed the preferred width. */
+	onResizeCommit?(width: number): void;
 	onVisibilityChange?(): void;
 	onWarning?(message: string): void;
 }
@@ -134,7 +138,10 @@ const sidebarLimit = (terminalWidth: number): number =>
 	Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, terminalWidth - MIN_MAIN_WIDTH));
 
 export function createSplitPaneController(options: SplitPaneControllerOptions = {}): SplitPaneController {
-	let sidebarWidth = DEFAULT_SIDEBAR_WIDTH;
+	const initialWidth = options.initialWidth ?? DEFAULT_SIDEBAR_WIDTH;
+	let sidebarWidth = Number.isInteger(initialWidth)
+		? clamp(initialWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH)
+		: DEFAULT_SIDEBAR_WIDTH;
 	let tui: TUI | undefined;
 	let enabled = false;
 	let mode: SidebarMode = "manual";
@@ -509,6 +516,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		if (mouseTerminal) safely(() => mouseTerminal.write(DISABLE_MOUSE));
 		if (unsubscribe) safely(unsubscribe);
 		safely(() => options.onResizeChange?.(false));
+		if (!restore && sidebarWidth !== resizeStartWidth) safely(() => options.onResizeCommit?.(sidebarWidth));
 		safely(requestRender);
 	};
 

@@ -12,7 +12,8 @@ import {
 	PRODUCT_SEGMENT_ORDER,
 } from "./display.js";
 import { DEFAULT_SIDEBAR_PANEL_LAYOUT, normalizeSidebarPanelLayout } from "./sidebar-panels.js";
-import { errorMessage, isRecord } from "./text.js";
+import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "./split-pane.js";
+import { clamp, errorMessage, isRecord } from "./text.js";
 import type {
 	AtelierConfig,
 	ConfigurationSource,
@@ -37,6 +38,7 @@ export const DEFAULT_CONFIG: AtelierConfig = {
 	currencyDecimals: 3,
 	showSidebarToolNames: false,
 	showSidebarOnStartup: true,
+	sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
 	sidebarPanelLayout: cloneLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT),
 	completionNotifications: true,
 	showFooter: true,
@@ -63,6 +65,7 @@ const isOrnament = (value: unknown): value is Ornament => value === "none" || va
 /** Settings that only the global User layer may change. */
 const USER_ONLY_KEYS: ReadonlySet<string> = new Set([
 	"showSidebarOnStartup",
+	"sidebarWidth",
 	"completionNotifications",
 	"nerdFont",
 	"showFooter",
@@ -327,6 +330,19 @@ function applyNonDisplay(
 		)
 			config.currencyDecimals = input.currencyDecimals;
 		else warnings.push(`currencyDecimals must be an integer from 0 through ${MAX_CURRENCY_DECIMALS}`);
+	}
+	if ("sidebarWidth" in input) {
+		const width = input.sidebarWidth;
+		if (typeof width !== "number" || !Number.isInteger(width))
+			warnings.push("sidebarWidth must be an integer");
+		else {
+			const next = clamp(width, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
+			if (next !== width)
+				warnings.push(
+					`sidebarWidth must be from ${MIN_SIDEBAR_WIDTH} through ${MAX_SIDEBAR_WIDTH}; using ${next}`,
+				);
+			if (userLayer) config.sidebarWidth = next;
+		}
 	}
 	for (const key of [
 		"showSidebarToolNames",

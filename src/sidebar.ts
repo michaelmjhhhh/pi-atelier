@@ -982,6 +982,10 @@ export interface SidebarControllerOptions {
 	getConfig(): AtelierConfig;
 	colorEnabled?: boolean;
 	shouldAnimate?(): boolean;
+	/** Preferred sidebar width when the session starts. */
+	initialWidth?: number;
+	/** A confirmed resize changed the preferred width. */
+	onResizeCommit?(width: number): void;
 	onWarning?(message: string): void;
 	onError?(error: unknown): void;
 }
@@ -1056,11 +1060,13 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	};
 
 	const split = createSplitPaneController({
+		...(options.initialWidth === undefined ? {} : { initialWidth: options.initialWidth }),
 		subscribeInput: (handler) => options.ctx.ui.onTerminalInput(handler),
 		onVisibilityChange: () => syncAnimation(),
 		onResizeChange: () => {
 			safely(() => requestOverlayRender?.());
 		},
+		...(options.onResizeCommit ? { onResizeCommit: options.onResizeCommit } : {}),
 		...(options.onWarning ? { onWarning: options.onWarning } : {}),
 		...(options.onError ? { onError: options.onError } : {}),
 	});

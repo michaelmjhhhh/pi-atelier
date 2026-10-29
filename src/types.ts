@@ -81,6 +81,8 @@ export interface AtelierConfig extends DisplaySettings {
 	currencyDecimals: number;
 	showSidebarToolNames: boolean;
 	showSidebarOnStartup: boolean;
+	/** Sidebar width in columns when a session starts. */
+	sidebarWidth: number;
 	sidebarPanelLayout: SidebarPanelLayout;
 	completionNotifications: boolean;
 	showFooter: boolean;

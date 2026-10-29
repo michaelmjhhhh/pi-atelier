@@ -323,6 +323,23 @@ export default function atelierExtension(
 		}
 	}
 
+	/** A confirmed resize becomes the starting width for future sessions. */
+	async function saveSidebarWidth(
+		ctx: ExtensionContext,
+		width: number,
+		targetSession: ActiveSession,
+	): Promise<void> {
+		targetSession.runtime.setConfig({ ...targetSession.runtime.getConfig(), sidebarWidth: width });
+		try {
+			await lifecycleGuardedSavePatch(targetSession)(userConfigPath(), { sidebarWidth: width });
+			if (activeSession !== targetSession) return;
+			ctx.ui.notify(`Sidebar width saved: ${width} columns`, "info");
+		} catch (error) {
+			if (activeSession !== targetSession) return;
+			ctx.ui.notify(`Sidebar width could not be saved: ${errorMessage(error)}`, "warning");
+		}
+	}
+
 	function completionNotification(session: ActiveSession): CompletionNotification {
 		const sessionName = session.ctx.sessionManager.getSessionName();
 		const { completedCount, failedCount } = session.runActivity.getSnapshot();
@@ -736,6 +753,11 @@ export default function atelierExtension(
 			getConfig: () => (isPublished() ? runtime.getConfig() : config),
 			colorEnabled: isColorEnabled(),
 			shouldAnimate: () => enabled && isPublished() && runActivity.isRunning(),
+			initialWidth: config.sidebarWidth,
+			onResizeCommit: (width) => {
+				const current = activeSession;
+				if (current?.token === token) void saveSidebarWidth(ctx, width, current);
+			},
 			onWarning: (message) => ctx.ui.notify(message, "warning"),
 			onError: (error) => ctx.ui.notify(`Pi Atelier sidebar failed: ${errorMessage(error)}`, "error"),
 		});
