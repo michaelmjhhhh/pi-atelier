@@ -278,4 +278,19 @@ describe("configuration files", () => {
 			completionNotifications: false,
 		});
 	});
+
+	it("keeps every field when patches are saved concurrently", async () => {
+		await writeJson(userPath, { futureSetting: "keep" });
+		await Promise.all([
+			saveUserConfigPatch(userPath, { sidebarWidth: 36 }),
+			saveUserConfigPatch(userPath, { completionNotifications: false }),
+			saveUserConfigPatch(userPath, { nerdFont: false }),
+		]);
+		expect(JSON.parse(await readFile(userPath, "utf8"))).toEqual({
+			futureSetting: "keep",
+			sidebarWidth: 36,
+			completionNotifications: false,
+			nerdFont: false,
+		});
+	});
 });

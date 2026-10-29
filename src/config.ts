@@ -430,7 +430,20 @@ export async function loadConfig(options: LoadConfigOptions): Promise<ConfigLoad
 	return { ...resolved, warnings: [...fileWarnings, ...resolved.warnings] };
 }
 
-export async function saveUserConfigPatch(path: string, patch: Partial<AtelierConfig>): Promise<void> {
+/** Pending saves per path; each read-merge-write waits for the previous one. */
+const saveQueues = new Map<string, Promise<void>>();
+
+export function saveUserConfigPatch(path: string, patch: Partial<AtelierConfig>): Promise<void> {
+	const saved = (saveQueues.get(path) ?? Promise.resolve()).then(() => applyUserConfigPatch(path, patch));
+	const settled = saved.catch(() => undefined);
+	saveQueues.set(path, settled);
+	void settled.then(() => {
+		if (saveQueues.get(path) === settled) saveQueues.delete(path);
+	});
+	return saved;
+}
+
+async function applyUserConfigPatch(path: string, patch: Partial<AtelierConfig>): Promise<void> {
 	let current: Record<string, unknown> = {};
 	try {
 		const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
