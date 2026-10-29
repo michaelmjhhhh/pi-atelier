@@ -116,7 +116,7 @@ describe("extension registration", () => {
 		expect(h.ctx.ui.notify).toHaveBeenLastCalledWith("Sidebar: Manual", "info");
 	});
 
-	it.each(["f6", "ctrl+shift+r", "alt+x"])(
+	it.each(["f6", "ctrl+shift+r", "shift+ctrl+r", "alt+x"])(
 		"rejects a toggleShortcut that reuses an Atelier key: %s",
 		async (key) => {
 			const h = harness();
@@ -127,7 +127,7 @@ describe("extension registration", () => {
 				`toggleShortcut "${key}" is already an Atelier shortcut`,
 				"warning",
 			);
-			expect(h.shortcuts.filter((registered) => registered === key)).toHaveLength(1);
+			expect(h.shortcuts).toEqual(["f6", "ctrl+shift+r", "alt+x"]);
 		},
 	);
 

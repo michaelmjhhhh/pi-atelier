@@ -123,6 +123,13 @@ interface LifecycleToken {
 const NOT_ACTIVE = "Pi Atelier is not active in this session";
 const RESIZE_SHORTCUT = "ctrl+shift+r";
 
+/** Pi matches modifiers in any order, so `shift+ctrl+r` and `ctrl+shift+r` are the same key. */
+const keyIdentity = (key: string): string => {
+	const parts = key.toLowerCase().split("+");
+	const last = parts.pop() ?? "";
+	return [...parts.sort(), last].join("+");
+};
+
 const userConfigPath = (): string => join(getAgentDir(), "pi-atelier.json");
 
 /** Run every cleanup step even when one throws; teardown must not mask the original failure. */
@@ -654,8 +661,8 @@ export default function atelierExtension(
 			}
 		}
 		if (!toggleShortcut) return;
-		const taken = [DEFAULT_CONFIG.shortcut, shortcut, RESIZE_SHORTCUT].map((key) => key.toLowerCase());
-		if (taken.includes(toggleShortcut.toLowerCase())) {
+		const reservedKeys = [DEFAULT_CONFIG.shortcut, shortcut, RESIZE_SHORTCUT].map(keyIdentity);
+		if (reservedKeys.includes(keyIdentity(toggleShortcut))) {
 			ctx.ui.notify(`toggleShortcut "${toggleShortcut}" is already an Atelier shortcut`, "warning");
 			return;
 		}
