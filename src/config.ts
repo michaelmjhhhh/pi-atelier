@@ -31,6 +31,7 @@ export const DEFAULT_CONFIG: AtelierConfig = {
 	...applyDisplayTemplate("editorial"),
 	nerdFont: true,
 	shortcut: "f6",
+	toggleShortcut: "",
 	contextWarning: 70,
 	contextDanger: 90,
 	currencyDecimals: 3,
@@ -312,6 +313,9 @@ function applyNonDisplay(
 			config.shortcut = shortcut.toLowerCase() === "alt+a" ? DEFAULT_CONFIG.shortcut : shortcut;
 		} else warnings.push("Shortcut cannot be empty");
 	} else if ("shortcut" in input) warnings.push("shortcut must be a string");
+	// Unlike `shortcut`, an empty value is valid: it clears the optional binding.
+	if (typeof input.toggleShortcut === "string") config.toggleShortcut = input.toggleShortcut.trim();
+	else if ("toggleShortcut" in input) warnings.push("toggleShortcut must be a string");
 
 	applyContextThresholds(input, config, warnings);
 

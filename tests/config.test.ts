@@ -22,6 +22,18 @@ describe("configuration validation", () => {
 		}
 	});
 
+	it("parses the optional sidebar toggle shortcut", () => {
+		expect(DEFAULT_CONFIG.toggleShortcut).toBe("");
+		expect(validateConfig({ toggleShortcut: " ctrl+shift+b " }).config.toggleShortcut).toBe("ctrl+shift+b");
+		expect(
+			resolveConfig({ user: { toggleShortcut: "ctrl+shift+b" }, project: { toggleShortcut: "" } }).config
+				.toggleShortcut,
+		).toBe("");
+		const invalid = validateConfig({ toggleShortcut: 1 });
+		expect(invalid.config.toggleShortcut).toBe("");
+		expect(invalid.warnings).toContain("toggleShortcut must be a string");
+	});
+
 	it("keeps legacy Sidebar visibility compatible when no authoritative layout is present", () => {
 		const result = validateConfig({ showSidebarAgent: false, showSidebarTodos: false });
 		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(false);

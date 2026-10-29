@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Add a global **Atelier footer** setting. Turn it off in **Settings** or set `"showFooter": false` to keep Pi's or another extension's footer and composer while still using the Sidebar ([#96](https://github.com/michaelmjhhhh/pi-atelier/issues/96)).
+- Add an optional `toggleShortcut` setting that shows or hides the Sidebar with one key, without opening the Control Center. It is unset by default ([#98](https://github.com/michaelmjhhhh/pi-atelier/issues/98)).
 
 ## 0.16.0 — 2026-10-15
 

@@ -104,6 +104,33 @@ describe("extension registration", () => {
 		await opening;
 	});
 
+	it("toggles the sidebar with the configured toggleShortcut", async () => {
+		const h = harness();
+		await withPersistedUserConfig({ toggleShortcut: "ctrl+shift+b" }, async () => {
+			await start(h);
+		});
+		expect(h.shortcuts).toContain("ctrl+shift+b");
+		await h.shortcutHandlers.get("ctrl+shift+b")?.(h.ctx);
+		expect(h.ctx.ui.notify).toHaveBeenLastCalledWith("Sidebar: Manual · hidden", "info");
+		await h.shortcutHandlers.get("ctrl+shift+b")?.(h.ctx);
+		expect(h.ctx.ui.notify).toHaveBeenLastCalledWith("Sidebar: Manual", "info");
+	});
+
+	it.each(["f6", "ctrl+shift+r", "alt+x"])(
+		"rejects a toggleShortcut that reuses an Atelier key: %s",
+		async (key) => {
+			const h = harness();
+			await withPersistedUserConfig({ shortcut: "alt+x", toggleShortcut: key }, async () => {
+				await start(h);
+			});
+			expect(h.ctx.ui.notify).toHaveBeenCalledWith(
+				`toggleShortcut "${key}" is already an Atelier shortcut`,
+				"warning",
+			);
+			expect(h.shortcuts.filter((registered) => registered === key)).toHaveLength(1);
+		},
+	);
+
 	it("does not install terminal UI outside TUI mode", async () => {
 		const h = harness("print");
 		await start(h);

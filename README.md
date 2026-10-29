@@ -111,6 +111,7 @@ Project settings override user settings, and session changes override both. Font
   "preset": "editorial",
   "nerdFont": true,
   "shortcut": "f6",
+  "toggleShortcut": "",
   "density": "comfortable",
   "contextWarning": 70,
   "contextDanger": 90,
@@ -120,6 +121,8 @@ Project settings override user settings, and session changes override both. Font
   "completionNotifications": true
 }
 ```
+
+`toggleShortcut` binds a key that shows or hides the Sidebar directly, like `/atelier sidebar`. It is empty (no binding) by default; set a key such as `"ctrl+shift+b"` and run `/reload`.
 
 Use **Settings → Display** to reorder or hide status rail segments and sidebar panels. Undo restores the latest Display or Sidebar edit, including a Display Revert. The legacy user settings `showSidebarAgent` and `showSidebarTodos` still apply when `sidebarPanelLayout` is absent.
 
@@ -181,6 +184,7 @@ ignore `progress`. No-color mode uses plain filled/empty blocks.
 | Problem | Fix |
 | --- | --- |
 | Shortcut does nothing | Use `/atelier`, change `shortcut`, then run `/reload`. The default is `f6` on macOS and Windows; media-key keyboards may need Fn+F6. Saved `alt+a` settings resolve to `f6` and Alt+A is no longer registered. Other custom shortcuts add a binding alongside F6. Other extensions or terminal key mappings can still intercept F6. |
+| Editor key stops working | Extension shortcuts take precedence over Pi's built-in keybindings. A `shortcut` or `toggleShortcut` such as `ctrl+b` shadows the editor's cursor-left action. Choose a key Pi does not use, then run `/reload`. |
 | Status rail missing | Use TUI mode, check **Settings → Atelier footer**, and check for another extension's custom footer. |
 | Icons render as boxes | Choose **Settings → Font mode → Plain text**, or select a Nerd Font in your terminal. |
 | Metrics disagree | Token and cost totals cover the session; context usage covers the current model context. |

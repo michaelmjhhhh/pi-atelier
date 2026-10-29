@@ -74,6 +74,8 @@ export interface DisplayValue {
 export interface AtelierConfig extends DisplaySettings {
 	nerdFont: boolean;
 	shortcut: string;
+	/** Optional key that toggles the sidebar directly; empty means no binding. */
+	toggleShortcut: string;
 	contextWarning: number;
 	contextDanger: number;
 	currencyDecimals: number;
