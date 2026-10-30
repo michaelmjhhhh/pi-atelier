@@ -54,6 +54,19 @@ describe("configuration validation", () => {
 		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "todos")?.visible).toBe(false);
 	});
 
+	it("places a panel that a saved Sidebar layout predates next to its product-order neighbour", () => {
+		const saved = ["agent", "activity", "context", "vendor:queue", "workspace", "usage"].map((id) => ({
+			id,
+			visible: true,
+		}));
+		const layout = validateConfig({ sidebarPanelLayout: saved }).config.sidebarPanelLayout;
+		const ids = layout.map((entry) => entry.id);
+		expect(ids.slice(ids.indexOf("context"), ids.indexOf("context") + 2)).toEqual(["context", "prefill"]);
+		expect(ids.indexOf("prefill")).toBeLessThan(ids.indexOf("vendor:queue"));
+		expect(ids.indexOf("vendor:queue")).toBeLessThan(ids.indexOf("workspace"));
+		expect(ids.indexOf("tools")).toBe(ids.length - 1);
+	});
+
 	it("applies named templates atomically before same-layer deviations", () => {
 		const named = validateConfig({ preset: "minimal" });
 		expect(named.config).toMatchObject({ preset: "minimal", density: "compact" });

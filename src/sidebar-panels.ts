@@ -58,6 +58,9 @@ export const DEFAULT_SIDEBAR_PANEL_LAYOUT: SidebarPanelLayout = BUILTIN_SIDEBAR_
 }));
 
 const BUILTIN_IDS = new Set<string>(BUILTIN_SIDEBAR_PANEL_IDS);
+/** Built-in panel ids as plain strings, and their position in product order. */
+const BUILTIN_PANEL_ORDER: readonly string[] = BUILTIN_SIDEBAR_PANEL_IDS;
+const BUILTIN_PANEL_RANKS = new Map<string, number>(BUILTIN_PANEL_ORDER.map((id, index) => [id, index]));
 // Use a strict end-of-input assertion; JavaScript's `$` also matches before a final line terminator.
 const NAMESPACED_ID = /^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*(?![\s\S])/;
 const PANEL_ROLE_VALUES = [
@@ -219,10 +222,11 @@ export function isSidebarPanelRole(value: unknown): value is SidebarPanelRole {
 }
 
 /**
+/**
  * Normalizes persisted layout while retaining valid namespaced IDs that are not
- * currently available. Built-ins omitted by an older config are appended in
- * product order; newly discovered contributed panels are intentionally not
- * appended here and therefore remain hidden until explicitly enabled.
+ * currently available. A built-in that an older config omits joins the built-in it
+ * follows in product order; newly discovered contributed panels are intentionally
+ * not appended here and therefore remain hidden until explicitly enabled.
  */
 export function normalizeSidebarPanelLayout(
 	entries: readonly { id: unknown; visible: boolean }[],
@@ -242,8 +246,24 @@ export function normalizeSidebarPanelLayout(
 		seen.add(entry.id);
 		normalized.push({ id: entry.id, visible: entry.visible });
 	}
+	// A built-in that a saved layout predates joins the built-in beside it in product order, so
+	// Prefill lands after Context instead of below Workspace. A built-in with no listed neighbour
+	// keeps the old behaviour and is appended in product order. Contributed panels hold their place.
 	for (const id of BUILTIN_SIDEBAR_PANEL_IDS) {
-		if (!seen.has(id)) normalized.push({ id, visible: true });
+		if (seen.has(id)) continue;
+		const rank = BUILTIN_PANEL_RANKS.get(id) ?? 0;
+		const before = BUILTIN_PANEL_ORDER[rank - 1];
+		const after = BUILTIN_PANEL_ORDER[rank + 1];
+		const precedingIndex = before === undefined ? -1 : normalized.findIndex((entry) => entry.id === before);
+		const followingIndex = after === undefined ? -1 : normalized.findIndex((entry) => entry.id === after);
+		if (precedingIndex >= 0) {
+			normalized.splice(precedingIndex + 1, 0, { id, visible: true });
+		} else if (followingIndex >= 0) {
+			normalized.splice(followingIndex, 0, { id, visible: true });
+		} else {
+			normalized.push({ id, visible: true });
+		}
+		seen.add(id);
 	}
 	if (!normalized.some((entry) => entry.visible)) {
 		warnings.push("sidebarPanelLayout must include at least one visible panel; restoring agent");
