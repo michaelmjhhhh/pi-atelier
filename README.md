@@ -99,8 +99,9 @@ reading speed, and an estimate of how long until the first token.
 - Present only while prefilling: it appears above 1024 uncached tokens or 300ms of reading, and is
   dropped when generation starts, so it reserves nothing when it is absent. Hide the sidebar and
   there is no prefill UI.
-- Only `openai-completions` endpoints are asked. A provider that rejects the field is warned about
-  once and left alone for the rest of the session.
+- Only `openai-completions` endpoints are asked. Servers ignore request fields they do not know,
+  so a provider that cannot report progress never draws the panel, and no request error turns it
+  off for the rest of the session.
 - Percent counts **uncached** tokens, so a prompt already in the cache shows little or nothing.
 
 ```json

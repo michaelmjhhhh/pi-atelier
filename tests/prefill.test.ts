@@ -136,23 +136,6 @@ describe("prefill tracker", () => {
 		expect(asks(["llama.cpp"], model, undefined)).toBe(false);
 		expect(asks(["llama.cpp"], undefined, stream)).toBe(false);
 	});
-
-	it("stops asking a provider that rejected the field, but not one that failed otherwise", () => {
-		const model = { api: "openai-completions", provider: "llama.cpp" };
-		for (const status of [400, 422]) {
-			const tracker = createPrefillTracker({ providers: ["llama.cpp"] });
-			expect(tracker.noteRequest(model, { stream: true })).toBe(true);
-			expect(tracker.noteResponseFailure(status)).toBe(true);
-			expect(tracker.noteRequest(model, { stream: true })).toBe(false);
-		}
-		// A 404 or 408 says something else went wrong; it must not switch the panel off.
-		for (const status of [404, 408, 500]) {
-			const tracker = createPrefillTracker({ providers: ["llama.cpp"] });
-			tracker.noteRequest(model, { stream: true });
-			expect(tracker.noteResponseFailure(status)).toBe(false);
-			expect(tracker.noteRequest(model, { stream: true })).toBe(true);
-		}
-	});
 });
 
 describe("prefill rows", () => {

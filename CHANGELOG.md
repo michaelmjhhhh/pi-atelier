@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Show a temporary Sidebar **Prefill** panel while a local model is still reading a long prompt: a bar over the uncached prompt tokens, the token counts, the reading speed, and an estimate of how long until the first token. A long prefill used to look exactly like a hang. The panel is present only while prefilling and reserves nothing when it is absent. Configure with `prefillEnabled`, `prefillViews`, and the user-only `prefillProviders` allow-list, or toggle it in Control Center → Settings. The speed rides the `First token` row (`~4s · 3.4k tok/s`) and takes its own row while no estimate is available; it is measured per progress chunk, so it moves while the model reads. Needs Pi 0.99 or newer to report progress; on an older Pi the panel never appears.
+- Show a temporary Sidebar **Prefill** panel while a local model is still reading a long prompt: a bar over the uncached prompt tokens, the token counts, the reading speed, and an estimate of how long until the first token. A long prefill used to look exactly like a hang. The panel is present only while prefilling and reserves nothing when it is absent. Configure with `prefillEnabled`, `prefillViews`, and the user-only `prefillProviders` allow-list, or toggle it in Control Center → Settings. The speed rides the `First token` row (`~4s · 3.4k tok/s`) and takes its own row while no estimate is available; it is measured per progress chunk, so it moves while the model reads. Needs Pi 0.99 or newer to report progress; on an older Pi the panel never appears. A provider that cannot report progress simply never draws the panel, and no request error turns the feature off for the rest of the session.
 
 ## 0.17.0 — 2026-10-29
 

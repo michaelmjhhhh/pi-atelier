@@ -939,13 +939,6 @@ export default function atelierExtension(
 		// The provider is allow-listed and streams: ask it to report prefill progress.
 		return { ...(event.payload as Record<string, unknown>), return_progress: true };
 	});
-	pi.on("after_provider_response", (event, ctx) => {
-		const current = getActiveSession(ctx);
-		if (!current) return;
-		if (!current.prefill.noteResponseFailure(event.status)) return;
-		current.prefillThrottle.cancel();
-		ctx.ui.notify("Prefill progress is off for this provider: it rejected the progress field", "warning");
-	});
 	registerProviderStreamHandler(pi, (event, ctx) => {
 		const current = getActiveSession(ctx);
 		if (!enabled || !current) return;

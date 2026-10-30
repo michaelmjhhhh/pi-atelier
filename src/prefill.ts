@@ -44,10 +44,8 @@ export const SIDEBAR_PREFILL_VIEWS: readonly PrefillView[] = ["percent", "tokens
 
 export interface PrefillTracker {
 	noteRequest(model: PrefillModel | undefined, payload: unknown): boolean;
-	/** Returns true when this failure newly disables injection for the provider. */
-	noteResponseFailure(status: number): boolean;
 	noteChunk(data: unknown): PrefillSnapshot | undefined;
-	/** Drop progress without touching the provider allow-list: a run ended by other means. */
+	/** Drop the progress of the current request: a run ended by other means. */
 	clear(): void;
 	getSnapshot(): PrefillSnapshot | undefined;
 }
@@ -138,6 +136,13 @@ function readProgress(data: unknown): PromptProgress | undefined {
 	return progress;
 }
 
+/**
+ * Which providers get `return_progress` added to their request body. OpenAI-compatible
+ * servers ignore unknown body fields, so a server that cannot report progress never sends
+ * `prompt_progress` chunks and the panel stays absent. No status code disables a provider:
+ * llama.cpp answers 400 when a prompt exceeds its context size, which says nothing about
+ * the field.
+ */
 export function createPrefillTracker(options: PrefillTrackerOptions): PrefillTracker {
 	const now = options.now ?? Date.now;
 	const providers = new Set(
@@ -149,8 +154,6 @@ export function createPrefillTracker(options: PrefillTrackerOptions): PrefillTra
 	let firstSeenAt = 0;
 	let assessed = false;
 	let tracking = false;
-	let requestedProvider: string | undefined;
-	const rejectedProviders = new Set<string>();
 
 	const reset = (): void => {
 		snapshot = undefined;
@@ -164,23 +167,12 @@ export function createPrefillTracker(options: PrefillTrackerOptions): PrefillTra
 	return {
 		noteRequest(model, payload): boolean {
 			reset();
-			requestedProvider = undefined;
 			if (typeof model?.provider !== "string") return false;
 			if (model.api !== OPENAI_COMPLETIONS_API) return false;
 			const provider = model.provider.trim().toLowerCase();
 			if (!providers.has(provider)) return false;
-			if (rejectedProviders.has(provider)) return false;
 			if (!isRecord(payload)) return false;
 			if (payload.stream === false) return false;
-			requestedProvider = provider;
-			return true;
-		},
-		noteResponseFailure(status): boolean {
-			// Only a validation-shaped rejection says "that field is not for me". A 408 or a 404 says
-			// something else went wrong, and must not switch the panel off for the whole session.
-			if (requestedProvider === undefined || (status !== 400 && status !== 422)) return false;
-			if (rejectedProviders.has(requestedProvider)) return false;
-			rejectedProviders.add(requestedProvider);
 			return true;
 		},
 		noteChunk(data: unknown): PrefillSnapshot | undefined {
