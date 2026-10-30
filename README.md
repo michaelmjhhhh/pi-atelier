@@ -120,7 +120,10 @@ reading speed, and an estimate of how long until the first token.
 ```
 
 `prefillViews` accepts `percent`, `tokens`, `eta`, and `rate`. `prefillProviders` is user-only and
-read at session start; `[]` asks no provider. Progress reporting needs Pi 0.99 or newer.
+read at session start; `[]` asks no provider. Each entry must equal the provider id of the model you
+run, so the default `llama.cpp` covers only Pi's built-in llama extension: a pi-llama-swap model uses
+its instance id, such as `llama-swap-tre`. Matching ignores case and surrounding spaces. Progress
+reporting needs Pi 0.99 or newer.
 
 ### Status rail presets
 
@@ -165,7 +168,7 @@ Project settings override user settings, and session changes override both. Font
 
 `sidebarWidth` is the sidebar width in columns when a session starts, from 28 through 72. The sidebar still narrows when the terminal leaves less than 64 columns for the main pane.
 
-Use **Settings → Display** to reorder or hide status rail segments and sidebar panels. Undo restores the latest Display or Sidebar edit, including a Display Revert. The legacy user settings `showSidebarAgent` and `showSidebarTodos` still apply when `sidebarPanelLayout` is absent.
+Use **Settings → Display** to reorder or hide status rail segments and sidebar panels. Undo restores the latest Display or Sidebar edit, including a Display Revert. The legacy user settings `showSidebarAgent` and `showSidebarTodos` still apply when `sidebarPanelLayout` is absent. A layout you saved before Prefill existed gains that panel next to Context on the next start.
 
 ### Sidebar panels from other extensions
 

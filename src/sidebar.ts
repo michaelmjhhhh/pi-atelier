@@ -41,7 +41,7 @@ export interface SidebarSnapshotInput {
 	runActivity?: RunActivitySnapshot;
 	todos?: readonly NormalizedTodo[];
 	sidebarPanels?: readonly SidebarPanelData[];
-	/** Live prefill progress for the current provider request; absent whenever nothing is prefiling. */
+	/** Live prefill progress for the current provider request; absent whenever nothing is prefilling. */
 	prefill?: PrefillSnapshot;
 }
 
@@ -556,7 +556,7 @@ const DROP_RANK = {
 	activeTool: 75,
 	alerts: 80,
 	todos: 90,
-	/** Transient panel with a row cap: it outranks every permanent panel, so a short terminal
+	/** Transient panel with a row cap: it outranks every optional panel, so a short terminal
 	 * loses Workspace or TODOs before it loses the one thing the user is waiting for. */
 	prefill: 100,
 	required: Number.POSITIVE_INFINITY,
@@ -794,7 +794,7 @@ export function renderSidebarLines(
 					name: "prefill",
 					panel: { id: "prefill", title: "PREFILL", role: "working" },
 					rows,
-					// Transient: the first panel the dock drops when the terminal gets short.
+					// Transient, but the last optional group to go while it is shown.
 					dropRank: DROP_RANK.prefill,
 				},
 			];
