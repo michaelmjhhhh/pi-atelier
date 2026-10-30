@@ -23,6 +23,7 @@ import type { OverlayLifetime } from "../src/overlay-lifecycle.js";
 import {
 	createPrefillThrottle,
 	createPrefillTracker,
+	OPENAI_COMPLETIONS_API,
 	type PrefillThrottle,
 	type PrefillTracker,
 } from "../src/prefill.js";
@@ -94,23 +95,27 @@ export type {
  * registration goes through a narrow local shape. On a Pi that never emits the event the handler
  * simply stays inert. Pi emits it as `{ type, provider, api, model, data }`, where `data` is the
  * raw parsed stream chunk — for `openai-completions` that is the chunk object itself, carrying
- * `prompt_progress` when the request asked for it.
+ * `prompt_progress` when the request asked for it. Pi 0.99 also returns an unsubscribe from `on`,
+ * which the pinned types do not declare.
  */
 interface ProviderStreamEventLike {
+	readonly api?: string;
 	readonly data: unknown;
 }
 
+/** Start listening for provider stream chunks and return the way to stop. */
 function registerProviderStreamHandler(
 	pi: ExtensionAPI,
 	handler: (event: ProviderStreamEventLike, ctx: ExtensionContext) => void,
-): void {
+): () => void {
 	const capable = pi as ExtensionAPI & {
 		on(
 			event: "provider_stream_event",
 			handler: (event: ProviderStreamEventLike, ctx: ExtensionContext) => void,
-		): void;
+		): (() => void) | void;
 	};
-	capable.on("provider_stream_event", handler);
+	const unsubscribe = capable.on("provider_stream_event", handler);
+	return typeof unsubscribe === "function" ? unsubscribe : (): void => undefined;
 }
 
 export interface AtelierExtensionDependencies {
@@ -189,6 +194,8 @@ export default function atelierExtension(
 	const noopRender = (): void => undefined;
 	let activeSession: ActiveSession | undefined;
 	let enabled = true;
+	/** Set while a prefill-annotated request is in flight; `on` gives the unsubscribe on Pi 0.99. */
+	let prefillStreamOff: (() => void) | undefined;
 	let customShortcutsRegistered = false;
 	let lifecycleToken: LifecycleToken = { id: 0 };
 	let initializingSessionManager: ExtensionContext["sessionManager"] | undefined;
@@ -755,6 +762,7 @@ export default function atelierExtension(
 			},
 		});
 		cleanup.push(() => prefillThrottle.cancel());
+		cleanup.push(() => stopListeningForPrefillChunks());
 		let autoCompact: boolean | null = null;
 		try {
 			autoCompact = SettingsManager.create(
@@ -930,28 +938,47 @@ export default function atelierExtension(
 		current.completionNotifier.runStarted();
 		current.runtime.scheduleWorkspacePulseRefresh();
 	});
+	/** Pi awaits a per-chunk emit for every registered handler, so the chunk listener exists only
+	 *  while a request that asked for progress is in flight. */
+	function listenForPrefillChunks(): void {
+		if (prefillStreamOff) return;
+		prefillStreamOff = registerProviderStreamHandler(pi, (event, ctx) => {
+			const current = getActiveSession(ctx);
+			if (!enabled || !current || event.api !== OPENAI_COMPLETIONS_API) return;
+			const wasShowing = current.prefill.getSnapshot() !== undefined;
+			if (current.prefill.noteChunk(event.data)) {
+				current.prefillThrottle.note();
+				return;
+			}
+			// Generation started: the transient panel is gone, so redraw once to drop it.
+			if (wasShowing) {
+				current.prefillThrottle.cancel();
+				current.sidebar.requestRender();
+			}
+		});
+	}
+
+	function stopListeningForPrefillChunks(): void {
+		prefillStreamOff?.();
+		prefillStreamOff = undefined;
+	}
+
 	pi.on("before_provider_request", (event, ctx) => {
 		const current = getActiveSession(ctx);
 		if (!enabled || !current) return;
 		current.runActivity.startResponse();
-		if (!current.runtime.getConfig().prefillEnabled) return;
-		if (!current.prefill.noteRequest(ctx.model, event.payload)) return;
-		// The provider is allow-listed and streams: ask it to report prefill progress.
-		return { ...(event.payload as Record<string, unknown>), return_progress: true };
-	});
-	registerProviderStreamHandler(pi, (event, ctx) => {
-		const current = getActiveSession(ctx);
-		if (!enabled || !current) return;
-		const wasShowing = current.prefill.getSnapshot() !== undefined;
-		if (current.prefill.noteChunk(event.data)) {
-			current.prefillThrottle.note();
+		const config = current.runtime.getConfig();
+		if (!config.prefillEnabled || config.prefillProviders.length === 0) {
+			stopListeningForPrefillChunks();
 			return;
 		}
-		// Generation started: the transient panel is gone, so redraw once to drop it.
-		if (wasShowing) {
-			current.prefillThrottle.cancel();
-			current.sidebar.requestRender();
+		if (!current.prefill.noteRequest(ctx.model, event.payload)) {
+			stopListeningForPrefillChunks();
+			return;
 		}
+		// The provider is allow-listed and streams: ask it to report prefill progress.
+		listenForPrefillChunks();
+		return { ...(event.payload as Record<string, unknown>), return_progress: true };
 	});
 	pi.on("message_update", (event, ctx) => {
 		const current = getActiveSession(ctx);
