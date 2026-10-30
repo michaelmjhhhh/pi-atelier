@@ -30,9 +30,13 @@ export const RENDER_THROTTLE_MS = 120;
 
 export const OPENAI_COMPLETIONS_API = "openai-completions";
 
-/** The subset of Pi's model info prefill needs; declared locally so the pinned Pi types stay untouched. */
+/**
+ * The subset of Pi's model info prefill needs, declared locally so the pinned Pi types stay
+ * untouched. `id` is compared with the model the request body names.
+ */
 export interface PrefillModel {
 	api?: string;
+	id?: string;
 	provider?: string;
 }
 
@@ -173,6 +177,10 @@ export function createPrefillTracker(options: PrefillTrackerOptions): PrefillTra
 			if (!providers.has(provider)) return false;
 			if (!isRecord(payload)) return false;
 			if (payload.stream === false) return false;
+			// Pi reports the selected model, not the one a request ended up with: a virtual
+			// selection routes to another model and an extension may redirect. Inject only into a
+			// body that names the model the allow-list decision was made for.
+			if (payload.model !== model.id) return false;
 			return true;
 		},
 		noteChunk(data: unknown): PrefillSnapshot | undefined {

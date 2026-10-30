@@ -107,7 +107,10 @@ describe("prefill tracker", () => {
 
 	it("starts every provider request from a clean slate", () => {
 		const tracker = prefilled();
-		tracker.noteRequest({ api: "openai-completions", provider: "llama.cpp" }, { stream: true });
+		tracker.noteRequest(
+			{ api: "openai-completions", id: "qwen3.6-27b-q6", provider: "llama.cpp" },
+			{ model: "qwen3.6-27b-q6", stream: true },
+		);
 
 		expect(tracker.getSnapshot()).toBeUndefined();
 		expect(tracker.noteChunk(progress(2_000, 0, 100, 10))?.percent).toBe(0.05);
@@ -121,8 +124,8 @@ describe("prefill tracker", () => {
 	});
 
 	it("asks only allow-listed openai-completions providers for progress", () => {
-		const model = { api: "openai-completions", provider: "llama.cpp" };
-		const stream = { stream: true, messages: [] };
+		const model = { api: "openai-completions", id: "qwen3.6-27b-q6", provider: "llama.cpp" };
+		const stream = { model: "qwen3.6-27b-q6", stream: true, messages: [] };
 		const asks = (providers: readonly string[], model: PrefillModel | undefined, payload: unknown) =>
 			createPrefillTracker({ providers }).noteRequest(model, payload);
 
@@ -135,6 +138,9 @@ describe("prefill tracker", () => {
 		expect(asks(["llama.cpp"], model, { stream: false })).toBe(false);
 		expect(asks(["llama.cpp"], model, undefined)).toBe(false);
 		expect(asks(["llama.cpp"], undefined, stream)).toBe(false);
+		// Pi reports the selected model. A body naming another model, or naming none, gets nothing.
+		expect(asks(["llama.cpp"], model, { ...stream, model: "qwen3.6-27b-q8" })).toBe(false);
+		expect(asks(["llama.cpp"], model, { stream: true })).toBe(false);
 	});
 });
 

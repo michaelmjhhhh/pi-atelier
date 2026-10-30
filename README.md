@@ -102,6 +102,8 @@ reading speed, and an estimate of how long until the first token.
 - Only `openai-completions` endpoints are asked. Servers ignore request fields they do not know,
   so a provider that cannot report progress never draws the panel, and no request error turns it
   off for the rest of the session.
+- The field is added only when the request body names the allow-listed model, so a Pi virtual
+  model or a redirected request is left alone.
 - Percent counts **uncached** tokens, so a prompt already in the cache shows little or nothing.
 
 ```json
