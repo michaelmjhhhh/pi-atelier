@@ -102,7 +102,10 @@ export function createMenuActions(
 	 */
 	const persistPreference = async (
 		patch: Partial<
-			Pick<AtelierConfig, "showSidebarOnStartup" | "completionNotifications" | "nerdFont" | "showFooter">
+			Pick<
+				AtelierConfig,
+				"showSidebarOnStartup" | "completionNotifications" | "nerdFont" | "showFooter" | "prefillEnabled"
+			>
 		>,
 		messages: { saved: string; failed: string },
 		rollback: boolean,
@@ -192,6 +195,15 @@ export function createMenuActions(
 				{
 					saved: `Completion notifications ${enabled ? "enabled" : "disabled"}`,
 					failed: "Completion notifications changed for this session but could not be saved",
+				},
+				false,
+			),
+		setPrefillEnabled: (enabled: boolean): Promise<void> =>
+			persistPreference(
+				{ prefillEnabled: enabled },
+				{
+					saved: `Prefill progress ${enabled ? "enabled" : "disabled"}`,
+					failed: "Prefill progress changed for this session but could not be saved",
 				},
 				false,
 			),
@@ -431,6 +443,11 @@ export async function openAtelierControlCenter(
 					description: "User preference",
 				},
 				{
+					value: "prefill",
+					label: `Prefill progress: ${onOff(config.prefillEnabled)}`,
+					description: "Show how far a local model has read the prompt (user preference)",
+				},
+				{
 					value: "sidebar-tools",
 					label: `Sidebar tool list: ${sidebar.isToolListExpanded() ? "Expanded" : "Collapsed"}`,
 					description: "User preference",
@@ -460,6 +477,9 @@ export async function openAtelierControlCenter(
 					break;
 				case "notifications":
 					await actions.setCompletionNotifications(!runtime.getConfig().completionNotifications);
+					break;
+				case "prefill":
+					await actions.setPrefillEnabled(!runtime.getConfig().prefillEnabled);
 					break;
 				case "sidebar-tools":
 					await sidebar.toggleToolList();

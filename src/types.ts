@@ -1,8 +1,10 @@
 import type { DENSITIES, PRODUCT_SEGMENT_ORDER, TEMPLATE_NAMES } from "./display.js";
 import type { BUILTIN_SIDEBAR_PANEL_IDS } from "./sidebar-panels.js";
+import type { PrefillView } from "./prefill.js";
 import type { SubagentUsageSnapshot } from "./subagent-usage.js";
 import type { WorkspacePulseData } from "./workspace-pulse.js";
 
+export type { PrefillView };
 export type TemplateName = (typeof TEMPLATE_NAMES)[number];
 export type PresetName = TemplateName | "custom";
 export type ActivityState = "ready" | "working";
@@ -86,6 +88,11 @@ export interface AtelierConfig extends DisplaySettings {
 	sidebarPanelLayout: SidebarPanelLayout;
 	completionNotifications: boolean;
 	showFooter: boolean;
+	prefillEnabled: boolean;
+	/** Which prefill numbers the PREFILL panel shows; the bar itself is always drawn. */
+	prefillViews: readonly PrefillView[];
+	/** Providers allowed to have `return_progress` injected into their request body. */
+	prefillProviders: readonly string[];
 }
 
 export interface AtelierMetrics {

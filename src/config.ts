@@ -11,6 +11,7 @@ import {
 	normalizeSegmentLayout,
 	PRODUCT_SEGMENT_ORDER,
 } from "./display.js";
+import { SIDEBAR_PREFILL_VIEWS } from "./prefill.js";
 import { DEFAULT_SIDEBAR_PANEL_LAYOUT, normalizeSidebarPanelLayout } from "./sidebar-panels.js";
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "./split-pane.js";
 import { clamp, errorMessage, isRecord } from "./text.js";
@@ -24,6 +25,7 @@ import type {
 	SegmentId,
 	SegmentLayout,
 	SidebarPanelLayout,
+	PrefillView,
 } from "./types.js";
 
 export const MAX_CURRENCY_DECIMALS = 6;
@@ -42,6 +44,9 @@ export const DEFAULT_CONFIG: AtelierConfig = {
 	sidebarPanelLayout: cloneLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT),
 	completionNotifications: true,
 	showFooter: true,
+	prefillEnabled: true,
+	prefillViews: SIDEBAR_PREFILL_VIEWS,
+	prefillProviders: ["llama.cpp"],
 };
 
 export interface ConfigLoadResult {
@@ -72,6 +77,10 @@ const USER_ONLY_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 const isEnoent = (error: unknown): boolean => (error as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
+
+/** Views PREFILL accepts: the same set the dock can show, since every view now has a place to
+ *  render. The bar is the panel's own meter and is never configured away. */
+const PREFILL_VIEWS: readonly string[] = SIDEBAR_PREFILL_VIEWS;
 
 const invalidEnum = (name: string, value: unknown): string =>
 	typeof value === "string" ? `Unknown ${name}: ${value}` : `${name} must be a string`;
@@ -358,6 +367,42 @@ function applyNonDisplay(
 	}
 	for (const key of ["showSidebarAgent", "showSidebarTodos"] as const) {
 		if (key in input && typeof input[key] !== "boolean") warnings.push(`${key} must be boolean`);
+	}
+	applyPrefill(input, config, warnings, userLayer);
+}
+
+function applyPrefill(
+	input: Record<string, unknown>,
+	config: AtelierConfig,
+	warnings: string[],
+	userLayer: boolean,
+): void {
+	if (typeof input.prefillEnabled === "boolean") config.prefillEnabled = input.prefillEnabled;
+	else if ("prefillEnabled" in input) warnings.push("prefillEnabled must be boolean");
+
+	if ("prefillViews" in input) {
+		if (!Array.isArray(input.prefillViews)) {
+			warnings.push("prefillViews must be an array");
+		} else {
+			const views: PrefillView[] = [];
+			for (const view of input.prefillViews) {
+				if (typeof view === "string" && PREFILL_VIEWS.includes(view)) views.push(view as PrefillView);
+				else warnings.push(invalidEnum("prefillViews", view));
+			}
+			config.prefillViews = views;
+		}
+	}
+
+	// Which providers get a field injected into their request body is a global decision:
+	// a project or session layer may not widen what the user allows.
+	if ("prefillProviders" in input) {
+		if (!Array.isArray(input.prefillProviders)) {
+			warnings.push("prefillProviders must be an array");
+		} else if (userLayer) {
+			config.prefillProviders = input.prefillProviders.filter(
+				(provider): provider is string => typeof provider === "string" && provider.trim().length > 0,
+			);
+		}
 	}
 }
 

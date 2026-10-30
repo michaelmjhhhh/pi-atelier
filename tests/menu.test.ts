@@ -149,6 +149,7 @@ describe("Control Center presentation", () => {
 				"Atelier footer: On",
 				"Sidebar on startup: On",
 				"Completion notifications: On",
+				"Prefill progress: On",
 				"Sidebar tool list: Collapsed",
 				"Back",
 			],

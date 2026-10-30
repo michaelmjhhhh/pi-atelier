@@ -56,6 +56,7 @@ Plain text mode works with any monospace font and keeps colors, metrics, and the
 | **Live activity** | Agent and tool activity, TODOs, response timing, and completion notifications on macOS and Windows. |
 | **Workspace context** | Workspace identity and read-only Git status next to your session. |
 | **Subagent costs** | Colored per-child cost curves from pi-subagents accounting events, with matching legends and real observation markers. `/atelier usage` opens a larger framed graph with keyboard focus and per-reply costs. Kitty-compatible terminals get native graphics; others get text strokes. |
+| **Prefill progress** | While a local model is still reading a long prompt, a temporary sidebar panel shows how far through the prompt it is, how fast it is reading, and how long until the first token. |
 | **Personalization** | Display presets, configurable segments and panels, optional Nerd Font icons, and model and tool controls. |
 | **Extensible sidebar** | Other extensions can add their own panels. See [Sidebar panels from other extensions](#sidebar-panels-from-other-extensions). |
 
@@ -88,6 +89,31 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 - Mode and visibility are session-scoped. The startup visibility preference is set in Settings.
 - The TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension. Hidden TODO results keep their full output.
 
+### Prefill progress
+
+A long prompt against a local model looks exactly like a hang. When a request streams to an
+allow-listed provider, Pi Atelier asks it for prefill progress and shows a temporary **Prefill**
+panel between Context and Workspace: a bar over the uncached prompt tokens, the token counts, the
+reading speed, and an estimate of how long until the first token.
+
+- Present only while prefilling: it appears above 1024 uncached tokens or 300ms of reading, and is
+  dropped when generation starts, so it reserves nothing when it is absent. Hide the sidebar and
+  there is no prefill UI.
+- Only `openai-completions` endpoints are asked. A provider that rejects the field is warned about
+  once and left alone for the rest of the session.
+- Percent counts **uncached** tokens, so a prompt already in the cache shows little or nothing.
+
+```json
+{
+  "prefillEnabled": true,
+  "prefillViews": ["percent", "tokens", "eta", "rate"],
+  "prefillProviders": ["llama.cpp"]
+}
+```
+
+`prefillViews` accepts `percent`, `tokens`, `eta`, and `rate`. `prefillProviders` is user-only and
+read at session start; `[]` asks no provider. Progress reporting needs Pi 0.99 or newer.
+
 ### Status rail presets
 
 | Preset | Layout |
@@ -105,7 +131,7 @@ Pi supports one custom footer and one custom editor at a time. Extension load or
 | User | `~/.pi/agent/pi-atelier.json` |
 | Project (trusted only) | `<project>/.pi/pi-atelier.json` |
 
-Project settings override user settings, and session changes override both. Font mode, footer, sidebar startup, sidebar width, and notification preferences are user-only.
+Project settings override user settings, and session changes override both. Font mode, footer, sidebar startup, sidebar width, notification preferences, and the prefill provider allow-list are user-only.
 
 ```json
 {
@@ -120,7 +146,10 @@ Project settings override user settings, and session changes override both. Font
   "showSidebarOnStartup": true,
   "sidebarWidth": 44,
   "showSidebarToolNames": false,
-  "completionNotifications": true
+  "completionNotifications": true,
+  "prefillEnabled": true,
+  "prefillViews": ["percent", "tokens", "eta", "rate"],
+  "prefillProviders": ["llama.cpp"]
 }
 ```
 
