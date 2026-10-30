@@ -104,6 +104,9 @@ reading speed, and an estimate of how long until the first token.
   off for the rest of the session.
 - The field is added only when the request body names the allow-listed model, so a Pi virtual
   model or a redirected request is left alone.
+- An allow-list entry is a provider id: `llama.cpp` for Pi's built-in llama extension, or the
+  llama-swap instance id for pi-llama-swap. A proxy forwards the field to whatever server runs
+  behind it, so progress appears only when that upstream reports it.
 - Percent counts **uncached** tokens, so a prompt already in the cache shows little or nothing.
 - Speed is measured between progress chunks, and the first sample counts only uncached tokens, so a
   warm prompt does not report a false speed.
