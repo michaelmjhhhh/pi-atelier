@@ -57,6 +57,16 @@ describe("prefill tracker", () => {
 		expect(receipt?.etaSec).toBeCloseTo(1.9792, 4);
 	});
 
+	it("keeps the cached prefix out of the first rate", () => {
+		const tracker = createPrefillTracker({ providers: ["llama.cpp"] });
+		const first = tracker.noteChunk(progress(21_024, 19_000, 19_500, 100));
+
+		// 500 uncached tokens read in 100ms. The 19000 cached ones are not read work.
+		expect(first?.uncachedProcessed).toBe(500);
+		expect(first?.ratePerSec).toBe(5_000);
+		expect(first?.etaSec).toBeCloseTo(0.3048, 4);
+	});
+
 	it("measures progress against uncached tokens, not the whole prompt", () => {
 		let now = 1_000;
 		const tracker = createPrefillTracker({ providers: ["llama.cpp"], now: () => now });

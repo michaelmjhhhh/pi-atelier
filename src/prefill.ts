@@ -202,6 +202,9 @@ export function createPrefillTracker(options: PrefillTrackerOptions): PrefillTra
 				assessed = true;
 				firstSeenAt = now();
 				if (uncachedTotal > SIGNIFICANT_TOKENS) tracking = true;
+				// The first chunk already counts the cached prefix. Seeding the delta base with the
+				// cache keeps those tokens out of the first rate and the first ETA.
+				previousProcessed = cache;
 			} else if (!tracking && now() - firstSeenAt > SIGNIFICANT_MS) {
 				tracking = true;
 			}

@@ -105,6 +105,8 @@ reading speed, and an estimate of how long until the first token.
 - The field is added only when the request body names the allow-listed model, so a Pi virtual
   model or a redirected request is left alone.
 - Percent counts **uncached** tokens, so a prompt already in the cache shows little or nothing.
+- Speed is measured between progress chunks, and the first sample counts only uncached tokens, so a
+  warm prompt does not report a false speed.
 
 ```json
 {
