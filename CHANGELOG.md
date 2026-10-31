@@ -9,6 +9,7 @@
 - Keep a red `× ERROR` activity state when a run ends in a provider error instead of resetting to ready. Tool failures and user aborts still settle to ready.
 - Stop replacing `todo` results with `N/M done · see sidebar` while the TODO panel is visible. The agent now receives the full result, including task ids, `list` output, and refused updates ([#103](https://github.com/michaelmjhhhh/pi-atelier/issues/103)).
 - Stop overstating response TPS. The tokens in the first streamed chunk no longer count toward the rate, and a generation window shorter than 500ms shows no TPS, because chunks that arrive in one batch say nothing about decode speed ([#106](https://github.com/michaelmjhhhh/pi-atelier/issues/106)).
+- Internal: update development dependencies to resolve audit findings (vitest 4.1.12; overrides for undici, glob, minimatch, and zod under Pi 0.84.0). Pi 0.84.0 remains the minimum supported and tested version.
 
 ## 0.17.0 — 2026-10-29
 
