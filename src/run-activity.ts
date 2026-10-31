@@ -217,6 +217,8 @@ export function createRunActivityTracker(options: RunActivityTrackerOptions): Ru
 			const response = state.response;
 			state.response = undefined;
 			if (response?.firstTokenAt === undefined || !state.performance) return;
+			// Without final usage, such as an aborted response, the streamed estimate stands.
+			if (!Number.isFinite(outputTokens) || outputTokens <= 0) return;
 			const ttftMs = state.performance.ttftMs;
 			const generationMs = Date.now() - response.firstTokenAt;
 			// Usage has no per-chunk split, so drop the first chunk's share of the estimated output.
@@ -225,7 +227,7 @@ export function createRunActivityTracker(options: RunActivityTrackerOptions): Ru
 				latestTokens > 0 ? (latestTokens - (response.firstTokens ?? 0)) / latestTokens : 0;
 			const generatedTokens = outputTokens * generatedShare;
 			state.performance =
-				Number.isFinite(generatedTokens) && generatedTokens > 0 && generationMs >= MIN_GENERATION_WINDOW_MS
+				generatedTokens > 0 && generationMs >= MIN_GENERATION_WINDOW_MS
 					? { ttftMs, tokensPerSecond: generatedTokens / (generationMs / 1_000) }
 					: { ttftMs };
 			notify();

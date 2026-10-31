@@ -77,6 +77,18 @@ describe("run activity tracker transitions", () => {
 		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 2_000 });
 	});
 
+	it("keeps the streamed estimate when final usage is missing", () => {
+		const tracker = createRunActivityTracker({ cwd: "/repo" });
+		vi.setSystemTime(1_000);
+		tracker.startResponse();
+		vi.setSystemTime(1_500);
+		tracker.updateResponseEstimate(10);
+		vi.setSystemTime(2_500);
+		tracker.updateResponseEstimate(30);
+		tracker.finishResponse(0);
+		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 500, tokensPerSecond: 20, estimated: true });
+	});
+
 	it("clears prior response performance at the next provider request", () => {
 		const tracker = createRunActivityTracker({ cwd: "/repo" });
 		vi.setSystemTime(0);
