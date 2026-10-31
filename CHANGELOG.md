@@ -7,6 +7,7 @@
 - Prefill asks only `openai-completions` providers on the allow-list, and only when the request body names the allow-listed model, so a Pi virtual model or a redirected request is left alone. A chunk listener exists only while such a request is in flight. A provider that cannot report progress simply never draws the panel, and no request error turns the feature off for the rest of the session: llama.cpp answers 400 when a prompt exceeds its context size, which says nothing about the progress field.
 - A Sidebar layout saved before Prefill existed gains the Prefill panel next to Context instead of at the bottom. A built-in panel that a saved layout predates joins the built-in beside it, and contributed panels keep the position you gave them.
 - Keep a red `× ERROR` activity state when a run ends in a provider error instead of resetting to ready. Tool failures and user aborts still settle to ready.
+- Stop replacing `todo` results with `N/M done · see sidebar` while the TODO panel is visible. The agent now receives the full result, including task ids, `list` output, and refused updates ([#103](https://github.com/michaelmjhhhh/pi-atelier/issues/103)).
 
 ## 0.17.0 — 2026-10-29
 

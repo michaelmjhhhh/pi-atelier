@@ -1012,17 +1012,9 @@ export default function atelierExtension(
 		if (!current || event.isError) return;
 		const todos = todosFromDetails(event.details);
 		if (!todos) return;
-		// Keep state updates independent from whether the TODO panel is currently presented.
+		// Leave the result content untouched: it is what the model reads, including task ids.
 		current.todos = todos;
-		const sidebarVisible = current.sidebar.isVisible();
 		current.sidebar.requestRender();
-		const todoPanelVisible = current.runtime
-			.getConfig()
-			.sidebarPanelLayout.some((entry) => entry.id === "todos" && entry.visible);
-		// The sidebar shows the list, so collapse the tool output to a summary.
-		if (!todoPanelVisible || !sidebarVisible || todos.length === 0) return;
-		const done = todos.filter((todo) => todo.status === "completed").length;
-		return { content: [{ type: "text", text: `${done}/${todos.length} done · see sidebar` }] };
 	});
 	pi.on("agent_settled", (_event, ctx) => {
 		const current = getActiveSession(ctx);

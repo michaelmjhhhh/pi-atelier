@@ -21,7 +21,7 @@ describe("tool_result handler for todos", () => {
 				],
 				nextId: 3,
 			},
-			summary: "1/2 done · see sidebar",
+			texts: ["Done task", "Pending task"],
 		},
 		{
 			name: "new format tasks",
@@ -33,9 +33,9 @@ describe("tool_result handler for todos", () => {
 				],
 				nextId: 4,
 			},
-			summary: "1/3 done · see sidebar",
+			texts: ["Done", "Working", "Pending"],
 		},
-	])("collapses $name when sidebar is visible", async ({ details, summary }) => {
+	])("keeps $name result content for the model and updates the sidebar", async ({ details, texts }) => {
 		const h = harness();
 		await start(h);
 		await command(h, "sidebar on");
@@ -43,7 +43,9 @@ describe("tool_result handler for todos", () => {
 		const toolResultHandler = h.handler("tool_result");
 		const result = await toolResultHandler({ toolName: "todo", details }, h.ctx);
 
-		expect(result).toEqual({ content: [{ type: "text", text: summary }] });
+		expect(result).toBeUndefined();
+		const sidebarText = renderOverlayText(h, h.overlays.length - 1, 44);
+		for (const text of texts) expect(sidebarText).toContain(text);
 	});
 
 	it("preserves cached todos for error and malformed results", async () => {

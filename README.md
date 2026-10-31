@@ -87,7 +87,7 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 - The preferred width survives terminal resizes and mode changes.
 - A confirmed resize is saved as `sidebarWidth` and becomes the starting width for new sessions. Escape keeps the saved width.
 - Mode and visibility are session-scoped. The startup visibility preference is set in Settings.
-- The TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension. Hidden TODO results keep their full output.
+- The TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension. Atelier does not change `todo` results, so the agent keeps task ids and `list` output.
 
 ### Prefill progress
 
