@@ -43,11 +43,11 @@ describe("run activity tracker transitions", () => {
 		vi.setSystemTime(1_000);
 		tracker.startResponse();
 		vi.setSystemTime(1_800);
-		tracker.updateResponseEstimate(1);
+		tracker.updateResponseEstimate(20);
 		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 800 });
 
 		vi.setSystemTime(2_800);
-		tracker.updateResponseEstimate(40);
+		tracker.updateResponseEstimate(60);
 		expect(tracker.getSnapshot().performance).toEqual({
 			ttftMs: 800,
 			tokensPerSecond: 40,
@@ -55,8 +55,26 @@ describe("run activity tracker transitions", () => {
 		});
 
 		vi.setSystemTime(4_300);
-		tracker.finishResponse(120);
-		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 800, tokensPerSecond: 48 });
+		tracker.updateResponseEstimate(100);
+		// The first chunk holds 20% of the estimated output, so 100 of 125 tokens fall in the 2.5s window.
+		tracker.finishResponse(125);
+		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 800, tokensPerSecond: 40 });
+	});
+
+	it("reports no TPS when chunks arrive inside a short burst", () => {
+		const tracker = createRunActivityTracker({ cwd: "/repo" });
+		vi.setSystemTime(1_000);
+		tracker.startResponse();
+		vi.setSystemTime(3_000);
+		tracker.updateResponseEstimate(10);
+		vi.setSystemTime(3_050);
+		tracker.updateResponseEstimate(300);
+		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 2_000 });
+
+		vi.setSystemTime(3_100);
+		tracker.updateResponseEstimate(330);
+		tracker.finishResponse(330);
+		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 2_000 });
 	});
 
 	it("clears prior response performance at the next provider request", () => {
@@ -96,10 +114,11 @@ describe("run activity tracker transitions", () => {
 		vi.setSystemTime(1_000);
 		tracker.startResponse();
 		vi.setSystemTime(1_100);
-		tracker.updateResponseEstimate(1);
+		tracker.updateResponseEstimate(2);
 		vi.setSystemTime(2_100);
+		tracker.updateResponseEstimate(10);
 		tracker.finishResponse(20);
-		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 100, tokensPerSecond: 20 });
+		expect(tracker.getSnapshot().performance).toEqual({ ttftMs: 100, tokensPerSecond: 16 });
 	});
 
 	it("keeps TTFT without inventing TPS when final usage or generation duration is invalid", () => {

@@ -175,7 +175,7 @@ describe("extension activity", () => {
 		vi.setSystemTime(2_920);
 		await h.dispatch("message_update", {
 			type: "message_update",
-			message: { role: "assistant", content: [{ type: "text", text: "x".repeat(80) }] },
+			message: { role: "assistant", content: [{ type: "text", text: "x".repeat(88) }] },
 			assistantMessageEvent: { type: "text_delta", delta: "more output" },
 		});
 		expect(footer.render(160).join("\n")).toContain("\uf017 820ms  \uf0e7 ~20.0/s");
@@ -184,10 +184,11 @@ describe("extension activity", () => {
 		vi.setSystemTime(4_420);
 		await h.dispatch("message_end", {
 			type: "message_end",
-			message: { role: "assistant", usage: { output: 120 } },
+			message: { role: "assistant", usage: { output: 110 } },
 		});
-		expect(footer.render(160).join("\n")).toContain("\uf017 820ms  \uf0e7 48.0/s");
-		expect(renderOverlayText(h)).toMatch(/Output speed\s+48\.0 tok\/s/);
+		// The first chunk holds 2 of 22 estimated tokens, so 100 of 110 fall in the 2.5s window.
+		expect(footer.render(160).join("\n")).toContain("\uf017 820ms  \uf0e7 40.0/s");
+		expect(renderOverlayText(h)).toMatch(/Output speed\s+40\.0 tok\/s/);
 		workspace.handleInput("\u001b");
 		await opening;
 	});

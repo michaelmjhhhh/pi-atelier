@@ -48,6 +48,8 @@ export interface RunActivityTrackerOptions {
 
 const MAX_SUMMARY_COLUMNS = 26;
 const MAX_RECENT_TOOLS = 3;
+/** Shorter generation windows are mostly chunk batching, so they report no TPS. */
+const MIN_GENERATION_WINDOW_MS = 500;
 
 export const EMPTY_RUN_ACTIVITY: RunActivitySnapshot = Object.freeze({
 	phase: "idle",
@@ -115,13 +117,21 @@ export function summarizeTool(toolName: string, args: unknown, cwd: string): str
 	}
 }
 
+interface InFlightResponse {
+	requestedAt: number;
+	firstTokenAt?: number;
+	/** Estimated tokens in the first observed chunk; their generation time precedes `firstTokenAt`. */
+	firstTokens?: number;
+	latestTokens?: number;
+}
+
 interface TrackerState {
 	phase: RunActivitySnapshot["phase"];
 	turnNumber: number | undefined;
 	startedAt: number | undefined;
 	durationMs: number | undefined;
 	/** In-flight provider request; performance exists once the first token arrives. */
-	response: { requestedAt: number; firstTokenAt?: number } | undefined;
+	response: InFlightResponse | undefined;
 	performance: ResponsePerformance | undefined;
 	activeTools: Map<string, ToolActivity>;
 	recentTools: ToolActivity[];
@@ -185,31 +195,39 @@ export function createRunActivityTracker(options: RunActivityTrackerOptions): Ru
 			const response = state.response;
 			if (!response || !Number.isFinite(estimatedOutputTokens) || estimatedOutputTokens <= 0) return;
 			const observedAt = Date.now();
+			response.latestTokens = estimatedOutputTokens;
 			if (response.firstTokenAt === undefined) {
 				response.firstTokenAt = observedAt;
+				response.firstTokens = estimatedOutputTokens;
 				state.performance = { ttftMs: Math.max(0, observedAt - response.requestedAt) };
 				notify();
 				return;
 			}
 			const generationMs = observedAt - response.firstTokenAt;
-			if (generationMs <= 0 || !state.performance) return;
+			const generatedTokens = estimatedOutputTokens - (response.firstTokens ?? 0);
+			if (generationMs < MIN_GENERATION_WINDOW_MS || generatedTokens <= 0 || !state.performance) return;
 			state.performance = {
 				ttftMs: state.performance.ttftMs,
-				tokensPerSecond: estimatedOutputTokens / (generationMs / 1_000),
+				tokensPerSecond: generatedTokens / (generationMs / 1_000),
 				estimated: true,
 			};
 			notify();
 		},
 		finishResponse(outputTokens) {
-			const firstTokenAt = state.response?.firstTokenAt;
+			const response = state.response;
 			state.response = undefined;
-			if (firstTokenAt === undefined || !state.performance) return;
-			const generationMs = Date.now() - firstTokenAt;
-			if (!Number.isFinite(outputTokens) || outputTokens <= 0 || generationMs <= 0) return;
-			state.performance = {
-				ttftMs: state.performance.ttftMs,
-				tokensPerSecond: outputTokens / (generationMs / 1_000),
-			};
+			if (response?.firstTokenAt === undefined || !state.performance) return;
+			const ttftMs = state.performance.ttftMs;
+			const generationMs = Date.now() - response.firstTokenAt;
+			// Usage has no per-chunk split, so drop the first chunk's share of the estimated output.
+			const latestTokens = response.latestTokens ?? 0;
+			const generatedShare =
+				latestTokens > 0 ? (latestTokens - (response.firstTokens ?? 0)) / latestTokens : 0;
+			const generatedTokens = outputTokens * generatedShare;
+			state.performance =
+				Number.isFinite(generatedTokens) && generatedTokens > 0 && generationMs >= MIN_GENERATION_WINDOW_MS
+					? { ttftMs, tokensPerSecond: generatedTokens / (generationMs / 1_000) }
+					: { ttftMs };
 			notify();
 		},
 		startTool(event) {
