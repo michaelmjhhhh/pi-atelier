@@ -222,7 +222,6 @@ export function isSidebarPanelRole(value: unknown): value is SidebarPanelRole {
 }
 
 /**
-/**
  * Normalizes persisted layout while retaining valid namespaced IDs that are not
  * currently available. A built-in that an older config omits joins the built-in it
  * follows in product order; newly discovered contributed panels are intentionally
