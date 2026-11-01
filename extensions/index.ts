@@ -15,6 +15,7 @@ import {
 	type SpawnNotificationProcess,
 } from "../src/completion-notifier.js";
 import { DEFAULT_CONFIG, loadConfig, saveUserConfigPatch } from "../src/config.js";
+import { isReservedShortcut, keyIdentity } from "../src/shortcuts.js";
 import { AtelierEditor } from "../src/editor.js";
 import { type AtelierFooterComponent, createFooterComponent } from "../src/footer.js";
 import { createImageCompositorBinding } from "../src/image-compositor.js";
@@ -162,13 +163,6 @@ interface LifecycleToken {
 
 const NOT_ACTIVE = "Pi Atelier is not active in this session";
 const RESIZE_SHORTCUT = "ctrl+shift+r";
-
-/** Pi matches modifiers in any order, so `shift+ctrl+r` and `ctrl+shift+r` are the same key. */
-const keyIdentity = (key: string): string => {
-	const parts = key.toLowerCase().split("+");
-	const last = parts.pop() ?? "";
-	return [...parts.sort(), last].join("+");
-};
 
 const userConfigPath = (): string => join(getAgentDir(), "pi-atelier.json");
 
@@ -691,23 +685,24 @@ export default function atelierExtension(
 		description: "Open Pi Atelier",
 		handler: async (shortcutContext) => openMenu(shortcutContext),
 	});
+	const resizeSidebar = (shortcutContext: ExtensionContext): void => {
+		const current = getActiveSession(shortcutContext);
+		if (!current?.sidebar.getStatus().enabled) {
+			shortcutContext.ui.notify("Show the Pi Atelier sidebar before resizing it", "warning");
+			return;
+		}
+		current.sidebar.beginResize();
+	};
 	pi.registerShortcut(RESIZE_SHORTCUT, {
 		description: "Resize Pi Atelier sidebar",
-		handler: (shortcutContext) => {
-			const current = getActiveSession(shortcutContext);
-			if (!current?.sidebar.getStatus().enabled) {
-				shortcutContext.ui.notify("Show the Pi Atelier sidebar before resizing it", "warning");
-				return;
-			}
-			current.sidebar.beginResize();
-		},
+		handler: resizeSidebar,
 	});
 
 	/** Configured shortcuts are read from the first loaded config; Pi cannot unregister shortcuts. */
 	function registerCustomShortcuts(ctx: ExtensionContext, config: AtelierConfig): void {
 		if (customShortcutsRegistered) return;
 		customShortcutsRegistered = true;
-		const { shortcut, toggleShortcut } = config;
+		const { shortcut, toggleShortcut, resizeShortcut } = config;
 		if (shortcut.toLowerCase() !== DEFAULT_CONFIG.shortcut) {
 			try {
 				pi.registerShortcut(shortcut as KeyId, {
@@ -721,9 +716,18 @@ export default function atelierExtension(
 				);
 			}
 		}
+		if (keyIdentity(resizeShortcut) !== keyIdentity(RESIZE_SHORTCUT)) {
+			if (isReservedShortcut(resizeShortcut, [DEFAULT_CONFIG.shortcut, shortcut])) {
+				ctx.ui.notify(`resizeShortcut "${resizeShortcut}" is already an Atelier shortcut`, "warning");
+			} else {
+				pi.registerShortcut(resizeShortcut as KeyId, {
+					description: "Resize Pi Atelier sidebar",
+					handler: resizeSidebar,
+				});
+			}
+		}
 		if (!toggleShortcut) return;
-		const reservedKeys = [DEFAULT_CONFIG.shortcut, shortcut, RESIZE_SHORTCUT].map(keyIdentity);
-		if (reservedKeys.includes(keyIdentity(toggleShortcut))) {
+		if (isReservedShortcut(toggleShortcut, [DEFAULT_CONFIG.shortcut, shortcut, resizeShortcut])) {
 			ctx.ui.notify(`toggleShortcut "${toggleShortcut}" is already an Atelier shortcut`, "warning");
 			return;
 		}

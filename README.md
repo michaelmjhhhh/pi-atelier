@@ -149,6 +149,7 @@ Project settings override user settings, and session changes override both. Font
   "preset": "editorial",
   "nerdFont": false,
   "shortcut": "f6",
+  "resizeShortcut": "ctrl+shift+r",
   "toggleShortcut": "",
   "density": "comfortable",
   "contextWarning": 70,
@@ -164,7 +165,9 @@ Project settings override user settings, and session changes override both. Font
 }
 ```
 
-`toggleShortcut` binds a key that shows or hides the Sidebar directly, like `/atelier sidebar`. It is empty (no binding) by default; set a key such as `"ctrl+shift+b"` and run `/reload`.
+`resizeShortcut` changes the Sidebar resize key; it defaults to `ctrl+shift+r`. A blank value warns and keeps that default. Keys matching `shortcut` or the built-in `f6` binding are rejected with a warning, and the default resize key remains available. Set an alternative such as `"alt+r"` and run `/reload`.
+
+`toggleShortcut` binds a key that shows or hides the Sidebar directly, like `/atelier sidebar`. It is empty (no binding) by default; set a key such as `"ctrl+shift+b"` and run `/reload`. Unlike `resizeShortcut`, a blank `toggleShortcut` means no binding.
 
 `sidebarWidth` is the sidebar width in columns when a session starts, from 28 through 72. The sidebar still narrows when the terminal leaves less than 64 columns for the main pane.
 
