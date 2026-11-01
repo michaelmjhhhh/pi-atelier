@@ -38,8 +38,8 @@ const GOLD: Rgb = [234, 200, 110];
 export const PALETTE_RGB: Record<PaletteRole, Rgb> = {
 	accent: [177, 140, 255],
 	primary: [212, 212, 212],
-	muted: [128, 128, 128],
-	dim: [102, 102, 102],
+	muted: [170, 170, 170],
+	dim: [150, 150, 150],
 	ready: [110, 168, 254],
 	working: [255, 159, 67],
 	input: [110, 168, 254],

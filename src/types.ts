@@ -3,6 +3,7 @@ import type { BUILTIN_SIDEBAR_PANEL_IDS } from "./sidebar-panels.js";
 import type { PrefillView } from "./prefill.js";
 import type { SubagentUsageSnapshot } from "./subagent-usage.js";
 import type { WorkspacePulseData } from "./workspace-pulse.js";
+import type { LanguageSetting } from "./i18n.js";
 
 export type { PrefillView };
 export type TemplateName = (typeof TEMPLATE_NAMES)[number];
@@ -60,7 +61,12 @@ export interface DisplayLayerState {
 }
 
 /** A detached copy of the Session Display layer. */
-export type SessionDisplayOverride = Omit<DisplayPatch, "sidebarPanelLayout">;
+export type SessionDisplayOverride = Omit<DisplayPatch, "sidebarPanelLayout"> & {
+	sourcePanelPlacement?: PanelPlacement;
+	headerRailRows?: number;
+	railTopHeight?: number;
+	sectionExpansion?: Partial<Record<BuiltinSidebarPanelId, boolean>>;
+};
 
 export interface ResponsePerformance {
 	ttftMs: number;
@@ -73,7 +79,15 @@ export interface DisplayValue {
 	available: boolean;
 }
 
+export type PanelPlacement = "right" | "top";
+export type { Language, LanguageSetting } from "./i18n.js";
+
 export interface AtelierConfig extends DisplaySettings {
+	panelPlacement: PanelPlacement;
+	language: LanguageSetting;
+	headerRailRows: number;
+	railTopHeight: number;
+	sectionExpansion: Partial<Record<BuiltinSidebarPanelId, boolean>>;
 	nerdFont: boolean;
 	shortcut: string;
 	/** Optional key that toggles the sidebar directly; empty means no binding. */

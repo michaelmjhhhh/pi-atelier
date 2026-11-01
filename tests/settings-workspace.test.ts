@@ -125,8 +125,8 @@ describe("Display Settings Workspace", () => {
 
 	it("accumulates Segment edits, protects required entries, and retains overrides on close", () => {
 		const h = harness();
-		// Focus performance (preset, density, brand, activity, metrics, performance).
-		for (let index = 0; index < 5; index += 1) h.component.handleInput("\u001b[B");
+		// Focus performance after the session identity and context segments.
+		for (let index = 0; index < 8; index += 1) h.component.handleInput("\u001b[B");
 		h.component.handleInput(" ");
 		expect(
 			resolveDisplayLayers(h.layers).display.segmentLayout.find((entry) => entry.id === "performance")
@@ -208,7 +208,9 @@ describe("Display Settings Workspace", () => {
 		expect(rendered).toContain("Density      compact       user");
 		expect(rendered).toContain("order user");
 		expect(rendered.indexOf("1  ○ brand")).toBeLessThan(rendered.indexOf("2  ● activity"));
-		expect(rendered.indexOf("2  ● activity")).toBeLessThan(rendered.indexOf("3  ◆ metrics"));
+		expect(rendered.indexOf("2  ● activity")).toBeLessThan(rendered.indexOf("3  ● model"));
+		expect(rendered.indexOf("4  ● git")).toBeLessThan(rendered.indexOf("5  ◆ context"));
+		expect(rendered.indexOf("5  ◆ context")).toBeLessThan(rendered.indexOf("6  ◆ metrics"));
 	});
 
 	it.each([40, 80, 120])("uses one real responsive Status Rail preview at %s columns", (width) => {

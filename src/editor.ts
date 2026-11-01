@@ -45,7 +45,9 @@ function framedRow(line: string, innerWidth: number, borderColor: (text: string)
 }
 
 function fitsStatusLine(status: string, width: number): boolean {
-	return stripTerminalSequences(status).trim().length > 0 && visibleWidth(status) <= width;
+	return status
+		.split("\n")
+		.every((line) => stripTerminalSequences(line).trim().length > 0 && visibleWidth(line) <= width);
 }
 
 function framedStatusRule(
@@ -53,8 +55,8 @@ function framedStatusRule(
 	outerBodyWidth: number,
 	borderColor: (text: string) => string,
 	renderStatusLine?: (width: number) => string,
-): string {
-	const normalRule = () => framedRule(innerRule, outerBodyWidth, "╭", "╮", borderColor);
+): string[] {
+	const normalRule = () => [framedRule(innerRule, outerBodyWidth, "╭", "╮", borderColor)];
 	if (!renderStatusLine) return normalRule();
 
 	const scrollIndicator = stripTerminalSequences(innerRule).match(/↑ \d+ more/)?.[0];
@@ -65,9 +67,12 @@ function framedStatusRule(
 
 	const status = renderStatusLine(statusWidth);
 	if (!fitsStatusLine(status, statusWidth)) return normalRule();
+	const lines = status.split("\n");
+	if (lines.length > 1)
+		return [...lines.map((line) => truncateToWidth(line, outerBodyWidth, "")), ...normalRule()];
 
 	const remainingRule = "─".repeat(statusWidth - visibleWidth(status) + 1);
-	return `${borderColor("╭─ ")}${status}${borderColor(` ${remainingRule}${scrollSuffix}╮`)}`;
+	return [`${borderColor("╭─ ")}${status}${borderColor(` ${remainingRule}${scrollSuffix}╮`)}`];
 }
 
 /** Wrap Pi editor lines in a rounded frame with one column of inner padding. */
@@ -88,7 +93,7 @@ export function frameEditorLines(
 	const bottom = findBottomRuleIndex(inner, innerWidth);
 	const body = rest.filter((_, index) => index + 1 !== bottom);
 	return [
-		framedStatusRule(topRule, outerBodyWidth, borderColor, renderStatusLine),
+		...framedStatusRule(topRule, outerBodyWidth, borderColor, renderStatusLine),
 		...body.map((line) => framedRow(line, innerWidth, borderColor)),
 		framedRule(inner[bottom] ?? topRule, outerBodyWidth, "╰", "╯", borderColor),
 	].map((line) => truncateToWidth(line, safeWidth, ""));
@@ -98,25 +103,30 @@ export function frameEditorLines(
 export class AtelierEditor extends CustomEditor {
 	/** Optional ANSI status content for the top frame; receives its available column width. */
 	renderStatusLine: ((width: number) => string) | undefined;
+	/** Optional separate rail above the editor frame, used by scroll-mode fallback. */
+	renderAbove: ((width: number) => string[]) | undefined;
 	/** Whether the most recent render included the status line in its top frame. */
 	statusLineVisible = false;
 
 	override render(width: number): string[] {
 		this.statusLineVisible = false;
 		const safeWidth = Math.max(0, Math.trunc(width));
-		if (safeWidth < EDITOR_FRAME_MIN_WIDTH) return super.render(safeWidth);
 		const renderStatusLine = this.renderStatusLine;
-		return frameEditorLines(
-			super.render(safeWidth - EDITOR_FRAME_CHROME),
-			safeWidth,
-			this.borderColor,
-			renderStatusLine
-				? (availableWidth) => {
-						const status = renderStatusLine(availableWidth);
-						this.statusLineVisible = fitsStatusLine(status, availableWidth);
-						return status;
-					}
-				: undefined,
-		);
+		const editorLines =
+			this.tui.terminal.rows <= 6 || safeWidth < EDITOR_FRAME_MIN_WIDTH
+				? super.render(safeWidth)
+				: frameEditorLines(
+						super.render(safeWidth - EDITOR_FRAME_CHROME),
+						safeWidth,
+						this.borderColor,
+						renderStatusLine
+							? (availableWidth) => {
+									const status = renderStatusLine(availableWidth);
+									this.statusLineVisible = fitsStatusLine(status, availableWidth);
+									return status;
+								}
+							: undefined,
+					);
+		return [...(this.renderAbove?.(safeWidth) ?? []), ...editorLines];
 	}
 }

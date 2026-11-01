@@ -12,7 +12,11 @@ import {
 	PRODUCT_SEGMENT_ORDER,
 } from "./display.js";
 import { SIDEBAR_PREFILL_VIEWS } from "./prefill.js";
-import { DEFAULT_SIDEBAR_PANEL_LAYOUT, normalizeSidebarPanelLayout } from "./sidebar-panels.js";
+import {
+	DEFAULT_SIDEBAR_PANEL_LAYOUT,
+	isBuiltinSidebarPanelId,
+	normalizeSidebarPanelLayout,
+} from "./sidebar-panels.js";
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "./split-pane.js";
 import { clamp, errorMessage, isRecord } from "./text.js";
 import type {
@@ -39,6 +43,11 @@ export const DEFAULT_CONFIG: AtelierConfig = {
 	contextDanger: 90,
 	currencyDecimals: 3,
 	showSidebarToolNames: false,
+	panelPlacement: "right",
+	language: "en",
+	headerRailRows: 2,
+	railTopHeight: 6,
+	sectionExpansion: {},
 	showSidebarOnStartup: true,
 	sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
 	sidebarPanelLayout: cloneLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT),
@@ -328,6 +337,49 @@ function applyNonDisplay(
 	// Unlike `shortcut`, an empty value is valid: it clears the optional binding.
 	if (typeof input.toggleShortcut === "string") config.toggleShortcut = input.toggleShortcut.trim();
 	else if ("toggleShortcut" in input) warnings.push("toggleShortcut must be a string");
+	if ("sourcePanelPlacement" in input) {
+		if (input.sourcePanelPlacement === "right" || input.sourcePanelPlacement === "top")
+			config.panelPlacement = input.sourcePanelPlacement;
+		else warnings.push(invalidEnum("sourcePanelPlacement", input.sourcePanelPlacement));
+	}
+	if ("language" in input) {
+		const language = input.language;
+		if (language === "auto" || language === "en" || language === "it") config.language = language;
+		else warnings.push(invalidEnum("language", language));
+	}
+	if ("headerRailRows" in input) {
+		if (
+			typeof input.headerRailRows === "number" &&
+			Number.isInteger(input.headerRailRows) &&
+			input.headerRailRows >= 1 &&
+			input.headerRailRows <= 4
+		)
+			config.headerRailRows = input.headerRailRows;
+		else warnings.push("headerRailRows must be an integer from 1 through 4");
+	}
+	if ("railTopHeight" in input) {
+		if (
+			typeof input.railTopHeight === "number" &&
+			Number.isInteger(input.railTopHeight) &&
+			input.railTopHeight >= 1 &&
+			input.railTopHeight <= 10
+		)
+			config.railTopHeight = input.railTopHeight;
+		else warnings.push("railTopHeight must be an integer from 1 through 10");
+	}
+	if ("sectionExpansion" in input) {
+		if (!isRecord(input.sectionExpansion)) warnings.push("sectionExpansion must be an object");
+		else {
+			const expansion: AtelierConfig["sectionExpansion"] = {};
+			for (const [id, expanded] of Object.entries(input.sectionExpansion)) {
+				if (!isBuiltinSidebarPanelId(id)) warnings.push(`Unknown sectionExpansion section: ${id}`);
+				else if (typeof expanded !== "boolean")
+					warnings.push(`sectionExpansion value for ${id} must be boolean`);
+				else expansion[id] = expanded;
+			}
+			config.sectionExpansion = { ...config.sectionExpansion, ...expansion };
+		}
+	}
 
 	applyContextThresholds(input, config, warnings);
 

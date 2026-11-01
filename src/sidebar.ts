@@ -7,6 +7,10 @@ import { contextRole } from "./footer.js";
 import { type PrefillSnapshot, formatPrefillRows } from "./prefill.js";
 import { hasCapturingOverlay } from "./image-compositor.js";
 import { formatTokens } from "./metrics.js";
+import { t } from "./i18n.js";
+import { asciiGlyphText, surfaceGlyphs } from "./glyphs.js";
+import { todoWindow, todoWindowSummary } from "./todo-window.js";
+import { renderPanelCard } from "./panel-card.js";
 import { type AtelierPalette, createPalette, type PaletteRole, type ThemeLike } from "./palette.js";
 import {
 	EMPTY_RUN_ACTIVITY,
@@ -17,6 +21,7 @@ import {
 } from "./run-activity.js";
 import { isBuiltinSidebarPanelId, type SidebarPanelData } from "./sidebar-panels.js";
 import { createSplitPaneController, type SidebarMode, type SidebarStatus } from "./split-pane.js";
+import type { RailBarComponent } from "./rail-bar.js";
 import { createInertAtelierState } from "./state.js";
 import { type SubagentCostChartGraphics, subagentCostChart } from "./subagent-cost-chart.js";
 import { errorMessage, fitToWidth, PLACEHOLDER, sanitizeInline } from "./text.js";
@@ -121,19 +126,9 @@ function panelRows(
 	theme: ThemeLike,
 	role: PaletteRole,
 	jewel: Jewel,
+	nerdFont: boolean,
 ): string[] {
-	const safeWidth = Math.max(4, width);
-	const innerWidth = safeWidth - 4;
-	const crownPrefix = `╭─ ${jewel} `;
-	const crownFill = "─".repeat(Math.max(0, safeWidth - visibleWidth(crownPrefix) - visibleWidth(title) - 2));
-	const top = `${palette.paint(role, crownPrefix)}${theme.bold(palette.paint(role, title))} ${palette.paint(
-		role,
-		`${crownFill}╮`,
-	)}`;
-	// The frame carries a quiet shade of the crown's hue so each panel reads as one object.
-	const edge = palette.paintTint(role, "│");
-	const body = rows.map((row) => `${edge} ${fitToWidth(row, innerWidth)} ${edge}`);
-	return [top, ...body, palette.paintTint(role, `╰${"─".repeat(safeWidth - 2)}╯`), ""];
+	return [...renderPanelCard(title, jewel, role, rows, width, false, palette, theme, nerdFont), ""];
 }
 
 /** Align names and values consistently across all built-in panels. */
@@ -164,10 +159,11 @@ function agentRows(
 	width: number,
 	palette: AtelierPalette,
 	theme: ThemeLike,
+	language: AtelierConfig["language"],
 ): string[] {
 	const working = snapshot.activity === "working";
 	const failed = snapshot.activity === "error";
-	const label = working ? "Working" : failed ? "Error" : "Ready";
+	const label = t(language, working ? "workingTitle" : failed ? "errorTitle" : "readyTitle");
 	const phrase = working && snapshot.workingLabel ? ` · ${sanitizeInline(snapshot.workingLabel)}` : "";
 	const knownModel = Boolean(snapshot.modelId || snapshot.provider);
 	return [
@@ -175,15 +171,15 @@ function agentRows(
 		theme.bold(valueRow(snapshot.modelId, palette, "primary")),
 		valueRow(snapshot.provider, palette, "muted"),
 		labeledRow(
-			"Thinking",
+			t(language, "thinking"),
 			snapshot.thinkingLevel ? sanitizeInline(snapshot.thinkingLevel) || PLACEHOLDER : PLACEHOLDER,
 			width,
 			palette,
 			snapshot.thinkingLevel ? "primary" : "dim",
 		),
 		labeledRow(
-			"Billing",
-			knownModel ? (snapshot.metrics.subscription ? "Subscription" : "Metered") : PLACEHOLDER,
+			t(language, "billing"),
+			knownModel ? t(language, snapshot.metrics.subscription ? "subscription" : "metered") : PLACEHOLDER,
 			width,
 			palette,
 			knownModel && snapshot.metrics.subscription ? "ready" : "muted",
@@ -205,6 +201,7 @@ function workspacePulseRows(
 	pulse: WorkspacePulseState,
 	width: number,
 	palette: AtelierPalette,
+	language: AtelierConfig["language"],
 ): { core: string[]; details: string[] } {
 	switch (pulse.status) {
 		case "inspecting":
@@ -225,8 +222,12 @@ function workspacePulseRows(
 		const lines = `${palette.paint("chartGreen", added)}  ${palette.paint("error", removed)}`;
 		// One "4 files  +54  −20" row when it fits, otherwise files and lines on their own rows.
 		if (visibleWidth(`Changed ${files}  ${added}  ${removed}`) <= width)
-			core.push(labeledRow("Changed", `${files}  ${lines}`, width, palette));
-		else core.push(labeledRow("Changed", files, width, palette), labeledRow("Lines", lines, width, palette));
+			core.push(labeledRow(t(language, "changed"), `${files}  ${lines}`, width, palette));
+		else
+			core.push(
+				labeledRow(t(language, "changed"), files, width, palette),
+				labeledRow("Lines", lines, width, palette),
+			);
 	}
 	if (git.conflicts > 0)
 		core.push(labeledRow("Conflicts", formatTokens(git.conflicts), width, palette, "error"));
@@ -269,7 +270,7 @@ function contextRows(
 	const usage = `${formatTokens(metrics.contextTokens)} / ${metrics.contextWindow > 0 ? formatTokens(metrics.contextWindow) : PLACEHOLDER}`;
 	return [
 		meterWidth > 0 ? `${meter}  ${percentage}` : percentage,
-		labeledRow("Tokens", usage, width, palette, "muted"),
+		labeledRow(t(config.language, "tokens"), usage, width, palette, "muted"),
 	];
 }
 
@@ -331,15 +332,26 @@ function usageRows(
 	if (metrics.usageAvailable) {
 		const hit = metrics.cacheHitPercent === undefined ? undefined : `${metrics.cacheHitPercent.toFixed(1)}%`;
 		rows.push(
-			labeledRow("Input", formatUsageTokens(metrics.input), width, palette, "input"),
-			labeledRow("Output", formatUsageTokens(metrics.output), width, palette, "output"),
-			labeledRow("Cache read", formatUsageTokens(metrics.cacheRead), width, palette, "cache"),
-			labeledRow("Cache hit", hit ?? PLACEHOLDER, width, palette, hit ? "primary" : "dim"),
+			labeledRow(t(config.language, "input"), formatUsageTokens(metrics.input), width, palette, "input"),
+			labeledRow(t(config.language, "output"), formatUsageTokens(metrics.output), width, palette, "output"),
+			labeledRow(
+				t(config.language, "cacheRead"),
+				formatUsageTokens(metrics.cacheRead),
+				width,
+				palette,
+				"cache",
+			),
+			labeledRow(t(config.language, "cacheHit"), hit ?? PLACEHOLDER, width, palette, hit ? "primary" : "dim"),
 		);
 	}
 	if (metrics.costAvailable) {
 		rows.push(
-			labeledRow("Cost", `$${Math.max(0, metrics.cost).toFixed(config.currencyDecimals)}`, width, palette),
+			labeledRow(
+				t(config.language, "cost"),
+				`$${Math.max(0, metrics.cost).toFixed(config.currencyDecimals)}`,
+				width,
+				palette,
+			),
 		);
 	}
 	return rows;
@@ -355,12 +367,15 @@ function subagentRows(
 	const usage = snapshot.subagentUsage;
 	if (!usage || (!usage.runs.length && !usage.unavailable && !usage.pending && !usage.limited)) return [];
 	return [
-		...subagentCostChart(usage, width, config.currencyDecimals, config.nerdFont, palette, chartGraphics),
+		...subagentCostChart(usage, width, config.currencyDecimals, config.nerdFont, palette, {
+			...chartGraphics,
+			language: config.language,
+		}),
 		...(usage.pending ? [palette.paint("dim", "Running · curves update on reply")] : []),
 		...(usage.unavailable || usage.limited
 			? [palette.paint("warning", "Partial · metadata unavailable")]
 			: []),
-		palette.paint("dim", "/atelier usage · expand graph"),
+		palette.paint("dim", t(config.language, "expandGraph")),
 	];
 }
 
@@ -389,23 +404,37 @@ function activeToolNameRows(
 }
 
 const TODO_CHECK = {
-	completed: { role: "ready", glyph: "✓" },
-	in_progress: { role: "warning", glyph: "◐" },
-	pending: { role: "dim", glyph: "○" },
-} as const satisfies Record<NormalizedTodo["status"], { role: PaletteRole; glyph: string }>;
+	completed: { role: "ready" },
+	in_progress: { role: "warning" },
+	pending: { role: "dim" },
+} as const satisfies Record<NormalizedTodo["status"], { role: PaletteRole }>;
 
-function todosRows(snapshot: SidebarSnapshot, palette: AtelierPalette): string[] {
+function todosRows(
+	snapshot: SidebarSnapshot,
+	palette: AtelierPalette,
+	nerdFont: boolean,
+	offset: number,
+): string[] {
+	const glyphs = surfaceGlyphs("sidebar", nerdFont);
 	const todos = snapshot.todos;
 	if (todos.length === 0) return [];
 	const done = todos.filter((todo) => todo.status === "completed").length;
-	const visible =
+	const available =
 		snapshot.runActivity.phase === "running" ? todos.filter((todo) => todo.status === "in_progress") : todos;
+	const window = todoWindow(available, offset);
+	const summary = todoWindowSummary(done, todos.length, window);
 	return [
-		palette.paint("muted", `${done}/${todos.length}`),
-		...visible.map((todo) => {
+		palette.paint("muted", summary),
+		...window.items.map((todo) => {
 			const check = TODO_CHECK[todo.status];
+			const glyph =
+				todo.status === "completed"
+					? glyphs.todoCompleted
+					: todo.status === "in_progress"
+						? glyphs.todoInProgress
+						: glyphs.todoPending;
 			const textRole = todo.status === "completed" ? "dim" : "primary";
-			return `${palette.paint(check.role, check.glyph)} ${palette.paint("accent", `#${todo.id}`)} ${palette.paint(
+			return `${palette.paint(check.role, glyph)} ${palette.paint("accent", `#${todo.id}`)} ${palette.paint(
 				textRole,
 				sanitizeInline(todo.text),
 			)}`;
@@ -705,7 +734,9 @@ function renderGroups(
 			rows.push(...(groups[index]?.rows ?? []));
 			index += 1;
 		}
-		rendered.push(...panelRows(panel.title, rows, width, palette, theme, panel.role, panel.jewel ?? "✦"));
+		rendered.push(
+			...panelRows(panel.title, rows, width, palette, theme, panel.role, panel.jewel ?? "✦", true),
+		);
 	}
 	return rendered;
 }
@@ -715,6 +746,7 @@ export interface SidebarRenderOptions {
 	now?: number;
 	resizing?: boolean;
 	chartGraphics?: SubagentCostChartGraphics;
+	todoOffset?: number;
 }
 
 export function renderSidebarLines(
@@ -723,7 +755,13 @@ export function renderSidebarLines(
 	theme: ThemeLike,
 	width: number,
 	height: number,
-	{ colorEnabled = true, now = Date.now(), resizing = false, chartGraphics = {} }: SidebarRenderOptions = {},
+	{
+		colorEnabled = true,
+		now = Date.now(),
+		resizing = false,
+		chartGraphics = {},
+		todoOffset = 0,
+	}: SidebarRenderOptions = {},
 ): string[] {
 	const palette = createPalette(theme, colorEnabled);
 	const safeWidth = Math.max(0, Math.trunc(width));
@@ -738,21 +776,21 @@ export function renderSidebarLines(
 				name: "agent",
 				panel: {
 					id: "agent",
-					title: "AGENT",
+					title: t(config.language, "agent"),
 					role: snapshot.activity,
 					jewel:
 						snapshot.activity === "working" && Math.floor(now / SIDEBAR_ANIMATION_INTERVAL_MS) % 2 === 1
 							? "✧"
 							: "✦",
 				},
-				rows: agentRows(snapshot, panelWidth, palette, theme),
+				rows: agentRows(snapshot, panelWidth, palette, theme, config.language),
 				dropRank: DROP_RANK.required,
 			},
 		],
 		activity: () =>
 			activityGroups(snapshot, panelWidth, palette, now, {
 				id: "activity",
-				title: "ACTIVITY",
+				title: t(config.language, "activity"),
 				role: runPhaseRole(snapshot.runActivity, snapshot.activity === "error"),
 			}),
 		alerts: () => [
@@ -760,7 +798,7 @@ export function renderSidebarLines(
 				name: "alerts",
 				panel: {
 					id: "alerts",
-					title: "ALERTS",
+					title: t(config.language, "alerts"),
 					role: alerts.some((alert) => alert.role === "error") ? "error" : "warning",
 				},
 				rows: alerts.map(({ role, text }) => palette.paint(role, `${role === "error" ? "✕" : "▲"} ${text}`)),
@@ -770,8 +808,8 @@ export function renderSidebarLines(
 		todos: () => [
 			{
 				name: "todos",
-				panel: { id: "todos", title: "TODOS", role: "accent" },
-				rows: todosRows(snapshot, palette),
+				panel: { id: "todos", title: t(config.language, "todos"), role: "accent" },
+				rows: todosRows(snapshot, palette, config.nerdFont, todoOffset),
 				dropRank: DROP_RANK.todos,
 			},
 		],
@@ -780,7 +818,7 @@ export function renderSidebarLines(
 				name: "context",
 				panel: {
 					id: "context",
-					title: "CONTEXT",
+					title: t(config.language, "context"),
 					role: sidebarContextRole(snapshot.metrics.contextPercent, config),
 				},
 				rows: contextRows(snapshot, config, panelWidth, palette, theme),
@@ -801,9 +839,9 @@ export function renderSidebarLines(
 			];
 		},
 		workspace: () => {
-			const panel = { id: "workspace", title: "WORKSPACE", role: "accent" } as const;
+			const panel = { id: "workspace", title: t(config.language, "workspace"), role: "accent" } as const;
 			const pulseData = workspacePulseData(snapshot.workspacePulse);
-			const pulse = workspacePulseRows(snapshot.workspacePulse, panelWidth, palette);
+			const pulse = workspacePulseRows(snapshot.workspacePulse, panelWidth, palette, config.language);
 			const location = pulseData
 				? pulseData.relativeCwd
 					? [palette.paint("muted", `./${sanitizeInline(pulseData.relativeCwd)}`)]
@@ -826,7 +864,7 @@ export function renderSidebarLines(
 							? [
 									palette.paint(
 										"accent",
-										`${config.nerdFont ? BRANCH_ICON : "⎇"} ${sanitizeInline(snapshot.branch) || PLACEHOLDER}`,
+										`${config.nerdFont ? BRANCH_ICON : surfaceGlyphs("sidebar", false).branch} ${sanitizeInline(snapshot.branch) || PLACEHOLDER}`,
 									),
 								]
 							: []),
@@ -851,7 +889,7 @@ export function renderSidebarLines(
 		usage: () => [
 			{
 				name: "usage",
-				panel: { id: "usage", title: "USAGE", role: "chartGold" },
+				panel: { id: "usage", title: t(config.language, "usage"), role: "chartGold" },
 				rows: usageRows(snapshot, config, panelWidth, palette),
 				dropRank: DROP_RANK.usage,
 			},
@@ -859,13 +897,13 @@ export function renderSidebarLines(
 		subagents: () => [
 			{
 				name: "subagentCostChart",
-				panel: { id: "subagents", title: "SUBAGENTS", role: "output" },
+				panel: { id: "subagents", title: t(config.language, "subagents"), role: "output" },
 				rows: subagentRows(snapshot, config, panelWidth, palette, chartGraphics),
 				dropRank: DROP_RANK.subagents,
 			},
 		],
 		tools: () => {
-			const panel = { id: "tools", title: "TOOLS", role: "chartPink" } as const;
+			const panel = { id: "tools", title: t(config.language, "tools"), role: "chartPink" } as const;
 			const showToolNames = config.showSidebarToolNames && safeWidth > COMPACT_SIDEBAR_MAX_WIDTH;
 			const nameRows = showToolNames ? activeToolNameRows(snapshot, panelWidth, palette) : [];
 			return [
@@ -874,7 +912,7 @@ export function renderSidebarLines(
 					panel,
 					rows: [
 						labeledRow(
-							"Enabled",
+							t(config.language, "enabled"),
 							`${snapshot.activeToolCount} / ${snapshot.availableToolCount}`,
 							panelWidth,
 							palette,
@@ -941,23 +979,20 @@ export function renderSidebarLines(
 	if (!availableVisible) {
 		ordered.push({
 			name: "empty",
-			panel: { id: "__empty__", title: "SIDEBAR", role: "muted" },
-			rows: ["No available panels", "Open /atelier Settings"],
+			panel: { id: "__empty__", title: t(config.language, "sidebar"), role: "muted" },
+			rows: [t(config.language, "noAvailablePanels"), t(config.language, "openSettings")],
 			dropRank: DROP_RANK.required,
 		});
 	}
-	return renderDock(
-		renderGroups(composeGroups(ordered, safeHeight), contentWidth, palette, theme),
-		safeWidth,
-		safeHeight,
-		palette,
-		resizing,
-	);
+	const rows = renderGroups(composeGroups(ordered, safeHeight), contentWidth, palette, theme);
+	if (!config.nerdFont) rows.forEach((row, index) => (rows[index] = asciiGlyphText(row, "sidebar")));
+	return renderDock(rows, safeWidth, safeHeight, palette, resizing);
 }
 
 export interface SidebarComponentOptions {
 	getSnapshot(): SidebarSnapshot;
 	getConfig(): AtelierConfig;
+	getTodoOffset?(): number;
 	getHeight(): number;
 	isResizing?(): boolean;
 	canRenderImages?(): boolean;
@@ -994,6 +1029,7 @@ export function createSidebarComponent(options: SidebarComponentOptions): Compon
 				resizing = options.isResizing?.() ?? false;
 				return renderSidebarLines(options.getSnapshot(), options.getConfig(), options.theme, width, height, {
 					colorEnabled: options.colorEnabled ?? true,
+					todoOffset: options.getTodoOffset?.() ?? 0,
 					resizing,
 					chartGraphics: {
 						imageOwner: options.canRenderImages ? imageOwner : undefined,
@@ -1018,6 +1054,7 @@ export interface SidebarController {
 	beginResize(): boolean;
 	isResizing(): boolean;
 	requestRender(): void;
+	setTopBar(component: RailBarComponent | undefined): void;
 	dispose(): void;
 }
 
@@ -1025,6 +1062,8 @@ export interface SidebarControllerOptions {
 	ctx: ExtensionContext;
 	getSnapshot(): SidebarSnapshot;
 	getConfig(): AtelierConfig;
+	getTodoOffset?(): number;
+	handleTodoInput?(data: string): boolean;
 	colorEnabled?: boolean;
 	shouldAnimate?(): boolean;
 	/** Preferred sidebar width when the session starts. */
@@ -1085,6 +1124,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	let requestOverlayRender: (() => void) | undefined;
 	let overlayHandle: OverlayHandle | undefined;
 	let animationTimer: ReturnType<typeof setInterval> | undefined;
+	let unsubscribeTodoInput: (() => void) | undefined;
 
 	const reportError = (error: unknown) => {
 		try {
@@ -1150,6 +1190,9 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 	const abandonShow = () => {
 		enabled = false;
 		stopAnimation();
+		const unsubscribe = unsubscribeTodoInput;
+		unsubscribeTodoInput = undefined;
+		if (unsubscribe) safely(unsubscribe);
 		clearOverlayCallbacks();
 		safely(split.hide);
 	};
@@ -1159,6 +1202,9 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		enabled = false;
 		generation += 1;
 		stopAnimation();
+		const unsubscribe = unsubscribeTodoInput;
+		unsubscribeTodoInput = undefined;
+		if (unsubscribe) safely(unsubscribe);
 		safely(split.cancelResize);
 		const close = closeOverlay;
 		const handle = overlayHandle;
@@ -1179,6 +1225,15 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 
 		enabled = true;
 		const currentGeneration = ++generation;
+		if (options.handleTodoInput) {
+			try {
+				unsubscribeTodoInput = options.ctx.ui.onTerminalInput((data) =>
+					options.handleTodoInput?.(data) ? { consume: true } : undefined,
+				);
+			} catch (error) {
+				reportError(error);
+			}
+		}
 		if (!safely(split.show)) {
 			abandonShow();
 			return;
@@ -1211,6 +1266,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 					return createSidebarComponent({
 						getSnapshot: binding.getSnapshot,
 						getConfig: binding.getConfig,
+						...(options.getTodoOffset ? { getTodoOffset: options.getTodoOffset } : {}),
 						getHeight: () => tui.terminal.rows,
 						isResizing: split.isResizing,
 						canRenderImages: () => !hasCapturingOverlay(tui),
@@ -1261,6 +1317,7 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		},
 		beginResize: split.beginResize,
 		isResizing: split.isResizing,
+		setTopBar: split.setTopBar,
 		requestRender() {
 			// Still refresh the overlay if adapter reconciliation fails.
 			if (!safely(split.requestRender)) safely(() => requestOverlayRender?.());

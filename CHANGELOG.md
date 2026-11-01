@@ -2,6 +2,8 @@
 
 ## 0.18.0 — 2026-10-31
 
+- Keep the mouse compatibility layer type-safe with both Pi 0.84 and Pi 1.4 TUI surfaces.
+- Preserve overlay bounds through the fullscreen adapter.
 - Show a temporary Sidebar **Prefill** panel while a local model is still reading a long prompt: a bar over the uncached prompt tokens, the token counts, the reading speed, and an estimate of how long until the first token. A long prefill used to look exactly like a hang. The panel is present only while prefilling and reserves nothing when it is absent. Configure with `prefillEnabled`, `prefillViews`, and the user-only `prefillProviders` allow-list, or toggle it in Control Center → Settings. Needs Pi 0.99 or newer to report progress; on an older Pi the panel never appears.
 - Prefill numbers count uncached tokens, because a cached prefix is not work the user is waiting for. The percent rides the bar, and the speed rides the `First token` row (`~4s · 3.4k tok/s`), taking its own row while no estimate is available. The speed is measured between progress chunks, and the first sample seeds its base with the cached prefix, so a warm prompt does not show a false speed.
 - Prefill asks only `openai-completions` providers on the allow-list, and only when the request body names the allow-listed model, so a Pi virtual model or a redirected request is left alone. A chunk listener exists only while such a request is in flight. A provider that cannot report progress simply never draws the panel, and no request error turns the feature off for the rest of the session: llama.cpp answers 400 when a prompt exceeds its context size, which says nothing about the progress field.
@@ -10,6 +12,16 @@
 - Stop replacing `todo` results with `N/M done · see sidebar` while the TODO panel is visible. The agent now receives the full result, including task ids, `list` output, and refused updates ([#103](https://github.com/michaelmjhhhh/pi-atelier/issues/103)).
 - Stop overstating response TPS. The tokens in the first streamed chunk no longer count toward the rate, and a generation window shorter than 500ms shows no TPS, because chunks that arrive in one batch say nothing about decode speed ([#106](https://github.com/michaelmjhhhh/pi-atelier/issues/106)).
 - Internal: update development dependencies to resolve audit findings (vitest 4.1.12; overrides for undici, glob, minimatch, and zod under Pi 0.84.0). Pi 0.84.0 remains the minimum supported and tested version.
+- Add Italian and English interface strings with automatic locale detection and a configurable `language` setting.
+- Keep terminals at six rows or fewer to a single Activity + Context footer row; hide editor framing, the top strip, and split sidebar. Add session-scoped TODO scrolling with six-item windows, positional indicators, sidebar-only keys, and `/atelier todos` commands.
+- Raise text palette contrast to WCAG AA, keep status hierarchy state/location/telemetry/shortcut, and use a compact Activity + Context footer below the responsive profile thresholds.
+- Require 76 columns for the main pane and 104 total columns for a split sidebar; gate the top strip at 64 columns and 20 rows, and omit editor framing at four rows or fewer.
+- Render top placement as horizontally packed sidebar-style cards with shared chrome, click-to-collapse hit areas, hidden-section counts, and a configurable `railTopHeight` cap (1–10 rows, default 6). Render Prefill through the shared card chrome in both the right sidebar and top strip.
+- Show compact detail rows for expanded header sections and let mouse clicks on section titles toggle their session-scoped expansion.
+- Keep model and Git visible in the footer when the top rail is gated off by terminal size, except in the core-only profile.
+- Render Atelier surfaces and completion notifications with ASCII glyphs when Plain text font mode is selected; retain existing Nerd Font output.
+- Assign duplicated panel data to its surface when the panel is placed at the top: the rail owns model and workspace identity, while the footer keeps Activity and Context. Right placement is unchanged.
+- Add a session-scoped top rail with configurable row limits and collapsible sections. In viewport/fullscreen mode it is a fixed bar above the transcript; scroll mode falls back to the rail above the editor. Retain the existing right sidebar by default.
 
 ## 0.17.0 — 2026-10-29
 

@@ -34,8 +34,8 @@ const namedTheme = (name: string) => ({
 
 const darkRgb = {
 	text: "\u001b[38;2;212;212;212m",
-	muted: "\u001b[38;2;128;128;128m",
-	dim: "\u001b[38;2;102;102;102m",
+	muted: "\u001b[38;2;170;170;170m",
+	dim: "\u001b[38;2;150;150;150m",
 	blue: "\u001b[38;2;110;168;254m",
 	purple: "\u001b[38;2;177;140;255m",
 	cyan: "\u001b[38;2;125;211;252m",
@@ -123,6 +123,7 @@ function createFooter(options: Partial<Parameters<typeof createFooterComponent>[
 		createFooterComponent({
 			getState: () => state,
 			getConfig: () => DEFAULT_CONFIG,
+			getRows: () => Number.POSITIVE_INFINITY,
 			requestRender: vi.fn(),
 			onBranchChange: () => vi.fn(),
 			theme: plainTheme,
@@ -331,6 +332,86 @@ describe("footer", () => {
 		expect(visibleWidth(line)).toBe(160);
 	});
 
+	it("keeps model and Git out of the footer only while the top rail is rendered", () => {
+		const config = withVisible(["activity", "metrics", "context", "model", "git", "statuses", "menu"], {
+			panelPlacement: "top",
+		});
+		const ownedState = { ...state, workspaceLabel: "pi-atelier", extensionStatuses: ["INDEXING"] };
+		const renderAt = (width: number, rows: number, placement: "top" | "right" = "top") =>
+			stripAnsi(
+				renderFooterLine(ownedState, { ...config, panelPlacement: placement }, plainTheme, width, { rows }),
+			);
+		const modelAndGit = ["gpt-5.6-sol", "main*"];
+		const identityConfig = withVisible(["model", "git"], { panelPlacement: "top" });
+		const renderIdentityAt = (width: number, rows: number, placement: "top" | "right" = "top") =>
+			stripAnsi(
+				renderFooterLine(state, { ...identityConfig, panelPlacement: placement }, plainTheme, width, {
+					rows,
+				}),
+			);
+		for (const [width, rows] of [
+			[40, 40],
+			[76, 10],
+			[40, 10],
+		] as const) {
+			const footer = renderIdentityAt(width, rows);
+			expect(footer).toContain("● READY");
+			expect(footer).toContain(`${icons.context} 27.0%`);
+			for (const text of modelAndGit) expect(footer).not.toContain(text);
+		}
+		const top = renderAt(76, 40);
+		for (const text of ["● READY", `${icons.context} 27.0%`, `${icons.input} 324k`, "F6"])
+			expect(top).toContain(text);
+		for (const text of ["gpt-5.6-sol", "medium", "pi-atelier", "main*"]) expect(top).not.toContain(text);
+
+		for (const [width, rows] of [
+			[104, 20],
+			[120, 40],
+		] as const) {
+			const right = renderIdentityAt(width, rows, "right");
+			for (const text of modelAndGit) expect(right).toContain(text);
+		}
+		const right = renderAt(400, 40, "right");
+		for (const text of [
+			"● READY",
+			`${icons.model} gpt-5.6-sol · ${icons.thinking} medium`,
+			`${icons.workspace} pi-atelier · ${icons.git} main*`,
+			`${icons.context} 27.0%`,
+			`${icons.input} 324k`,
+			"INDEXING",
+			"F6",
+		])
+			expect(right).toContain(text);
+	});
+
+	it.each([120, 76])("orders state, location, telemetry, and shortcut at %i columns", (width) => {
+		const line = stripAnsi(
+			renderFooterLine({ ...state, workspaceLabel: "pi-atelier" }, DEFAULT_CONFIG, plainTheme, width, {
+				rows: 40,
+			}),
+		);
+		const markers = ["● READY", "pi-atelier", "main*", `${icons.context} 27.0%`, `${icons.input} 324k`, "F6"];
+		const positions = markers.map((marker) => line.indexOf(marker)).filter((position) => position >= 0);
+		expect(positions[0]).toBe(0);
+		expect(positions).toEqual([...positions].sort((a, b) => a - b));
+		expect(line.endsWith("F6")).toBe(true);
+	});
+
+	it.each([
+		{ width: 40, rows: 12 },
+		{ width: 145, rows: 4 },
+	])("renders only the core footer below the responsive profile at $width×$rows", ({ width, rows }) => {
+		const line = stripAnsi(
+			renderFooterLine({ ...state, workspaceLabel: "pi-atelier" }, DEFAULT_CONFIG, plainTheme, width, {
+				rows,
+			}),
+		);
+		expect(line).toContain("● READY");
+		expect(line).toContain(`${icons.context} 27.0%`);
+		for (const detail of ["pi-atelier", "main*", `${icons.input} 324k`, "F6"])
+			expect(line).not.toContain(detail);
+	});
+
 	it("right-aligns telemetry in the complete footer", () => {
 		const line = stripAnsi(renderFooterLine(state, DEFAULT_CONFIG, plainTheme, 180));
 		expect(line.endsWith("F6")).toBe(true);
@@ -359,13 +440,13 @@ describe("footer", () => {
 				"main*",
 				"gpt-5.6-sol",
 			]) as [number, number, number, number, number, number, number, number];
-		expect(menuGone).toBeGreaterThan(thinkingGone);
-		expect(thinkingGone).toBeGreaterThan(costGone);
-		expect(costGone).toBeGreaterThan(inputGone);
+		expect(thinkingGone).toBeGreaterThan(menuGone);
+		expect(costGone).toBeGreaterThan(menuGone);
+		expect(menuGone).toBeLessThanOrEqual(inputGone);
 		expect(inputGone).toBeGreaterThanOrEqual(outputGone);
-		expect(outputGone).toBeGreaterThan(cacheGone);
-		expect(cacheGone).toBeGreaterThan(gitGone);
-		expect(gitGone).toBeGreaterThan(modelGone);
+		expect(outputGone).toBeGreaterThanOrEqual(cacheGone);
+		expect(cacheGone).toBeGreaterThanOrEqual(gitGone);
+		expect(gitGone).toBeGreaterThanOrEqual(modelGone);
 	});
 
 	it("removes configured brand and extension statuses before Git and thinking", () => {

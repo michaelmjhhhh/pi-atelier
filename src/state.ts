@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { selectWorkingPhrase } from "./activity.js";
-import { resolveDisplayLayers } from "./config.js";
+import { resolveConfig, resolveDisplayLayers } from "./config.js";
 import { cloneLayout } from "./display.js";
 import { aggregateMetrics, type UsageMessage } from "./metrics.js";
 import {
@@ -30,7 +30,15 @@ import {
 	type WorkspacePulseRefresh,
 } from "./workspace-pulse.js";
 
-const SESSION_DISPLAY_OVERRIDE_KEYS = ["preset", "density", "segmentLayout"] as const;
+const SESSION_DISPLAY_OVERRIDE_KEYS = [
+	"preset",
+	"density",
+	"segmentLayout",
+	"sourcePanelPlacement",
+	"headerRailRows",
+	"railTopHeight",
+	"sectionExpansion",
+] as const;
 
 export interface RuntimeDependencies {
 	pi: ExtensionAPI;
@@ -248,7 +256,7 @@ export class AtelierRuntime {
 		// Drop each Session key whose removal no longer changes the effective Display.
 		const target = resolveDisplayLayers(this.#displayLayers).display;
 		let session = { ...this.#displayLayers.session };
-		for (const key of SESSION_DISPLAY_OVERRIDE_KEYS) {
+		for (const key of ["preset", "density", "segmentLayout"] as const) {
 			if (!(key in session)) continue;
 			const { [key]: _removed, ...candidate } = session;
 			const resolved = resolveDisplayLayers(withSessionLayer(this.#displayLayers, candidate)).display;
@@ -260,8 +268,16 @@ export class AtelierRuntime {
 
 	#resolveDisplay(): void {
 		const resolved = resolveDisplayLayers(this.#displayLayers);
+		const config = resolveConfig(this.#displayLayers).config;
 		this.#displayProvenance = resolved.provenance;
-		this.#config = { ...this.#config, ...resolved.display };
+		this.#config = {
+			...this.#config,
+			...resolved.display,
+			panelPlacement: config.panelPlacement,
+			headerRailRows: config.headerRailRows,
+			railTopHeight: config.railTopHeight,
+			sectionExpansion: config.sectionExpansion,
+		};
 		this.#invalidate();
 	}
 

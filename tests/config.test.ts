@@ -22,6 +22,48 @@ describe("configuration validation", () => {
 		}
 	});
 
+	it("validates top rail height", () => {
+		expect(DEFAULT_CONFIG.railTopHeight).toBe(6);
+		for (const height of [1, 6, 10])
+			expect(validateConfig({ railTopHeight: height }).config.railTopHeight).toBe(height);
+		const invalid = validateConfig({ railTopHeight: 11 });
+		expect(invalid.config.railTopHeight).toBe(6);
+		expect(invalid.warnings).toContain("railTopHeight must be an integer from 1 through 10");
+	});
+
+	it("validates header rail rows and builtin section expansion", () => {
+		expect(DEFAULT_CONFIG.headerRailRows).toBe(2);
+		for (const rows of [1, 2, 3, 4])
+			expect(validateConfig({ headerRailRows: rows }).config.headerRailRows).toBe(rows);
+		const invalidRows = validateConfig({ headerRailRows: 5 });
+		expect(invalidRows.config.headerRailRows).toBe(2);
+		expect(invalidRows.warnings).toContain("headerRailRows must be an integer from 1 through 4");
+		const expansion = validateConfig({ sectionExpansion: { agent: false, unknown: true, tools: "no" } });
+		expect(expansion.config.sectionExpansion).toEqual({ agent: false });
+		expect(expansion.warnings).toEqual(
+			expect.arrayContaining([
+				"Unknown sectionExpansion section: unknown",
+				"sectionExpansion value for tools must be boolean",
+			]),
+		);
+	});
+
+	it("resolves source panel placement from user, project, and session layers", () => {
+		expect(DEFAULT_CONFIG.panelPlacement).toBe("right");
+		expect(validateConfig({ sourcePanelPlacement: "top" }).config.panelPlacement).toBe("top");
+		expect(validateConfig({ sourcePanelPlacement: "right" }).config.panelPlacement).toBe("right");
+		expect(
+			resolveConfig({
+				user: { sourcePanelPlacement: "right" },
+				project: { sourcePanelPlacement: "top" },
+				session: { sourcePanelPlacement: "right" },
+			}).config.panelPlacement,
+		).toBe("right");
+		const invalid = validateConfig({ sourcePanelPlacement: "left" });
+		expect(invalid.config.panelPlacement).toBe("right");
+		expect(invalid.warnings).toContain("Unknown sourcePanelPlacement: left");
+	});
+
 	it("parses the optional sidebar toggle shortcut", () => {
 		expect(DEFAULT_CONFIG.toggleShortcut).toBe("");
 		expect(validateConfig({ toggleShortcut: " ctrl+shift+b " }).config.toggleShortcut).toBe("ctrl+shift+b");
@@ -231,6 +273,17 @@ describe("configuration files", () => {
 		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(true);
 		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "todos")?.visible).toBe(true);
 		expect(result.warnings.filter((warning) => warning.includes("duplicate")).length).toBe(1);
+	});
+
+	it("retains sourcePanelPlacement from the session layer", async () => {
+		const result = await loadConfig({
+			userPath,
+			projectPath,
+			projectTrusted: true,
+			session: { sourcePanelPlacement: "top" },
+		});
+		expect(result.config.panelPlacement).toBe("top");
+		expect(result.displayLayers.session).toEqual({ sourcePanelPlacement: "top" });
 	});
 
 	it("merges user, trusted project, then session with actionable provenance", async () => {

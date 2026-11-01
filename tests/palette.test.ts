@@ -9,7 +9,41 @@ const themed = (name?: string) => ({
 	fg: vi.fn((color: string, text: string) => `<${color}>${text}</${color}>`),
 });
 
+const linearize = (channel: number) => {
+	const value = channel / 255;
+	return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+};
+
+const luminance = ([red, green, blue]: readonly [number, number, number]) =>
+	0.2126 * linearize(red) + 0.7152 * linearize(green) + 0.0722 * linearize(blue);
+
+const contrast = (
+	foreground: readonly [number, number, number],
+	background: readonly [number, number, number],
+) => {
+	const foregroundLuminance = luminance(foreground);
+	const backgroundLuminance = luminance(background);
+	return (
+		(Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+		(Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
+	);
+};
+
 describe("Fixed Dark Midnight Spectrum", () => {
+	it("keeps every text role at WCAG AA contrast on black and Midnight", () => {
+		for (const [role, color] of Object.entries(PALETTE_RGB) as [
+			PaletteRole,
+			readonly [number, number, number],
+		][]) {
+			for (const background of [
+				[0, 0, 0],
+				[30, 30, 46],
+			] as const) {
+				expect(contrast(color, background), `${role} on ${background.join(",")}`).toBeGreaterThanOrEqual(4.5);
+			}
+		}
+	});
+
 	it.each(["dark", "light"])("paints the fixed truecolor palette for the named %s theme", (themeName) => {
 		const theme = themed(themeName);
 		const palette = createPalette(theme, true);

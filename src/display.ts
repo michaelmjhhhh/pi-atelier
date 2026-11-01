@@ -11,11 +11,11 @@ import type {
 export const PRODUCT_SEGMENT_ORDER = [
 	"brand",
 	"activity",
-	"metrics",
-	"performance",
-	"context",
 	"model",
 	"git",
+	"context",
+	"metrics",
+	"performance",
 	"statuses",
 	"menu",
 ] as const;

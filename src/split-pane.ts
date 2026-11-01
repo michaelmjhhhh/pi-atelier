@@ -1,11 +1,20 @@
 import type { Component, OverlayHandle, OverlayOptions, TUI } from "@earendil-works/pi-tui";
-import { compositeTuiLine, HStack, isViewportTUI, matchesKey, sliceByColumn } from "@earendil-works/pi-tui";
+import {
+	compositeTuiLine,
+	HStack,
+	isViewportTUI,
+	matchesKey,
+	sliceByColumn,
+	VStack,
+} from "@earendil-works/pi-tui";
 import {
 	createImageCompositorBinding,
 	findOwnMethod,
 	type ImageCompositorBinding,
 } from "./image-compositor.js";
 import { clamp } from "./text.js";
+import { attachCompatMouseHandler, compatMouseHandler, overlayHandleBounds } from "./pi-compat.js";
+import type { RailBarComponent } from "./rail-bar.js";
 
 const ENABLE_MOUSE = "\u001b[?1002h\u001b[?1006h";
 const DISABLE_MOUSE = "\u001b[?1006l\u001b[?1002l";
@@ -42,9 +51,12 @@ interface RegularRenderAdapterState {
 interface FullscreenLayoutAdapterState {
 	owner: object;
 	originalRoot: Component;
-	splitRoot: Component;
+	layoutRoot: Component;
 	sidebarWidth: number;
 	sidebarComponent: Component | undefined;
+	topBar: RailBarComponent | undefined;
+	topBarRows: number;
+	enabled: boolean;
 }
 
 interface FullscreenOverlayAdapterState {
@@ -86,7 +98,7 @@ export function parseSgrMouseEvent(data: string): SgrMouseEvent | undefined {
 export const DEFAULT_SIDEBAR_WIDTH = 44;
 export const MIN_SIDEBAR_WIDTH = 28;
 export const MAX_SIDEBAR_WIDTH = 72;
-export const MIN_MAIN_WIDTH = 64;
+export const MIN_MAIN_WIDTH = 76;
 const AUTO_MAIN_WIDTH = 80;
 const AUTO_REOPEN_MARGIN = 8;
 
@@ -109,6 +121,7 @@ export interface SplitPaneControllerOptions {
 	onResizeCommit?(width: number): void;
 	onVisibilityChange?(): void;
 	onWarning?(message: string): void;
+	topBar?: RailBarComponent;
 }
 
 export interface SplitPaneController {
@@ -118,6 +131,7 @@ export interface SplitPaneController {
 	hide(): void;
 	getStatus(): SidebarStatus;
 	setSidebarWidth(width: number): void;
+	setTopBar(component: RailBarComponent | undefined): void;
 	getSidebarWidth(): number;
 	isEnabled(): boolean;
 	beginResize(): boolean;
@@ -156,6 +170,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 	let resizeMouseTerminal: TUI["terminal"] | undefined;
 	let fullscreenSidebarComponent: Component | undefined;
 	let fullscreenSidebarHidden = false;
+	let topBar = options.topBar;
 	let imageCompositor: ImageCompositorBinding | undefined;
 	const adapterOwner = {};
 
@@ -210,6 +225,12 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		adaptedTui[PI_084_REGULAR_RENDER_ADAPTER] = undefined;
 	};
 
+	const topBarLineCount = (): number => {
+		if (!topBar || !tui) return 0;
+		topBar.setRows(tui.terminal.rows);
+		return topBar.render(tui.terminal.columns).length;
+	};
+
 	const createFullscreenSplitRoot = (originalRoot: Component): Component =>
 		new HStack([
 			{ component: originalRoot, basis: 0, grow: 1, shrink: 1, minSize: MIN_MAIN_WIDTH },
@@ -224,35 +245,80 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			},
 		]);
 
+	const createFullscreenTopRoot = (originalRoot: Component, lines: number): Component => {
+		const bar: Component = {
+			render(width) {
+				if (!topBar || !tui) return [];
+				const rows = tui.terminal.rows;
+				topBar.setRows(rows);
+				const nextLines = topBar.render(width);
+				if (nextLines.length !== lines) syncFullscreenLayoutAdapter();
+				return nextLines;
+			},
+			invalidate() {
+				topBar?.invalidate?.();
+			},
+		};
+		const handleMouse = topBar ? compatMouseHandler(topBar) : undefined;
+		if (handleMouse) attachCompatMouseHandler(bar, (event) => handleMouse.call(topBar, event));
+		return new VStack([
+			{ component: bar, basis: lines, grow: 0, shrink: 0, minSize: lines },
+			{ component: originalRoot, basis: "auto", grow: 1, shrink: 1 },
+		]);
+	};
+
 	const syncFullscreenLayoutAdapter = () => {
 		if (!isPiFullscreenRenderer() || !tui) return;
 		const adaptedTui = tui as AdaptedTui;
 		const currentState = adaptedTui[PI_084_FULLSCREEN_LAYOUT_ADAPTER];
 		if (currentState && currentState.owner !== adapterOwner) return;
 		const currentRoot = adaptedTui.layoutRoot;
-		if (currentState?.owner === adapterOwner && currentRoot === currentState.splitRoot) {
+		if (currentState?.owner === adapterOwner && currentRoot === currentState.layoutRoot) {
+			const rows = topBarLineCount();
 			if (
 				currentState.sidebarWidth === sidebarWidth &&
-				currentState.sidebarComponent === fullscreenSidebarComponent
+				currentState.sidebarComponent === fullscreenSidebarComponent &&
+				currentState.topBar === topBar &&
+				currentState.topBarRows === rows &&
+				currentState.enabled === enabled
 			) {
 				return;
 			}
-			const splitRoot = createFullscreenSplitRoot(currentState.originalRoot);
-			adaptedTui.setLayoutRoot(splitRoot);
-			currentState.splitRoot = splitRoot;
+			const layoutRoot =
+				topBar && rows > 0
+					? createFullscreenTopRoot(currentState.originalRoot, rows)
+					: enabled
+						? createFullscreenSplitRoot(currentState.originalRoot)
+						: currentState.originalRoot;
+			adaptedTui.setLayoutRoot(layoutRoot);
+			currentState.layoutRoot = layoutRoot;
 			currentState.sidebarWidth = sidebarWidth;
 			currentState.sidebarComponent = fullscreenSidebarComponent;
+			currentState.topBar = topBar;
+			currentState.topBarRows = rows;
+			currentState.enabled = enabled;
 			return;
 		}
 		if (!currentRoot) return;
-		const splitRoot = createFullscreenSplitRoot(currentRoot);
-		adaptedTui.setLayoutRoot(splitRoot);
+		const rows = topBarLineCount();
+		const originalRoot = currentRoot;
+		const layoutRoot =
+			topBar && rows > 0
+				? createFullscreenTopRoot(originalRoot, rows)
+				: enabled
+					? createFullscreenSplitRoot(originalRoot)
+					: originalRoot;
+		if (layoutRoot === currentRoot) return;
+		adaptedTui.setLayoutRoot(layoutRoot);
 		adaptedTui[PI_084_FULLSCREEN_LAYOUT_ADAPTER] = {
 			owner: adapterOwner,
 			originalRoot: currentRoot,
-			splitRoot,
+			layoutRoot,
 			sidebarWidth,
 			sidebarComponent: fullscreenSidebarComponent,
+			topBar,
+			topBarRows: rows,
+			enabled,
 		};
 	};
 
@@ -261,7 +327,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 		const adaptedTui = tui as AdaptedTui;
 		const currentState = adaptedTui[PI_084_FULLSCREEN_LAYOUT_ADAPTER];
 		if (currentState?.owner !== adapterOwner) return;
-		if (adaptedTui.layoutRoot === currentState.splitRoot) {
+		if (adaptedTui.layoutRoot === currentState.layoutRoot) {
 			adaptedTui.setLayoutRoot(currentState.originalRoot);
 		}
 		adaptedTui[PI_084_FULLSCREEN_LAYOUT_ADAPTER] = undefined;
@@ -370,6 +436,7 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 						}
 					},
 					isHidden: () => handle.isHidden(),
+					getBounds: () => overlayHandleBounds(handle),
 					focus: () => handle.focus(),
 					unfocus: (options) => handle.unfocus(options),
 					isFocused: () => handle.isFocused(),
@@ -630,6 +697,11 @@ export function createSplitPaneController(options: SplitPaneControllerOptions = 
 			presentation: resolveLayout(tui?.terminal.columns ?? 0).presentation,
 		}),
 		setSidebarWidth,
+		setTopBar(component) {
+			topBar = component;
+			syncFullscreenLayoutAdapter();
+			requestRender();
+		},
 		getSidebarWidth: () => sidebarWidth,
 		beginResize() {
 			if (mode === "auto") {

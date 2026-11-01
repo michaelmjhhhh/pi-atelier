@@ -7,7 +7,7 @@ import {
 	getAgentDir,
 	SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import type { KeyId } from "@earendil-works/pi-tui";
+import { isViewportTUI, matchesKey, type KeyId } from "@earendil-works/pi-tui";
 import {
 	type CompletionNotification,
 	type CompletionNotifier,
@@ -15,11 +15,14 @@ import {
 	type SpawnNotificationProcess,
 } from "../src/completion-notifier.js";
 import { DEFAULT_CONFIG, loadConfig, saveUserConfigPatch } from "../src/config.js";
+import { t } from "../src/i18n.js";
+import { createRailBar, railBarLines, type RailBarComponent } from "../src/rail-bar.js";
 import { AtelierEditor } from "../src/editor.js";
 import { type AtelierFooterComponent, createFooterComponent } from "../src/footer.js";
 import { createImageCompositorBinding } from "../src/image-compositor.js";
 import { openAtelierControlCenter, openDisplaySettingsWorkspace, sidebarStatusLabel } from "../src/menu.js";
 import type { OverlayLifetime } from "../src/overlay-lifecycle.js";
+import type { ThemeLike } from "../src/palette.js";
 import {
 	createPrefillThrottle,
 	createPrefillTracker,
@@ -36,16 +39,19 @@ import {
 	type SidebarSnapshot,
 } from "../src/sidebar.js";
 import {
+	BUILTIN_SIDEBAR_PANEL_IDS,
 	createSidebarPanelRegistry,
 	isBuiltinSidebarPanelId,
 	type SidebarPanelData,
 	type SidebarPanelRegistry,
 } from "../src/sidebar-panels.js";
 import { AtelierRuntime, createInertAtelierState } from "../src/state.js";
+import { isSectionExpanded, toggleSection } from "../src/rail-sections.js";
 import { emptySubagentUsage } from "../src/subagent-usage.js";
 import { openSubagentUsage } from "../src/subagent-usage-view.js";
 import { errorMessage, isColorEnabled, isRecord } from "../src/text.js";
 import { reconstructTodos, todosFromDetails } from "../src/todos.js";
+import { clampTodoOffset, scrollTodoOffset, todoActionFromArgs } from "../src/todo-window.js";
 import type { AtelierConfig, AtelierState, FooterState, NormalizedTodo } from "../src/types.js";
 
 // Public sidebar contribution protocol for other extensions.
@@ -152,8 +158,10 @@ interface ActiveSession {
 	todos: NormalizedTodo[];
 	/** Whether the latest Turn ended in a provider error that the user did not abort. */
 	providerFailed: boolean;
+	todoOffset: number;
 	requestFooterRender: () => void;
 	extensionStatuses: readonly string[];
+	railBar: RailBarComponent | undefined;
 }
 
 interface LifecycleToken {
@@ -357,11 +365,14 @@ export default function atelierExtension(
 		try {
 			await lifecycleGuardedSavePatch(targetSession)(userConfigPath(), { showSidebarToolNames: next });
 			if (activeSession !== targetSession) return;
-			ctx.ui.notify(`Sidebar tool list ${next ? "expanded" : "collapsed"}`, "info");
+			ctx.ui.notify(
+				`${t(runtime.getConfig().language, "toolList")} ${t(runtime.getConfig().language, next ? "expanded" : "collapsed")}`,
+				"info",
+			);
 		} catch (error) {
 			if (activeSession !== targetSession) return;
 			ctx.ui.notify(
-				`Sidebar tool list changed for this session but could not be saved: ${errorMessage(error)}`,
+				`${t(runtime.getConfig().language, "toolListChangedNotSaved")}: ${errorMessage(error)}`,
 				"warning",
 			);
 		}
@@ -429,11 +440,11 @@ export default function atelierExtension(
 	async function openUsage(ctx: ExtensionContext, expected?: ActiveSession): Promise<void> {
 		const current = getActiveSession(ctx);
 		if (ctx.mode !== "tui" || !current || !enabled || (expected && current !== expected)) {
-			ctx.ui.notify("Enable Pi Atelier in a TUI session to view usage", "info");
+			ctx.ui.notify(t(current?.runtime.getConfig().language ?? "en", "usageNeedsTui"), "info");
 			return;
 		}
 		if (!ctx.isProjectTrusted()) {
-			ctx.ui.notify("Subagent metadata requires a trusted project", "info");
+			ctx.ui.notify(t(current.runtime.getConfig().language, "usageNeedsTrust"), "info");
 			return;
 		}
 		await current.runtime.refreshSubagentUsage();
@@ -442,6 +453,7 @@ export default function atelierExtension(
 			ctx,
 			current.runtime.getState().subagentUsage ?? emptySubagentUsage(),
 			current.runtime.getConfig().currencyDecimals,
+			current.runtime.getConfig().language,
 			current.overlayLifetime,
 		);
 	}
@@ -462,7 +474,9 @@ export default function atelierExtension(
 					if (enabled && isCurrent()) sidebar.setMode(mode);
 				},
 				toggle: () => {
-					if (enabled && isCurrent()) sidebar.toggle();
+					if (!enabled || !isCurrent()) return;
+					if (runtime.getConfig().panelPlacement === "top") sidebar.hide();
+					else sidebar.toggle();
 				},
 				isToolListExpanded: () => isCurrent() && runtime.getConfig().showSidebarToolNames,
 				toggleToolList: async () => {
@@ -504,6 +518,7 @@ export default function atelierExtension(
 		targetSession.footerInstalled = true;
 		let editor: AtelierEditor | undefined;
 		let footer: AtelierFooterComponent | undefined;
+		let headerTheme: ThemeLike | undefined;
 		let headerRendered = false;
 		let editorInstalled = false;
 		const detachEditor = (): void => {
@@ -518,11 +533,33 @@ export default function atelierExtension(
 				: undefined;
 		};
 		ctx.ui.setFooter((tui, theme, footerData) => {
+			headerTheme = theme;
 			const footerRequestRender = (): void => {
 				if (getCurrentSession()) tui.requestRender();
 			};
 			const current = getCurrentSession();
-			if (current) current.requestFooterRender = footerRequestRender;
+			if (current) {
+				current.requestFooterRender = footerRequestRender;
+				current.railBar = createRailBar(
+					(width, rows) => {
+						const session = getCurrentSession();
+						if (!session) return [];
+						const config = session.runtime.getConfig();
+						return railBarLines(
+							getSidebarSnapshot(session),
+							config,
+							theme,
+							width,
+							rows,
+							config.sectionExpansion,
+						);
+					},
+					(id) => toggleRailSection(ctx, id),
+				);
+				current.sidebar.setTopBar(
+					current.runtime.getConfig().panelPlacement === "top" ? current.railBar : undefined,
+				);
+			}
 			const component = createFooterComponent({
 				getState: (): FooterState => {
 					// A footer outliving its `setFooter(undefined)` reports detached inert state.
@@ -540,6 +577,8 @@ export default function atelierExtension(
 					};
 				},
 				getConfig: () => getCurrentSession()?.runtime.getConfig() ?? retiredConfig,
+				getRows: () => tui.terminal?.rows ?? Number.POSITIVE_INFINITY,
+				getWidth: () => tui.terminal?.columns || undefined,
 				colorEnabled: isColorEnabled(),
 				requestRender: footerRequestRender,
 				onBranchChange: (callback) =>
@@ -579,11 +618,24 @@ export default function atelierExtension(
 		try {
 			ctx.ui.setEditorComponent((tui, theme, keybindings) => {
 				const next = new AtelierEditor(tui, theme, keybindings);
+				next.renderAbove = (width) => {
+					const current = getCurrentSession();
+					if (!current || !headerTheme || isViewportTUI(tui)) return [];
+					const config = current.runtime.getConfig();
+					if (config.panelPlacement !== "top" || !current.railBar) return [];
+					current.railBar.setRows(tui.terminal.rows);
+					return current.railBar.render(width);
+				};
 				next.renderStatusLine = (width) => {
 					// Fullscreen Pi crops the top of a tall draft after editor rendering.
 					// Keep essential state in the bottom footer on short terminals.
+					const current = getCurrentSession();
+					if (!current || !footer || !headerTheme) {
+						headerRendered = false;
+						return "";
+					}
 					const line =
-						getCurrentSession() && tui.terminal.rows >= 12 ? (footer?.renderHeader(width) ?? "") : "";
+						tui.terminal.columns >= 76 && tui.terminal.rows >= 20 ? footer.renderHeader(width) : "";
 					headerRendered = Boolean(line);
 					return line;
 				};
@@ -600,30 +652,111 @@ export default function atelierExtension(
 	}
 
 	type CommandHandler = (ctx: ExtensionContext, args: readonly string[]) => Promise<void> | void;
-	const usage = (ctx: ExtensionContext, syntax: string): void =>
-		ctx.ui.notify(`Usage: /atelier ${syntax}`, "warning");
+	const usage = (ctx: ExtensionContext, syntax: string): void => {
+		const language = activeSession?.runtime.getConfig().language ?? "en";
+		ctx.ui.notify(`${t(language, "usageCommand")} ${syntax}`, "warning");
+	};
 	const isOnOff = (value: string | undefined): boolean =>
 		value === undefined || value === "on" || value === "off";
+	const setPanelPlacement = (ctx: ExtensionContext, placement: "right" | "top"): void => {
+		const current = requireActiveSession(ctx);
+		if (!current) return;
+		current.runtime.replaceSessionDisplayOverride({
+			...current.runtime.getSessionDisplayOverride(),
+			sourcePanelPlacement: placement,
+		});
+		current.sidebar.setTopBar(placement === "top" ? current.railBar : undefined);
+		if (enabled && placement === "right") current.sidebar.show();
+		else current.sidebar.hide();
+		requestAllRenders(current);
+		ctx.ui.notify(
+			`${t(current.runtime.getConfig().language, "placement")}: ${t(current.runtime.getConfig().language, placement)}`,
+			"info",
+		);
+	};
+	const toggleRailSection = (ctx: ExtensionContext, id: string): void => {
+		const current = requireActiveSession(ctx);
+		if (!current) return;
+		if (!isBuiltinSidebarPanelId(id)) {
+			usage(ctx, `section <${BUILTIN_SIDEBAR_PANEL_IDS.join("|")}>`);
+			return;
+		}
+		const config = current.runtime.getConfig();
+		const sectionExpansion = toggleSection(config.sectionExpansion, id);
+		current.runtime.replaceSessionDisplayOverride({
+			...current.runtime.getSessionDisplayOverride(),
+			sectionExpansion,
+		});
+		requestAllRenders(current);
+		ctx.ui.notify(
+			`${t(config.language, id)} ${t(config.language, isSectionExpanded(sectionExpansion, id) ? "expanded" : "collapsed")}`,
+			"info",
+		);
+	};
 
+	const visibleTodoCount = (current: ActiveSession): number =>
+		current.runActivity.getSnapshot().phase === "running"
+			? current.todos.filter((todo) => todo.status === "in_progress").length
+			: current.todos.length;
+	const scrollTodos = (
+		current: ActiveSession,
+		action: "top" | "next" | "prev" | "page-up" | "page-down",
+	): void => {
+		current.todoOffset = scrollTodoOffset(current.todoOffset, visibleTodoCount(current), action);
+		current.sidebar.requestRender();
+	};
 	const commands = new Map<string, CommandHandler>(
 		Object.entries({
+			placement: (ctx, [placement, ...extra]) => {
+				if ((placement !== "right" && placement !== "top") || extra.length > 0) {
+					usage(ctx, "placement right|top");
+					return;
+				}
+				setPanelPlacement(ctx, placement);
+			},
+			section: (ctx, [id, ...extra]) => {
+				if (!id || extra.length > 0) {
+					usage(ctx, `section <${BUILTIN_SIDEBAR_PANEL_IDS.join("|")}>`);
+					return;
+				}
+				toggleRailSection(ctx, id);
+			},
+			todos: (ctx, args) => {
+				const current = requireActiveSession(ctx);
+				if (!current) return;
+				const action = todoActionFromArgs(args);
+				if (action === null) {
+					usage(ctx, "todos [top|next|prev|page-up|page-down]");
+					return;
+				}
+				scrollTodos(current, action);
+				ctx.ui.notify(
+					`${t(current.runtime.getConfig().language, "todosLabel")} ${current.todos.length === 0 ? 0 : current.todoOffset + 1}/${current.todos.length}`,
+					"info",
+				);
+			},
 			usage: async (ctx, args) => {
 				if (args.length > 0) usage(ctx, "usage");
 				else await openUsage(ctx);
 			},
+
 			display: async (ctx, args) => {
 				if (args.length > 0) usage(ctx, "display");
 				else await openDisplay(ctx);
 			},
 			sidebar: async (ctx, [sidebarAction, ...extra]) => {
 				if (ctx.mode !== "tui") {
-					ctx.ui.notify("Pi Atelier sidebar requires TUI mode", "warning");
+					ctx.ui.notify(t(activeSession?.runtime.getConfig().language ?? "en", "sidebarNeedsTui"), "warning");
 					return;
 				}
 				const current = requireActiveSession(ctx);
 				if (!current) return;
+				if (current.runtime.getConfig().panelPlacement === "top") {
+					ctx.ui.notify(t(current.runtime.getConfig().language, "sidebarHiddenPlacement"), "info");
+					return;
+				}
 				if (!enabled && sidebarAction !== "off") {
-					ctx.ui.notify("Enable Pi Atelier with /atelier enable before showing its sidebar", "info");
+					ctx.ui.notify(t(current.runtime.getConfig().language, "enableBeforeShowing"), "info");
 					return;
 				}
 				if (sidebarAction === "tools") {
@@ -648,7 +781,10 @@ export default function atelierExtension(
 				else if (sidebarAction === "on") current.sidebar.show();
 				else if (sidebarAction === "off") current.sidebar.hide();
 				else current.sidebar.toggle();
-				ctx.ui.notify(`Sidebar: ${sidebarStatusLabel(current.sidebar.getStatus())}`, "info");
+				ctx.ui.notify(
+					`${t(current.runtime.getConfig().language, "sidebar")}: ${sidebarStatusLabel(current.sidebar.getStatus(), true, current.runtime.getConfig().language)}`,
+					"info",
+				);
 			},
 			disable: (ctx) => {
 				const current = requireActiveSession(ctx);
@@ -658,6 +794,7 @@ export default function atelierExtension(
 				current.runActivity.resetResponse();
 				current.completionNotifier.reset();
 				current.todos = [];
+				current.todoOffset = 0;
 				current.sidebar.hide();
 				updateExtensionStatuses(current, []);
 				clearFooter(current, true);
@@ -669,6 +806,7 @@ export default function atelierExtension(
 				if (!enabled) {
 					enabled = true;
 					current.todos = reconstructTodos(current.ctx);
+					current.todoOffset = 0;
 					current.runtime.setEnabled(true);
 					syncFooter(current);
 				}
@@ -792,6 +930,8 @@ export default function atelierExtension(
 		cleanup.push(() => panelRegistry.dispose());
 		const completionNotifier = createCompletionNotifier({
 			isEnabled: () => enabled && isPublished() && runtime.getConfig().completionNotifications,
+			getNerdFont: () => runtime.getConfig().nerdFont,
+			getLanguage: () => runtime.getConfig().language,
 			...(dependencies.notificationPlatform === undefined
 				? {}
 				: { platform: dependencies.notificationPlatform }),
@@ -802,6 +942,27 @@ export default function atelierExtension(
 		cleanup.push(() => completionNotifier.reset());
 		const sidebar = createSidebarController({
 			ctx,
+			getTodoOffset: () => (activeSession?.token === token ? activeSession.todoOffset : 0),
+			handleTodoInput: (data) => {
+				const current = getActiveSession(ctx);
+				if (
+					!current ||
+					!current.sidebar.isVisible() ||
+					!current.runtime.getConfig().sidebarPanelLayout.some(({ id, visible }) => id === "todos" && visible)
+				)
+					return false;
+				const action = (
+					[
+						["ctrl+p", "prev"],
+						["ctrl+n", "next"],
+						["ctrl+u", "page-up"],
+						["ctrl+d", "page-down"],
+					] as const
+				).find(([key]) => matchesKey(data, key as KeyId))?.[1];
+				if (!action) return false;
+				scrollTodos(current, action);
+				return true;
+			},
 			getSnapshot: () => {
 				const current = activeSession;
 				if (!current || current.token !== token) throw new Error("Pi Atelier session is not published");
@@ -844,8 +1005,10 @@ export default function atelierExtension(
 			inputRequestSequence: 0,
 			todos: enabled ? reconstructTodos(ctx) : [],
 			providerFailed: false,
+			todoOffset: 0,
 			requestFooterRender: noopRender,
 			extensionStatuses: [],
+			railBar: undefined,
 		};
 	}
 
@@ -902,7 +1065,8 @@ export default function atelierExtension(
 			session.sidebar.setMode("manual");
 			if (enabled) {
 				syncFooter(session);
-				if (loaded.config.showSidebarOnStartup) session.sidebar.show();
+				if (loaded.config.showSidebarOnStartup && loaded.config.panelPlacement === "right")
+					session.sidebar.show();
 			}
 			void session.runtime.flushWorkspacePulseRefresh();
 		} catch (error) {
@@ -924,6 +1088,7 @@ export default function atelierExtension(
 		const current = getActiveSession(ctx);
 		if (!enabled || !current) return;
 		current.todos = reconstructTodos(ctx);
+		current.todoOffset = clampTodoOffset(current.todoOffset, visibleTodoCount(current));
 		void current.runtime.refreshSubagentUsage();
 		requestAllRenders(current);
 	});
@@ -1014,6 +1179,7 @@ export default function atelierExtension(
 		if (!todos) return;
 		// Leave the result content untouched: it is what the model reads, including task ids.
 		current.todos = todos;
+		current.todoOffset = clampTodoOffset(current.todoOffset, visibleTodoCount(current));
 		current.sidebar.requestRender();
 	});
 	pi.on("agent_settled", (_event, ctx) => {

@@ -9,6 +9,7 @@ import {
 	toggleSegmentVisibility,
 } from "./display.js";
 import { renderFooterLine } from "./footer.js";
+import { asciiGlyphText } from "./glyphs.js";
 import type { ThemeLike } from "./palette.js";
 import { DEFAULT_SIDEBAR_PANEL_LAYOUT } from "./sidebar-panels.js";
 import { errorMessage, fitToWidth } from "./text.js";
@@ -586,7 +587,10 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 					border(`╭${"─".repeat(outerInner)}╮`),
 					...lines.map(({ line }) => `${border("│")}${fitToWidth(line, outerInner)}${border("│")}`),
 					border(`╰${"─".repeat(outerInner)}╯`),
-				].map((line) => truncateToWidth(line, width, ""));
+				].map((line) => {
+					const fitted = truncateToWidth(line, width, "");
+					return options.getRenderConfig().nerdFont ? fitted : asciiGlyphText(fitted, "settings");
+				});
 
 			const viewportHeight = options.getViewportHeight?.();
 			if (viewportHeight === undefined) return frame(content);

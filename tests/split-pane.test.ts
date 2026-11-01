@@ -1,6 +1,6 @@
 import { disposeAfterTest } from "./helpers/cleanup.js";
 import type { TUI } from "@earendil-works/pi-tui";
-import { TuiMainScreen as PiTuiMainScreen, TuiAltScreen } from "@earendil-works/pi-tui";
+import { HStack, TuiMainScreen as PiTuiMainScreen, TuiAltScreen, VStack } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import {
 	createSplitPaneController,
@@ -11,6 +11,8 @@ import {
 	parseSgrMouseEvent,
 } from "../src/split-pane.js";
 import { stableTuiReference } from "./helpers/stable-tui-reference.js";
+import { compatMouseHandler, type CompatMouseEvent, type MouseRegionComponent } from "../src/pi-compat.js";
+import { createRailBar } from "../src/rail-bar.js";
 
 function harness(columns = 120) {
 	const baseRender = vi.fn((width: number) => [`base:${width}`]);
@@ -99,18 +101,18 @@ describe("temporary Resize mode", () => {
 		expect(h.split.isResizing()).toBe(false);
 	});
 	it("drags only from the divider and accepts on release", () => {
-		const h = resizeHarness();
+		const h = resizeHarness(140);
 		h.split.beginResize();
-		const dividerX = 120 - DEFAULT_SIDEBAR_WIDTH + 1;
+		const dividerX = h.tui.terminal.columns - DEFAULT_SIDEBAR_WIDTH + 1;
 		expect(h.send(press(dividerX))).toEqual({ consume: true });
-		expect(h.send(motion(70))).toEqual({ consume: true });
+		expect(h.send(motion(90))).toEqual({ consume: true });
 		expect(h.split.getSidebarWidth()).toBe(51);
-		expect(h.send(release(70))).toEqual({ consume: true });
+		expect(h.send(release(90))).toEqual({ consume: true });
 		expect(h.split.isResizing()).toBe(false);
 		expect(h.split.getSidebarWidth()).toBe(51);
 	});
 	it("receives fullscreen drags before viewport text selection", () => {
-		const renderer = new TuiAltScreen({ columns: 120, rows: 36, write: vi.fn() } as never);
+		const renderer = new TuiAltScreen({ columns: 140, rows: 36, write: vi.fn() } as never);
 		renderer.requestRender = vi.fn();
 		const split = disposeAfterTest(
 			createSplitPaneController({
@@ -126,10 +128,10 @@ describe("temporary Resize mode", () => {
 
 		const send = (data: string) =>
 			(renderer as unknown as { handleTerminalInput(data: string): void }).handleTerminalInput(data);
-		const dividerX = 120 - DEFAULT_SIDEBAR_WIDTH + 1;
+		const dividerX = 140 - DEFAULT_SIDEBAR_WIDTH + 1;
 		send(press(dividerX));
-		send(motion(70));
-		send(release(70));
+		send(motion(90));
+		send(release(90));
 
 		expect(split.getSidebarWidth()).toBe(51);
 		expect(split.isResizing()).toBe(false);
@@ -234,7 +236,7 @@ describe("temporary Resize mode", () => {
 		expect(h.send("a")).toBeUndefined();
 	});
 	it("keeps Resize mode active on misses and starts dragging within one column of the divider", () => {
-		const h = resizeHarness();
+		const h = resizeHarness(140);
 		h.split.beginResize();
 		h.send("\u001b[C");
 		expect(h.split.getSidebarWidth()).toBe(43);
@@ -243,15 +245,15 @@ describe("temporary Resize mode", () => {
 		expect(h.split.getSidebarWidth()).toBe(43);
 		expect(h.split.isResizing()).toBe(true);
 
-		const dividerX = 120 - 43 + 1;
+		const dividerX = h.tui.terminal.columns - 43 + 1;
 		h.send(press(dividerX - 1));
-		h.send(motion(70));
+		h.send(motion(90));
 		expect(h.split.getSidebarWidth()).toBe(51);
-		h.send(release(70));
+		h.send(release(90));
 		expect(h.split.isResizing()).toBe(false);
 	});
 	it("supports arrows, shifted arrows, Enter, and Escape rollback", () => {
-		const h = resizeHarness();
+		const h = resizeHarness(140);
 		h.split.beginResize();
 		h.send("\u001b[D");
 		expect(h.split.getSidebarWidth()).toBe(45);
@@ -403,12 +405,12 @@ describe("Pi 0.84 split layout", () => {
 		split.show();
 
 		split.setSidebarWidth(72);
-		split.overlayOptions().visible?.(100, 36);
-		expect(tui.render(100)).toEqual(["base:64"]);
-		expect(split.overlayOptions()).toMatchObject({ width: 36 });
+		split.overlayOptions().visible?.(120, 36);
+		expect(tui.render(120)).toEqual(["base:76"]);
+		expect(split.overlayOptions()).toMatchObject({ width: 44 });
 
 		split.hide();
-		expect(tui.render(100)).toEqual(["base:100"]);
+		expect(tui.render(120)).toEqual(["base:120"]);
 	});
 
 	it("reserves fullscreen columns in the real layout-frame render path", () => {
@@ -440,7 +442,7 @@ describe("Pi 0.84 split layout", () => {
 		split.setSidebarWidth(72);
 		terminal.columns = 100;
 		renderer.renderNow();
-		expect(widths.at(-1)).toBe(64);
+		expect(widths.at(-1)).toBe(100);
 		terminal.columns = 91;
 		renderer.renderNow();
 		expect(widths.at(-1)).toBe(91);
@@ -470,7 +472,7 @@ describe("Pi 0.84 split layout", () => {
 
 		split.setSidebarWidth(72);
 		renderer.render(100);
-		expect(widths.at(-1)).toBe(64);
+		expect(widths.at(-1)).toBe(100);
 
 		renderer.render(91);
 		expect(widths.at(-1)).toBe(91);
@@ -478,6 +480,81 @@ describe("Pi 0.84 split layout", () => {
 		split.hide();
 		renderer.render(120);
 		expect(widths.at(-1)).toBe(120);
+	});
+
+	it("places a top bar above the original root and restores right placement", () => {
+		const renderer = new TuiAltScreen({ columns: 120, rows: 36, write: vi.fn() } as never);
+		const originalRoot = { render: () => ["transcript"], invalidate() {} };
+		renderer.requestRender = vi.fn();
+		renderer.setLayoutRoot(originalRoot);
+		const bar = createRailBar((width, rows) => (width >= 64 && rows >= 20 ? ["fixed rail"] : []));
+		const split = disposeAfterTest(createSplitPaneController({ topBar: bar }));
+		split.attach(stableTuiReference(() => renderer));
+
+		const topRoot = (renderer as unknown as { layoutRoot: unknown }).layoutRoot;
+		expect(topRoot).toBeInstanceOf(VStack);
+		expect((topRoot as VStack).render(120)).toEqual(["fixed rail", "transcript"]);
+		Object.assign(renderer.terminal, { rows: 2 });
+		(topRoot as VStack).render(120);
+		expect((renderer as unknown as { layoutRoot: unknown }).layoutRoot).toBe(originalRoot);
+		Object.assign(renderer.terminal, { rows: 36 });
+		split.setTopBar(bar);
+		expect((renderer as unknown as { layoutRoot: unknown }).layoutRoot).toBeInstanceOf(VStack);
+		Object.assign(renderer.terminal, { columns: 40 });
+		(renderer as unknown as { layoutRoot: VStack }).layoutRoot.render(40);
+		expect((renderer as unknown as { layoutRoot: unknown }).layoutRoot).toBe(originalRoot);
+		Object.assign(renderer.terminal, { columns: 120 });
+		split.requestRender();
+		expect((renderer as unknown as { layoutRoot: unknown }).layoutRoot).toBeInstanceOf(VStack);
+
+		split.setTopBar(undefined);
+		expect((renderer as unknown as { layoutRoot: unknown }).layoutRoot).toBe(originalRoot);
+		split.show();
+		expect((renderer as unknown as { layoutRoot: unknown }).layoutRoot).toBeInstanceOf(HStack);
+	});
+
+	it("toggles a rail title click in the fullscreen layout", () => {
+		const renderer = new TuiAltScreen({ columns: 120, rows: 36, write: vi.fn() } as never);
+		const toggle = vi.fn();
+		class FakeMouseRegion implements MouseRegionComponent {
+			constructor(
+				private readonly child: { render(width: number): string[]; invalidate(): void },
+				private readonly handle: (event: CompatMouseEvent) => unknown,
+			) {}
+			render(width: number) {
+				return this.child.render(width);
+			}
+			invalidate() {
+				this.child.invalidate();
+			}
+			handleMouse = (event: never): never => this.handle(event) as never;
+		}
+		const bar = createRailBar(() => ["▾ AGENT model"], toggle, { MouseRegion: FakeMouseRegion });
+		const split = disposeAfterTest(createSplitPaneController({ topBar: bar }));
+		renderer.setLayoutRoot({ render: () => ["transcript"], invalidate() {} });
+		split.attach(stableTuiReference(() => renderer));
+		const topRoot = (renderer as unknown as { layoutRoot: VStack }).layoutRoot;
+		topRoot.render(120);
+		const event = (type: "press" | "release" | "click") => ({
+			type,
+			button: "left" as const,
+			x: 4,
+			y: 0,
+			screenX: 4,
+			screenY: 0,
+			width: 120,
+			height: 2,
+			shift: false,
+			alt: false,
+			ctrl: false,
+		});
+		const handleMouse = compatMouseHandler(bar as MouseRegionComponent);
+		handleMouse?.(event("press"));
+		handleMouse?.(event("release"));
+		handleMouse?.(event("click"));
+
+		expect(toggle).toHaveBeenCalledOnce();
+		expect(toggle).toHaveBeenCalledWith("agent");
 	});
 
 	it("restores the original fullscreen layout root on disposal", () => {
@@ -634,6 +711,17 @@ describe("sidebar overlay sizing", () => {
 		expect(h.tui.render(120)).toEqual(["base:120"]);
 	});
 
+	it("keeps sidebar visibility independent of the top rail row gate", () => {
+		const h = concreteHarness(120);
+		Object.assign(h.tui.terminal, { rows: 19 });
+		const split = disposeAfterTest(createSplitPaneController());
+		split.attach(h.tui);
+		split.show();
+
+		expect(split.getStatus().presentation).toBe("shown");
+		expect(h.tui.render(120)).toEqual([`base:${120 - DEFAULT_SIDEBAR_WIDTH}`]);
+	});
+
 	it("passes zero and negative widths through the concrete renderer", () => {
 		const h = concreteHarness();
 		const split = disposeAfterTest(createSplitPaneController());
@@ -644,22 +732,22 @@ describe("sidebar overlay sizing", () => {
 	});
 
 	it("clamps configured and runtime widths while preserving the main pane", () => {
-		const h = concreteHarness(100);
+		const h = concreteHarness(120);
 		const split = disposeAfterTest(createSplitPaneController());
 		split.attach(h.tui);
 		split.show();
 
 		split.setSidebarWidth(999);
 		expect(split.getSidebarWidth()).toBe(MAX_SIDEBAR_WIDTH);
-		expect(h.tui.render(100)).toEqual([`base:${MIN_MAIN_WIDTH}`]);
-		expect(split.overlayOptions()).toMatchObject({ width: 100 - MIN_MAIN_WIDTH });
+		expect(h.tui.render(120)).toEqual([`base:${MIN_MAIN_WIDTH}`]);
+		expect(split.overlayOptions()).toMatchObject({ width: 120 - MIN_MAIN_WIDTH });
 
 		split.setSidebarWidth(Number.NaN);
 		expect(split.getSidebarWidth()).toBe(MAX_SIDEBAR_WIDTH);
 
 		split.setSidebarWidth(-10);
 		expect(split.getSidebarWidth()).toBe(MIN_SIDEBAR_WIDTH);
-		expect(h.tui.render(100)).toEqual([`base:${100 - MIN_SIDEBAR_WIDTH}`]);
+		expect(h.tui.render(120)).toEqual([`base:${120 - MIN_SIDEBAR_WIDTH}`]);
 	});
 });
 

@@ -148,6 +148,8 @@ describe("Control Center presentation", () => {
 				"Font mode: Nerd Font",
 				"Atelier footer: On",
 				"Sidebar on startup: On",
+				"Panel placement: right",
+				...DEFAULT_CONFIG.sidebarPanelLayout.map((entry) => `${entry.id.toUpperCase()}: Expanded`),
 				"Completion notifications: On",
 				"Prefill progress: On",
 				"Sidebar tool list: Collapsed",
@@ -266,6 +268,34 @@ describe("Control Center presentation", () => {
 		workspace.handleInput("s");
 		expect(h.savePatch).toHaveBeenCalledOnce();
 		expect(requestAllRenders).toHaveBeenCalled();
+	});
+
+	it("offers placement and per-section expansion controls in Settings", async () => {
+		const h = harness();
+		const ctx = contextWithSelections(["settings", "section-agent", "back", "close"]);
+		await openAtelierControlCenter(
+			h.pi as never,
+			ctx as never,
+			h.runtime as never,
+			"/tmp/user.json",
+			sidebarControls(),
+		);
+		expect(rootMenuItems[1]?.map((item) => item.label)).toEqual([
+			"Display: editorial",
+			"Font mode: Nerd Font",
+			"Atelier footer: On",
+			"Sidebar on startup: On",
+			"Panel placement: right",
+			...DEFAULT_CONFIG.sidebarPanelLayout.map((entry) => `${entry.id.toUpperCase()}: Expanded`),
+			"Completion notifications: On",
+			"Prefill progress: On",
+			"Sidebar tool list: Collapsed",
+			"Back",
+		]);
+		expect(h.runtime.replaceSessionDisplayOverride).toHaveBeenCalledWith({
+			sectionExpansion: { agent: false },
+		});
+		expect(ctx.ui.notify).toHaveBeenCalledWith("AGENT collapsed", "info");
 	});
 
 	it("toggles and persists Sidebar startup from Settings", async () => {

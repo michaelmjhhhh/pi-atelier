@@ -1,8 +1,12 @@
 import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { DEFAULT_CONFIG } from "./config.js";
 import { formatTokens } from "./metrics.js";
+import { t } from "./i18n.js";
+import { surfaceGlyphs } from "./glyphs.js";
 import { type AtelierPalette, createPalette, type PaletteRole, type ThemeLike } from "./palette.js";
 import { responsePerformanceValues } from "./run-activity.js";
+import { footerCoreSelection } from "./surface-gates.js";
+import { RAIL_BAR_MIN_ROWS, RAIL_BAR_MIN_WIDTH } from "./rail-bar.js";
 import { PLACEHOLDER, sanitizeInline } from "./text.js";
 import type {
 	AtelierConfig,
@@ -90,16 +94,22 @@ const ITEM_META: Record<
 	activity: { zone: "left", group: "activity", dropRank: Number.POSITIVE_INFINITY, header: true },
 	model: { zone: "left", group: "model", dropRank: 60, header: true },
 	thinking: { zone: "left", group: "model", dropRank: 10, header: true },
-	workspace: { zone: "left", group: "workspace", dropRank: 50, header: true },
-	git: { zone: "left", group: "workspace", dropRank: 55, header: true },
+	workspace: { zone: "left", group: "workspace", dropRank: 65, header: true },
+	git: { zone: "left", group: "workspace", dropRank: 70, header: true },
 	input: { zone: "right", group: "usage", dropRank: 40, header: false },
 	output: { zone: "right", group: "usage", dropRank: 40, header: false },
 	cache: { zone: "right", group: "usage", dropRank: 50, header: false },
 	cost: { zone: "right", group: "usage", dropRank: 20, header: false },
 	performance: { zone: "right", group: "performance", dropRank: 45, header: false },
 	context: { zone: "right", group: "context", dropRank: Number.POSITIVE_INFINITY, header: true },
-	menu: { zone: "right", group: "menu", dropRank: 0, header: false },
+	menu: { zone: "right", group: "menu", dropRank: 80, header: false },
 };
+
+const RAIL_OWNED_SEGMENTS = new Set<SegmentId>(["model", "git"]);
+
+function railOwnsSegments(config: AtelierConfig, width: number, rows: number): boolean {
+	return config.panelPlacement === "top" && width >= RAIL_BAR_MIN_WIDTH && rows >= RAIL_BAR_MIN_ROWS;
+}
 
 const isRequired = (item: FooterItem): boolean => ITEM_META[item.id].dropRank === Number.POSITIVE_INFINITY;
 
@@ -145,12 +155,21 @@ function activityText(
 	workingDots: string,
 	compact: boolean,
 	nerdFont: boolean,
+	language: AtelierConfig["language"],
 ): string {
-	const fallback = state.activity.toUpperCase();
+	const fallback = t(language, state.activity);
 	const label = state.activity === "working" && !compact ? (state.workingLabel ?? fallback) : fallback;
 	const dots =
 		state.activity === "working" && !compact ? workingDots.padEnd(WORKING_DOT_FRAMES[0].length, " ") : "";
-	const marker = state.activity === "error" ? "× " : nerdFont ? "● " : "";
+	const glyphs = surfaceGlyphs("footer", nerdFont);
+	const marker =
+		state.activity === "error"
+			? `${glyphs.activityError} `
+			: nerdFont
+				? "● "
+				: state.activity === "working"
+					? `${glyphs.activityWorking} `
+					: "";
 	return palette.paint(state.activity, theme.bold(`${marker}${sanitizeInline(label)}${dots}`));
 }
 
@@ -161,6 +180,7 @@ interface ItemContext {
 	palette: AtelierPalette;
 	symbols: FooterSymbols;
 	workingDots: string;
+	glyphs: ReturnType<typeof surfaceGlyphs>;
 }
 
 const item = (id: FooterItemId, full: string, compact = full): FooterItem => ({ id, full, compact });
@@ -177,18 +197,19 @@ const SEGMENT_ITEMS: Record<SegmentId, (context: ItemContext) => FooterItem[]> =
 	activity: ({ state, palette, theme, workingDots, config }) => [
 		item(
 			"activity",
-			activityText(state, palette, theme, workingDots, false, config.nerdFont),
-			activityText(state, palette, theme, workingDots, true, config.nerdFont),
+			activityText(state, palette, theme, workingDots, false, config.nerdFont, config.language),
+			activityText(state, palette, theme, workingDots, true, config.nerdFont, config.language),
 		),
 	],
-	model: ({ state, palette, theme, symbols }) => {
+	model: ({ state, palette, theme, symbols, config }) => {
 		const icon = iconFor(palette);
 		const items: FooterItem[] = [];
+		const glyphs = surfaceGlyphs("footer", config.nerdFont);
 		const model = state.modelId ? sanitizeInline(state.modelId) : "";
 		if (model) {
 			const paint = (text: string) =>
 				icon(symbols.model, palette.paint("accent", theme.bold(text)), "accent");
-			items.push(item("model", paint(model), paint(truncateToWidth(model, 24, "…"))));
+			items.push(item("model", paint(model), paint(truncateToWidth(model, 24, glyphs.ellipsis))));
 		}
 		const thinking = state.thinkingLevel ? sanitizeInline(state.thinkingLevel) : "";
 		if (thinking) {
@@ -197,19 +218,20 @@ const SEGMENT_ITEMS: Record<SegmentId, (context: ItemContext) => FooterItem[]> =
 		}
 		return items;
 	},
-	git: ({ state, palette, symbols }) => {
+	git: ({ state, palette, symbols, config }) => {
 		const icon = iconFor(palette);
+		const glyphs = surfaceGlyphs("footer", config.nerdFont);
 		const items: FooterItem[] = [];
 		const workspace = state.workspaceLabel ? sanitizeInline(state.workspaceLabel) : "";
 		if (workspace) {
 			const paint = (text: string) => icon(symbols.workspace, palette.paint("cache", text), "cache");
-			items.push(item("workspace", paint(workspace), paint(truncateToWidth(workspace, 18, "…"))));
+			items.push(item("workspace", paint(workspace), paint(truncateToWidth(workspace, 18, glyphs.ellipsis))));
 		}
 		const branch = state.branch ? sanitizeInline(state.branch) : "";
 		if (branch) {
 			const dirty = state.dirty ? palette.paint("warning", "*") : "";
 			const paint = (text: string) => icon(symbols.git, `${palette.paint("input", text)}${dirty}`, "input");
-			items.push(item("git", paint(branch), paint(truncateToWidth(branch, 18, "…"))));
+			items.push(item("git", paint(branch), paint(truncateToWidth(branch, 18, glyphs.ellipsis))));
 		}
 		return items;
 	},
@@ -295,10 +317,11 @@ const SEGMENT_ITEMS: Record<SegmentId, (context: ItemContext) => FooterItem[]> =
 	},
 };
 
-function buildItems(context: ItemContext): FooterItem[] {
+function buildItems(context: ItemContext, width: number, rows: number): FooterItem[] {
 	const compactDensity = context.config.density === "compact";
+	const railOwns = railOwnsSegments(context.config, width, rows);
 	return context.config.segmentLayout
-		.filter((entry) => entry.visible)
+		.filter((entry) => entry.visible && !(railOwns && RAIL_OWNED_SEGMENTS.has(entry.id)))
 		.flatMap((entry) => SEGMENT_ITEMS[entry.id](context))
 		.map((footerItem) => (compactDensity ? { ...footerItem, full: footerItem.compact } : footerItem));
 }
@@ -312,6 +335,7 @@ function renderZone(
 	compactIds: ReadonlySet<FooterItemId>,
 	palette: AtelierPalette,
 	separator: string,
+	glyphs: ReturnType<typeof surfaceGlyphs>,
 ): string {
 	return items
 		.map((placed, index) => {
@@ -320,7 +344,7 @@ function renderZone(
 			if (!previous) return text;
 			const group = ITEM_META[placed.id].group;
 			if (ITEM_META[previous.id].group !== group) return `${palette.paint("dim", ` ${separator} `)}${text}`;
-			return `${group === "model" || group === "workspace" ? palette.paint("dim", " · ") : "  "}${text}`;
+			return `${group === "model" || group === "workspace" ? palette.paint("dim", ` ${glyphs.bullet} `) : "  "}${text}`;
 		})
 		.join("");
 }
@@ -332,6 +356,7 @@ function compose(
 	palette: AtelierPalette,
 	separator: string,
 	flow: boolean,
+	glyphs: ReturnType<typeof surfaceGlyphs>,
 ): string {
 	const active = [...items];
 	const compactIds = new Set<FooterItemId>();
@@ -341,6 +366,7 @@ function compose(
 			compactIds,
 			palette,
 			separator,
+			glyphs,
 		);
 	const flowGap = visibleWidth(` ${separator} `);
 	const measured = () => {
@@ -398,6 +424,10 @@ export interface FooterRenderOptions {
 	colorEnabled?: boolean;
 	workingDots?: string;
 	surface?: FooterSurface;
+	/** Terminal rows for rail ownership; direct render calls default to an unbounded height. */
+	rows?: number;
+	/** Outer terminal width, when rendering a status line inside narrower editor chrome. */
+	terminalWidth?: number;
 }
 
 interface RenderedFooter {
@@ -411,18 +441,31 @@ function renderFooter(
 	config: AtelierConfig,
 	theme: ThemeLike,
 	width: number,
-	{ colorEnabled = true, workingDots = WORKING_DOT_FRAMES[0], surface = "all" }: FooterRenderOptions,
+	{
+		colorEnabled = true,
+		workingDots = WORKING_DOT_FRAMES[0],
+		surface = "all",
+		rows = Number.POSITIVE_INFINITY,
+		terminalWidth = width,
+	}: FooterRenderOptions,
 ): RenderedFooter {
 	if (width <= 0) return { line: "", workingActivity: undefined };
 	const palette = createPalette(theme, colorEnabled);
 	const symbols = config.nerdFont ? FOOTER_ICONS : PLAIN_SYMBOLS;
-	const items = buildItems({ state, config, theme, palette, symbols, workingDots });
+	const glyphs = surfaceGlyphs("footer", config.nerdFont);
+	const itemContext = { state, config, theme, palette, symbols, workingDots, glyphs };
+	const coreSelection = footerCoreSelection(terminalWidth, rows);
+	const coreOnly = coreSelection !== undefined;
+	const items = coreSelection
+		? coreSelection.map((id) => SEGMENT_ITEMS[id](itemContext)[0]!)
+		: buildItems(itemContext, width, rows);
 	const workingActivity =
 		state.activity === "working" && config.density !== "compact"
 			? items.find((footerItem) => footerItem.id === "activity")?.full
 			: undefined;
 	let placed: PlacedItem[];
 	if (surface === "telemetry") {
+		if (coreOnly) return { line: "", workingActivity };
 		const { metrics } = state;
 		const available: Partial<Record<FooterItemId, boolean>> = {
 			input: metrics.usageAvailable,
@@ -442,7 +485,7 @@ function renderFooter(
 			.filter((footerItem) => surface === "all" || ITEM_META[footerItem.id].header)
 			.map((footerItem) => ({ ...footerItem, zone: ITEM_META[footerItem.id].zone }));
 	}
-	const line = compose(placed, width, palette, symbols.separator, surface === "header");
+	const line = compose(placed, width, palette, symbols.separator, surface === "header", glyphs);
 	if (
 		surface === "telemetry" &&
 		placed.length > 0 &&
@@ -466,6 +509,8 @@ export function renderFooterLine(
 export interface FooterComponentOptions {
 	getState(): FooterState;
 	getConfig(): AtelierConfig;
+	getRows(): number;
+	getWidth?(): number | undefined;
 	colorEnabled?: boolean;
 	requestRender(): void;
 	onBranchChange(callback: () => void): () => void;
@@ -506,6 +551,7 @@ export function createFooterComponent(options: FooterComponentOptions): AtelierF
 	};
 
 	const renderSurface = (width: number, surface: FooterSurface): string => {
+		const terminalWidth = options.getWidth?.();
 		const { line, workingActivity } = renderFooter(
 			options.getState(),
 			options.getConfig(),
@@ -515,6 +561,8 @@ export function createFooterComponent(options: FooterComponentOptions): AtelierF
 				colorEnabled: options.colorEnabled ?? true,
 				workingDots: WORKING_DOT_FRAMES[frameIndex] ?? WORKING_DOT_FRAMES[0],
 				surface,
+				rows: options.getRows(),
+				...(terminalWidth !== undefined ? { terminalWidth } : {}),
 			},
 		);
 		// Animate only while the full working label is on screen; the telemetry row never shows it.

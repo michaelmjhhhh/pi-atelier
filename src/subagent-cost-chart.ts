@@ -1,6 +1,9 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { type AtelierPalette, PALETTE_RGB, type PaletteRole, paintRgb, type Rgb } from "./palette.js";
 import { interpolateCostCurve, renderCostImage } from "./subagent-cost-image.js";
+import { surfaceGlyphs } from "./glyphs.js";
+import { t } from "./i18n.js";
+import type { LanguageSetting } from "./i18n.js";
 import type { SubagentUsageSnapshot } from "./subagent-usage.js";
 import { clamp, sanitizeInline } from "./text.js";
 
@@ -44,6 +47,7 @@ export interface SubagentCostChartGraphics {
 }
 
 export interface SubagentCostChartOptions extends SubagentCostChartGraphics {
+	language?: LanguageSetting;
 	height?: number;
 	focusedSeries?: string | undefined;
 	focusedPoint?: number | undefined;
@@ -76,15 +80,30 @@ export function subagentCostChart(
 	options: SubagentCostChartOptions = {},
 ): string[] {
 	if (width < 24) return [];
+	const glyphs = surfaceGlyphs("costChart", unicode);
 	const all = usage.costHistory;
 	const selected = all
 		.map((series, index) => ({ series, index }))
 		.filter(({ series }) => series.points.length > 1);
+	const language = options.language ?? "en";
 	const incomplete = Boolean(usage.unavailable || usage.limited || usage.historyUnavailable);
 	if (!selected.length) {
-		if (incomplete) return [palette.paint("warning", "Cost history unavailable · partial")];
+		if (incomplete)
+			return [
+				palette.paint(
+					"warning",
+					`${t(language, "costHistoryUnavailable")} ${glyphs.bullet} ${t(language, "partial")}`,
+				),
+			];
 		return usage.pending || usage.runs.length
-			? [palette.paint("dim", usage.pending ? "Cost curves · awaiting usage" : "Cost history unavailable")]
+			? [
+					palette.paint(
+						"dim",
+						usage.pending
+							? `${t(language, "costCurves")} ${glyphs.bullet} ${t(language, "awaitingUsage")}`
+							: t(language, "costHistoryUnavailable"),
+					),
+				]
 			: [];
 	}
 	const maximum = Math.max(...selected.flatMap(({ series }) => series.points.map((point) => point.cost)));
@@ -118,7 +137,10 @@ export function subagentCostChart(
 
 	const partial = selected.some(({ series }) => series.partial) || incomplete;
 	const rows = [
-		palette.paint("muted", `Cost per agent · ${selected.length} curves${partial ? " · partial" : ""}`),
+		palette.paint(
+			"muted",
+			`${t(language, "costPerAgent")} ${glyphs.bullet} ${selected.length} ${t(language, "costCurves").toLowerCase()}${partial ? ` ${glyphs.bullet} ${t(language, "partial")}` : ""}`,
+		),
 	];
 	if (options.suspendPlot) {
 		// Occlusion is temporary, not a terminal capability failure. Keep the
@@ -126,7 +148,7 @@ export function subagentCostChart(
 		for (let y = 0; y < height; y++) {
 			rows.push(
 				y === Math.floor(height / 2)
-					? palette.paint("dim", truncateToWidth("Close dialog to view graph", width, "…"))
+					? palette.paint("dim", truncateToWidth(t(language, "closeDialog"), width, glyphs.ellipsis))
 					: "",
 			);
 		}
@@ -182,7 +204,7 @@ export function subagentCostChart(
 		const name = truncateToWidth(
 			sanitizeInline(`#${index + 1} ${series.agent}`),
 			Math.max(1, cellWidth - 2),
-			"…",
+			glyphs.ellipsis,
 		);
 		const text = `${unicode ? "━" : "-"} ${name}`;
 		return paintFocused(index, series.id, text) + " ".repeat(Math.max(0, cellWidth - visibleWidth(text)));
@@ -194,7 +216,7 @@ export function subagentCostChart(
 		rows.push(
 			palette.paint(
 				"dim",
-				`Legend ${start + 1}–${Math.min(start + pageSize, selected.length)}/${selected.length}`,
+				`Legend ${start + 1}${unicode ? "–" : "-"}${Math.min(start + pageSize, selected.length)}/${selected.length}`,
 			),
 		);
 	if (all.length > selected.length)

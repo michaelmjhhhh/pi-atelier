@@ -46,7 +46,20 @@ Start Pi and open the control center with `/atelier` or **F6** (**Fn+F6** on key
 
 ### Terminal font
 
-Plain text mode works with any monospace font and keeps colors, metrics, and the responsive layout. The default Nerd Font mode needs a Nerd Font, such as one from [nerdfonts.com](https://www.nerdfonts.com), selected in your terminal. Switch in **Settings → Font mode**.
+Plain text mode works with any monospace font, renders the interface using ASCII characters, and keeps colors, metrics, and the responsive layout. The default Nerd Font mode needs a Nerd Font, such as one from [nerdfonts.com](https://www.nerdfonts.com), selected in your terminal. Switch in **Settings → Font mode**.
+
+### Sizes and profiles
+
+| Surface | Threshold | Behavior |
+| --- | --- | --- |
+| Core footer | Below 76 columns or 20 rows | One row with Activity and Context only |
+| Sidebar split | At least 104 columns (76 main + 28 sidebar) | Keeps at least 76 columns for the main pane; remains available at short heights |
+| Top strip | At least 64 columns and 20 rows | Existing compact rail gates remain in effect |
+| Core-only surface | 6 rows or fewer | No editor frame, top strip, or split sidebar; one Activity + Context footer row |
+| Editor frame | 7 or more rows | Omits frame chrome at 6 rows or fewer |
+| Reflow target | 320 px, about 44 columns at 12 px monospace | Core footer stays on one row |
+
+Text roles meet a 4.5:1 contrast ratio against black and `#1e1e2e`; non-text indicators meet 3:1. Color is never the only signal. Touch target sizes belong to the terminal client (Heeler), not to the TUI cells.
 
 ## Features
 
@@ -73,6 +86,9 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 /atelier sidebar auto|manual  choose sidebar mode
 /atelier sidebar on|off       show or hide without changing mode
 /atelier sidebar tools        toggle tool names
+/atelier placement right|top  choose the sidebar or header rail
+/atelier section <id>         expand or collapse a header section
+/atelier todos [action]        scroll the TODO panel; default action is top
 /atelier enable|disable       set extension state
 ```
 
@@ -80,14 +96,14 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 
 | Mode | Behavior |
 | --- | --- |
-| **Manual** (default) | Resize with `Ctrl+Shift+R`, then the arrow keys or by dragging the divider. Enter or mouse release confirms; Escape cancels. Hides below 92 columns and returns at 92. |
+| **Manual** (default) | Resize with `Ctrl+Shift+R`, then the arrow keys or by dragging the divider. Enter or mouse release confirms; Escape cancels. Hides below 104 columns and returns at 104. |
 | **Auto** | Collapses when space is tight and reopens when there is room. At the default width it collapses below 124 columns and reopens at 132. Manual resizing is disabled. |
 
 - Showing or hiding is independent of the mode. A manually hidden sidebar stays hidden when the terminal grows.
 - The preferred width survives terminal resizes and mode changes.
 - A confirmed resize is saved as `sidebarWidth` and becomes the starting width for new sessions. Escape keeps the saved width.
 - Mode and visibility are session-scoped. The startup visibility preference is set in Settings.
-- The TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension. Atelier does not change `todo` results, so the agent keeps task ids and `list` output.
+- The TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension. It shows up to six items at a time; while the sidebar is visible, **Ctrl+P/Ctrl+N** move one item and **Ctrl+U/Ctrl+D** move one window. `/atelier todos [top|next|prev|page-up|page-down]` scrolls the same session-scoped list for clients without those keys. Hidden TODO results keep their full output.
 
 ### Prefill progress
 
@@ -125,6 +141,12 @@ run, so the default `llama.cpp` covers only Pi's built-in llama extension: a pi-
 its instance id, such as `llama-swap-tre`. Matching ignores case and surrounding spaces. Progress
 reporting needs Pi 0.99 or newer.
 
+### Panel placement and collapsible sections
+
+The panel placement is **right** by default. Use `/atelier placement top` to hide the split sidebar and show its available sections as matching sidebar cards in a horizontal strip above the transcript in viewport/fullscreen mode; `/atelier placement right` restores the sidebar. In scroll mode, the top placement falls back to the rail above the editor. The strip appears at widths of at least 64 columns and heights of at least 20 rows. `railTopHeight` sets its height cap from 1 through 10 rows (default 6), further limited to terminal rows minus 16. Cards share the available width, clamped to 24–48 columns, and hidden cards are counted. Click anywhere within a card to expand or collapse it. Expanded cards show plain-text details, truncated to the available height. When placed at the top, the rail owns model/thinking and workspace/branch while the footer retains Activity and Context; other footer content stays in place.
+
+Sections start expanded. Use `/atelier section agent` (or another built-in section ID) to toggle one; the Settings menu also lists each section's current expanded state. Changes to placement and expansion are session-scoped.
+
 ### Status rail presets
 
 | Preset | Layout |
@@ -142,7 +164,7 @@ Pi supports one custom footer and one custom editor at a time. Extension load or
 | User | `~/.pi/agent/pi-atelier.json` |
 | Project (trusted only) | `<project>/.pi/pi-atelier.json` |
 
-Project settings override user settings, and session changes override both. Font mode, footer, sidebar startup, sidebar width, notification preferences, and the prefill provider allow-list are user-only.
+Project settings override user settings, and session changes override both. Font mode, footer, sidebar startup, sidebar width, notification preferences, and the prefill provider allow-list are user-only. The interface defaults to English. Set `language` to `"auto"`, `"en"`, or `"it"`; `auto` checks `LC_ALL`, then `LC_MESSAGES`, then `LANG`, and falls back to English for unknown or unset locales.
 
 ```json
 {
@@ -151,6 +173,10 @@ Project settings override user settings, and session changes override both. Font
   "shortcut": "f6",
   "toggleShortcut": "",
   "density": "comfortable",
+  "sourcePanelPlacement": "right",
+  "language": "en",
+  "headerRailRows": 2,
+  "railTopHeight": 6,
   "contextWarning": 70,
   "contextDanger": 90,
   "showFooter": true,
@@ -166,7 +192,7 @@ Project settings override user settings, and session changes override both. Font
 
 `toggleShortcut` binds a key that shows or hides the Sidebar directly, like `/atelier sidebar`. It is empty (no binding) by default; set a key such as `"ctrl+shift+b"` and run `/reload`.
 
-`sidebarWidth` is the sidebar width in columns when a session starts, from 28 through 72. The sidebar still narrows when the terminal leaves less than 64 columns for the main pane.
+`sidebarWidth` is the sidebar width in columns when a session starts, from 28 through 72. The sidebar still narrows when the terminal leaves less than 76 columns for the main pane.
 
 Use **Settings → Display** to reorder or hide status rail segments and sidebar panels. Undo restores the latest Display or Sidebar edit, including a Display Revert. The legacy user settings `showSidebarAgent` and `showSidebarTodos` still apply when `sidebarPanelLayout` is absent. A layout you saved before Prefill existed gains that panel next to Context on the next start.
 

@@ -2,7 +2,7 @@ import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { AtelierEditor, EDITOR_FRAME_MIN_WIDTH, frameEditorLines, isEditorRuleText } from "../src/editor.js";
 
-const paint = (text: string) => `\u001b[38;2;102;102;102m${text}\u001b[39m`;
+const paint = (text: string) => `\u001b[38;2;150;150;150m${text}\u001b[39m`;
 
 describe("editor frame helpers", () => {
 	it("recognizes plain and scroll editor rules", () => {
@@ -94,6 +94,16 @@ describe("editor frame helpers", () => {
 });
 
 describe("AtelierEditor", () => {
+	it("omits the frame when four or fewer terminal rows remain", () => {
+		const editor = new AtelierEditor(
+			{ requestRender: vi.fn(), terminal: { rows: 4, columns: 48 } } as never,
+			{ borderColor: (text: string) => text, selectList: {} } as never,
+			{ matches: () => false } as never,
+		);
+
+		expect(editor.render(48).some((line) => /[╭╮╰╯│]/u.test(line))).toBe(false);
+	});
+
 	it("reports only the status line visible in the most recent render", () => {
 		const editor = new AtelierEditor(
 			{ requestRender: vi.fn(), terminal: { rows: 24, columns: 48 } } as never,

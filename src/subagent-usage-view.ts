@@ -3,6 +3,8 @@ import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tu
 import { openLifecycleOverlay, type OverlayLifetime } from "./overlay-lifecycle.js";
 import { createPalette } from "./palette.js";
 import { costLegendColumns, subagentCostChart } from "./subagent-cost-chart.js";
+import { t } from "./i18n.js";
+import type { LanguageSetting } from "./i18n.js";
 import type { SubagentUsageSnapshot } from "./subagent-usage.js";
 import { clamp, fitToWidth, isColorEnabled } from "./text.js";
 
@@ -13,6 +15,7 @@ export async function openSubagentUsage(
 	ctx: ExtensionContext,
 	snapshot: SubagentUsageSnapshot,
 	decimals: number,
+	language: LanguageSetting,
 	lifetime: OverlayLifetime,
 ): Promise<void> {
 	await openLifecycleOverlay<void>(
@@ -28,7 +31,7 @@ export async function openSubagentUsage(
 				render(width) {
 					const outerWidth = Math.max(1, Math.floor(width));
 					const height = Math.max(1, Math.floor(tui.terminal.rows * 0.8) - 2);
-					if (outerWidth < 28 || height < 6) return [truncateToWidth("Resize to view usage", outerWidth)];
+					if (outerWidth < 28 || height < 6) return [truncateToWidth(t(language, "resizeUsage"), outerWidth)];
 					const contentWidth = outerWidth - 4;
 					const border = (text: string) => theme.fg("borderAccent", text);
 					const framed = (text: string): string =>
@@ -52,7 +55,7 @@ export async function openSubagentUsage(
 					const point = activePointIndex === undefined ? undefined : activeSeries?.points[activePointIndex];
 					const chart =
 						plotHeight < 3
-							? [theme.fg("dim", "Enlarge terminal to view the graph")]
+							? [theme.fg("dim", t(language, "enlargeGraph"))]
 							: subagentCostChart(
 									snapshot,
 									contentWidth,
@@ -60,6 +63,7 @@ export async function openSubagentUsage(
 									true,
 									createPalette(theme, isColorEnabled()),
 									{
+										language,
 										height: plotHeight,
 										focusedSeries: activeSeries?.id,
 										focusedPoint: activePointIndex,
@@ -76,18 +80,18 @@ export async function openSubagentUsage(
 							? [
 									theme.fg(
 										"accent",
-										`#${seriesNumber} · Point ${activePointIndex}/${activeSeries.points.length - 1} · ${((point.at - activeSeries.startedAt) / 1000).toFixed(1)}s`,
+										`#${seriesNumber} · ${t(language, "point")} ${activePointIndex}/${activeSeries.points.length - 1} · ${((point.at - activeSeries.startedAt) / 1000).toFixed(1)}s`,
 									),
 									theme.fg(
 										"text",
-										`${contentWidth >= 40 ? "Total " : ""}$${point.cost.toFixed(POINT_COST_DECIMALS)} · +$${(point.cost - (activeSeries.points[activePointIndex - 1]?.cost ?? 0)).toFixed(POINT_COST_DECIMALS)}`,
+										`${contentWidth >= 40 ? `${t(language, "total")} ` : ""}$${point.cost.toFixed(POINT_COST_DECIMALS)} · +$${(point.cost - (activeSeries.points[activePointIndex - 1]?.cost ?? 0)).toFixed(POINT_COST_DECIMALS)}`,
 									),
 								]
-							: ["", theme.fg("dim", "Elapsed seconds · select an agent to inspect points")];
+							: ["", theme.fg("dim", t(language, "elapsedPointHelp"))];
 					const lines = chart.length
 						? [...chart, ...readout]
-						: [theme.fg("dim", "No subagent cost history yet.")];
-					const title = truncateToWidth(" SUBAGENT COST ", outerWidth - 4, "");
+						: [theme.fg("dim", t(language, "noCostHistory"))];
+					const title = truncateToWidth(` ${t(language, "subagentCost")} `, outerWidth - 4, "");
 					const body = lines.slice(0, pageSize);
 					while (body.length < pageSize) body.push("");
 					return [
@@ -97,7 +101,12 @@ export async function openSubagentUsage(
 						framed(""),
 						...body.map(framed),
 						framed(""),
-						framed(theme.fg("dim", "←→ agent · [ ] point · ↑↓ legend · A all · Esc")),
+						framed(
+							theme.fg(
+								"dim",
+								`←→ agent · [ ] ${t(language, "point").toLowerCase()} · ↑↓ legend · A ${t(language, "allAgents")} · Esc`,
+							),
+						),
 						border(`╰${"─".repeat(outerWidth - 2)}╯`),
 					];
 				},

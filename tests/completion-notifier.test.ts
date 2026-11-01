@@ -27,10 +27,12 @@ function harness(platform: NodeJS.Platform = "linux") {
 		return child;
 	});
 	let enabled = true;
+	let nerdFont = true;
 	const notifier = createCompletionNotifier({
 		platform,
 		spawn,
 		isEnabled: () => enabled,
+		getNerdFont: () => nerdFont,
 	});
 	onTestFinished(() => notifier.reset());
 	return {
@@ -43,6 +45,7 @@ function harness(platform: NodeJS.Platform = "linux") {
 			return child;
 		},
 		disable: () => (enabled = false),
+		setNerdFont: (enabled: boolean) => (nerdFont = enabled),
 	};
 }
 
@@ -85,6 +88,16 @@ describe("completion notifier", () => {
 		h.notifier.turnSettled(settled);
 
 		expect(h.spawn).not.toHaveBeenCalled();
+	});
+
+	it("uses ASCII separators in plain text mode", () => {
+		const h = harness("darwin");
+		h.setNerdFont(false);
+		h.notifier.turnSettled(settled);
+
+		const [, args] = h.spawn.mock.calls[0]!;
+		expect(args).toContain("Pi Atelier - pi-atelier");
+		expect(args).toContain("Turn settled - Notification work - 2 done - 1 failed");
 	});
 
 	it("spawns a detached macOS notification without interpolating content into AppleScript", () => {
