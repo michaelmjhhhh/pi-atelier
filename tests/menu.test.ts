@@ -140,21 +140,18 @@ describe("Control Center presentation", () => {
 		);
 	});
 
-	it.each([
-		[
-			"settings",
-			[
-				"Display: editorial",
-				"Font mode: Nerd Font",
-				"Atelier footer: On",
-				"Sidebar on startup: On",
-				"Completion notifications: On",
-				"Prefill progress: On",
-				"Sidebar tool list: Collapsed",
-				"Back",
-			],
-		],
-	] as const)("routes the %s root category to its destination", async (category, expectedLabels) => {
+	it("routes the settings root category to its destination", async () => {
+		const category = "settings";
+		const expectedLabels = [
+			"Display: editorial",
+			"Font mode: Plain text",
+			"Atelier footer: On",
+			"Sidebar on startup: On",
+			"Completion notifications: On",
+			"Prefill progress: On",
+			"Sidebar tool list: Collapsed",
+			"Back",
+		];
 		const sidebar = sidebarControls();
 		await openAtelierControlCenter(
 			{} as never,

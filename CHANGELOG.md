@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Default to Plain text mode so a terminal without a Nerd Font no longer shows boxes in the composer status line and footer. Users who never set `nerdFont` switch to Plain text after upgrading; choose **Settings → Font mode → Nerd Font** or set `"nerdFont": true` to keep the icons.
+
 ## 0.18.0 — 2026-10-31
 
 - Show a temporary Sidebar **Prefill** panel while a local model is still reading a long prompt: a bar over the uncached prompt tokens, the token counts, the reading speed, and an estimate of how long until the first token. A long prefill used to look exactly like a hang. The panel is present only while prefilling and reserves nothing when it is absent. Configure with `prefillEnabled`, `prefillViews`, and the user-only `prefillProviders` allow-list, or toggle it in Control Center → Settings. Needs Pi 0.99 or newer to report progress; on an older Pi the panel never appears.

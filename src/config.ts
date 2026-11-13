@@ -32,7 +32,7 @@ export const MAX_CURRENCY_DECIMALS = 6;
 
 export const DEFAULT_CONFIG: AtelierConfig = {
 	...applyDisplayTemplate("editorial"),
-	nerdFont: true,
+	nerdFont: false,
 	shortcut: "f6",
 	toggleShortcut: "",
 	contextWarning: 70,

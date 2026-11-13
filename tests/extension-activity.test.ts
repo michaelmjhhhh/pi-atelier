@@ -11,6 +11,7 @@ import {
 	queueWorkspacePulseInspection,
 	execResult,
 	mountComposer,
+	withConfigOverrides,
 } from "./helpers/extension.js";
 
 describe("extension activity", () => {
@@ -101,7 +102,7 @@ describe("extension activity", () => {
 	});
 
 	it("forwards run and turn events into sidebar activity without putting tool history in the footer", async () => {
-		const h = harness();
+		const h = harness("tui", "linux", false);
 		await start(h);
 		await command(h, "sidebar on");
 
@@ -129,7 +130,8 @@ describe("extension activity", () => {
 			onBranchChange: () => () => undefined,
 		});
 		const footerText = footer.render(160).join("\n");
-		expect(footerText).toContain("●");
+		// The working label rotates, so assert session identity instead of the label.
+		expect(footerText).toContain("project");
 		expect(footerText).not.toContain("bash");
 		expect(footerText).not.toContain("npm test");
 	});
@@ -137,7 +139,7 @@ describe("extension activity", () => {
 	it("forwards provider timing and streamed throughput to both footer and sidebar", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(1_000);
-		const h = harness("tui", "linux", true);
+		const h = harness("tui", "linux", true, { loadConfig: withConfigOverrides({ nerdFont: true }) });
 		await start(h);
 		await h.dispatch("agent_start", { type: "agent_start" });
 		const opening = command(h, "display");
@@ -367,25 +369,25 @@ describe("extension activity", () => {
 		}
 
 		it("keeps the error state after a run ends in a provider error", async () => {
-			const h = harness();
+			const h = harness("tui", "linux", false);
 			await start(h);
 
 			expect(await settledStatus(h, providerError)).toContain("× ERROR");
-			expect(await settledStatus(h, { type: "turn_end" })).toContain("● READY");
+			expect(await settledStatus(h, { type: "turn_end" })).toContain("READY");
 		});
 
 		it("settles to ready when the user aborted the run", async () => {
-			const h = harness();
+			const h = harness("tui", "linux", false);
 			await start(h);
 			const controller = new AbortController();
 			controller.abort();
 			Object.assign(h.ctx, { signal: controller.signal });
 
-			expect(await settledStatus(h, providerError)).toContain("● READY");
+			expect(await settledStatus(h, providerError)).toContain("READY");
 		});
 
 		it("settles to ready after a recovered tool failure", async () => {
-			const h = harness();
+			const h = harness("tui", "linux", false);
 			await start(h);
 
 			const status = await settledStatus(h, {
@@ -393,7 +395,7 @@ describe("extension activity", () => {
 				message: { role: "assistant", stopReason: "stop" },
 				toolResults: [{ isError: true }],
 			});
-			expect(status).toContain("● READY");
+			expect(status).toContain("READY");
 		});
 	});
 });

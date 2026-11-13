@@ -69,16 +69,16 @@ describe("extension registration", () => {
 		{ columns: 20, rows: 24 },
 		{ columns: 22, rows: 24 },
 	])("keeps complete context in the footer at $columns×$rows", async ({ columns, rows }) => {
-		const h = harness();
+		const h = harness("tui", "linux", false);
 		await start(h);
 		const { tui, editor, footer } = mountComposer(h);
 		try {
-			expect(editor.render(80)[0]).toContain("● READY");
+			expect(editor.render(80)[0]).toContain("READY");
 			footer.render(80);
 			Object.assign(tui.terminal, { columns, rows });
-			expect(editor.render(columns)[0]).not.toContain("● READY");
+			expect(editor.render(columns)[0]).not.toContain("READY");
 			const fallback = footer.render(columns).join("\n");
-			expect(fallback).toContain("● READY");
+			expect(fallback).toContain("READY");
 			expect(fallback).toContain("10.0%");
 
 			Object.assign(tui.terminal, { columns: 80, rows: 24 });

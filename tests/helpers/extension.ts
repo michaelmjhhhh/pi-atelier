@@ -8,12 +8,20 @@ import { vi, onTestFinished } from "vitest";
 import { type ExtensionEvent } from "@earendil-works/pi-coding-agent";
 import atelierExtension, { type AtelierExtensionDependencies } from "../../extensions/index.js";
 import { AtelierEditor } from "../../src/editor.js";
+import { type AtelierConfig } from "../../src/types.js";
 import { loadConfig as loadAtelierConfig, resolveConfig } from "../../src/config.js";
 import { plainTheme, stripAnsi } from "./render.js";
 
 let persistedConfig = false;
 export const loadTestConfig: typeof loadAtelierConfig = (options) =>
 	persistedConfig ? loadAtelierConfig(options) : Promise.resolve(resolveConfig({}));
+
+export const withConfigOverrides =
+	(overrides: Partial<AtelierConfig>): NonNullable<AtelierExtensionDependencies["loadConfig"]> =>
+	async (options) => {
+		const result = await loadTestConfig(options);
+		return { ...result, config: { ...result.config, ...overrides } };
+	};
 
 export function loadConfigAfter(gate: ReturnType<typeof deferred<void>>): typeof loadAtelierConfig {
 	return async (options) => {
