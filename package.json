@@ -73,7 +73,8 @@
 			"brace-expansion": "5.0.12",
 			"glob": "14.0.3",
 			"minimatch": "11.0.3",
-			"zod": "4.6.7"
+			"zod": "4.6.7",
+			"@aws-sdk/xml-builder": "3.972.43"
 		}
 	},
 	"engines": {
