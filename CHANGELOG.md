@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Redesign the Sidebar around what the footer cannot show. The default Sidebar now has four parts: a status line with the run time and the running or recent tools, your TODOs, the context meter with the token count on its frame, and **Changed files**. Every panel keeps its frame, now in one neutral grey with one fact per row. Each title and ✦ jewel keeps a color of its own (Activity blue, Todos pink, Context cyan, Changed files purple); orange, red, and green are left for state. Usage counts use the footer's colors, and changed file names stand out from their directories.
+- Light a frame only when its panel needs attention: Activity takes the working color while the agent runs and turns red on an error, Context turns orange or red past `contextWarning` and `contextDanger`, Changed files turns red on a merge conflict, and Alerts and Prefill are lit while shown. The ✦ jewel pulses on the working Activity frame. On a narrow Sidebar, Context shows a shorter count on its frame (`12k/1.0M`) and Changed files drops its totals, since each row shows its own; any other summary that does not fit becomes the panel's first row. Long paths drop whole leading folders (`…/sidebar.ts`), and tools without a summary no longer widen the name column.
+- **Changed files** lists the files you changed, with lines added and removed per file in aligned columns: conflicts first, then the most-changed files, then new files. Five are listed and the rest counted. Long paths keep the file name. The data comes from the `git diff --numstat` and `git status` calls Atelier already made.
+- Hide the Agent, Usage, and Tools panels by default, because the footer shows the same model, thinking level, token, cost, and tool information. Turn them on in **Settings → Display**. A saved `sidebarPanelLayout` keeps its own choices. Agent now lists the session name.
+- Remove first-token time and output speed, the project name, the branch, and the session history and storage rows from the Sidebar; the footer shows timing, project, and branch.
+- Glow the Activity frame green for three seconds after a run finishes, so completion is visible from the corner of your eye, then fade back to grey.
+- Add **Settings → Sidebar style**: **Framed** (default) or **Minimal**, which drops the frames for quiet headings that take the state color instead. Saved as the user-only `sidebarStyle`.
+- In the Minimal style, draw Sidebar meters as a thin line (`━━━╸────`); Framed keeps the solid bar. Contributed progress rows follow the style.
+- When a short terminal cannot fit a tall panel, smaller panels that do fit take its place instead of leaving blank rows.
+- During a run, list up to three running tools (the rest are counted) and the full TODO list, instead of only the newest tool and the in-progress TODO.
+
 ## 0.19.0 — 2026-11-13
 
 - Default to Plain text mode so a terminal without a Nerd Font no longer shows boxes in the composer status line and footer. Users who never set `nerdFont` switch to Plain text after upgrading; choose **Settings → Font mode → Nerd Font** or set `"nerdFont": true` to keep the icons.
