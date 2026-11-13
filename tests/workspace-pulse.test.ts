@@ -261,6 +261,7 @@ describe("inspectWorkspacePulse", () => {
 				binaryFiles: 0,
 				submodules: 0,
 				conflicts: 0,
+				files: [],
 			},
 		});
 	});
@@ -332,6 +333,33 @@ describe("inspectWorkspacePulse", () => {
 		},
 	);
 
+	it("lists conflicts without line counts, skips conflicted submodules, and caps the file list", async () => {
+		const untracked = Array.from({ length: 60 }, (_, index) => `? new-${String(index).padStart(2, "0")}.ts`);
+		const status = [
+			"# branch.oid abc",
+			"# branch.head main",
+			"u UU N... 100644 100644 100644 100644 ddd eee fff merge.ts",
+			"u UU S... 160000 160000 160000 160000 ddd eee fff modules/lib",
+			...untracked,
+		].join("\0");
+		const exec = vi
+			.fn()
+			.mockResolvedValueOnce(result("true\n/repo\n"))
+			.mockResolvedValueOnce(result(status))
+			.mockResolvedValueOnce(result("tree-id\n"))
+			.mockResolvedValueOnce(result(""));
+
+		const inspection = await inspectWorkspacePulse({ exec, cwd: "/repo" });
+
+		if (inspection.kind !== "available") throw new Error("expected an available inspection");
+		const files = inspection.snapshot.files ?? [];
+		expect(inspection.snapshot.untrackedFiles).toBe(60);
+		expect(files).toHaveLength(50);
+		expect(files[0]).toEqual({ path: "merge.ts", status: "conflict" });
+		expect(files.some((file) => file.path === "modules/lib")).toBe(false);
+		expect(files[1]).toEqual({ path: "new-00.ts", status: "new" });
+	});
+
 	it("aggregates tracked, untracked, text, binary, submodule, rename, and conflict changes", async () => {
 		const status = [
 			"# branch.oid abc",
@@ -373,6 +401,14 @@ describe("inspectWorkspacePulse", () => {
 				binaryFiles: 1,
 				submodules: 1,
 				conflicts: 1,
+				// Conflicts lead, tracked files follow by lines changed, new files come last; submodules are left out.
+				files: [
+					{ path: "conflict.txt", status: "conflict", added: 3, removed: 4 },
+					{ path: "src/a.ts", status: "modified", added: 10, removed: 2 },
+					{ path: "new.ts", status: "modified", added: 5, removed: 0 },
+					{ path: "image.png", status: "binary" },
+					{ path: "new-file.ts", status: "new" },
+				],
 			},
 		});
 		expect(exec).toHaveBeenNthCalledWith(

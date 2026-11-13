@@ -10,6 +10,17 @@ const EMPTY_TREE_HASH = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 /** Result reported for a command skipped because inspection was cancelled. */
 export const SKIPPED_EXEC_RESULT: ExecResult = { stdout: "", stderr: "", code: 1, killed: true };
 
+/** One changed path, relative to the repository root. Line counts are absent for new and binary files. */
+export interface ChangedFile {
+	path: string;
+	status: "modified" | "binary" | "new" | "conflict";
+	added?: number;
+	removed?: number;
+}
+
+/** Changed files kept per inspection; the sidebar shows only the first few. */
+const MAX_CHANGED_FILES = 50;
+
 interface WorkspacePulseSnapshot {
 	trackedFiles: number;
 	untrackedFiles: number;
@@ -18,6 +29,8 @@ interface WorkspacePulseSnapshot {
 	binaryFiles: number;
 	submodules: number;
 	conflicts: number;
+	/** Conflicts first, then tracked files by lines changed, then new files; at most MAX_CHANGED_FILES. */
+	files?: readonly ChangedFile[];
 }
 
 export interface WorkspacePulseData {
@@ -187,6 +200,8 @@ interface ParsedStatus {
 	untrackedFiles: number;
 	conflicts: number;
 	submodulePaths: Set<string>;
+	untrackedPaths: string[];
+	conflictPaths: string[];
 }
 
 function parseStatus(output: string): ParsedStatus {
@@ -197,6 +212,8 @@ function parseStatus(output: string): ParsedStatus {
 		untrackedFiles: 0,
 		conflicts: 0,
 		submodulePaths: new Set(),
+		untrackedPaths: [],
+		conflictPaths: [],
 	};
 	let sawBranchOid = false;
 	let sawBranchHead = false;
@@ -216,6 +233,7 @@ function parseStatus(output: string): ParsedStatus {
 		}
 		if (record.startsWith("? ")) {
 			parsed.untrackedFiles += 1;
+			if (parsed.untrackedPaths.length < MAX_CHANGED_FILES) parsed.untrackedPaths.push(record.slice(2));
 			continue;
 		}
 		const kind = record[0];
@@ -227,19 +245,32 @@ function parseStatus(output: string): ParsedStatus {
 		const pathIndex = kind === "u" ? 10 : kind === "2" ? 9 : 8;
 		const path = fields.slice(pathIndex).join(" ");
 		if (submodule.startsWith("S") && path) parsed.submodulePaths.add(path);
+		if (
+			kind === "u" &&
+			path &&
+			!submodule.startsWith("S") &&
+			parsed.conflictPaths.length < MAX_CHANGED_FILES
+		) {
+			parsed.conflictPaths.push(path);
+		}
 		if (kind === "2") index += 1;
 	}
 	parsed.valid = sawBranchOid && sawBranchHead;
 	return parsed;
 }
 
-function parseNumstat(
-	output: string,
-	submodulePaths: ReadonlySet<string>,
-): Pick<WorkspacePulseSnapshot, "linesAdded" | "linesRemoved" | "binaryFiles"> {
+interface ParsedNumstat {
+	linesAdded: number;
+	linesRemoved: number;
+	binaryFiles: number;
+	files: ChangedFile[];
+}
+
+function parseNumstat(output: string, submodulePaths: ReadonlySet<string>): ParsedNumstat {
 	let linesAdded = 0;
 	let linesRemoved = 0;
 	let binaryFiles = 0;
+	const files: ChangedFile[] = [];
 	const records = output.split("\0");
 	for (let index = 0; index < records.length; index += 1) {
 		const record = records[index] ?? "";
@@ -257,12 +288,39 @@ function parseNumstat(
 		if (submodulePaths.has(path)) continue;
 		if (added === "-" && removed === "-") {
 			binaryFiles += 1;
+			files.push({ path, status: "binary" });
 			continue;
 		}
-		linesAdded += Number.parseInt(added, 10) || 0;
-		linesRemoved += Number.parseInt(removed, 10) || 0;
+		const fileAdded = Number.parseInt(added, 10) || 0;
+		const fileRemoved = Number.parseInt(removed, 10) || 0;
+		linesAdded += fileAdded;
+		linesRemoved += fileRemoved;
+		files.push({ path, status: "modified", added: fileAdded, removed: fileRemoved });
 	}
-	return { linesAdded, linesRemoved, binaryFiles };
+	return { linesAdded, linesRemoved, binaryFiles, files };
+}
+
+const churn = (file: ChangedFile): number => (file.added ?? 0) + (file.removed ?? 0);
+
+/** Conflicts first, then the most-changed tracked files, then new files in path order. */
+function changedFiles(status: ParsedStatus, numstat: readonly ChangedFile[]): ChangedFile[] {
+	const conflicts = new Set(status.conflictPaths);
+	const tracked = numstat
+		.map((file): ChangedFile => (conflicts.has(file.path) ? { ...file, status: "conflict" } : file))
+		.sort(
+			(left, right) =>
+				Number(right.status === "conflict") - Number(left.status === "conflict") ||
+				churn(right) - churn(left) ||
+				left.path.localeCompare(right.path, "en"),
+		);
+	const listed = new Set(tracked.map((file) => file.path));
+	const unlistedConflicts = status.conflictPaths
+		.filter((path) => !listed.has(path))
+		.map((path): ChangedFile => ({ path, status: "conflict" }));
+	const untracked = [...status.untrackedPaths]
+		.sort((left, right) => left.localeCompare(right, "en"))
+		.map((path): ChangedFile => ({ path, status: "new" }));
+	return [...unlistedConflicts, ...tracked, ...untracked].slice(0, MAX_CHANGED_FILES);
 }
 
 async function inspectWorkspace(options: InspectWorkspacePulseOptions): Promise<WorkspacePulseInspection> {
@@ -290,7 +348,7 @@ async function inspectWorkspace(options: InspectWorkspacePulseOptions): Promise<
 
 	const parsedStatus = parseStatus(status.stdout);
 	if (!parsedStatus.valid) return { kind: "unavailable" };
-	let numstat = { linesAdded: 0, linesRemoved: 0, binaryFiles: 0 };
+	let numstat: ParsedNumstat = { linesAdded: 0, linesRemoved: 0, binaryFiles: 0, files: [] };
 	// Untracked files have no HEAD diff. Conflicts and changed submodules count as tracked.
 	if (parsedStatus.trackedFiles > 0) {
 		const head = await options.exec("git", ["-C", root, "rev-parse", "--verify", "HEAD^{tree}"], {
@@ -320,7 +378,10 @@ async function inspectWorkspace(options: InspectWorkspacePulseOptions): Promise<
 			untrackedFiles: parsedStatus.untrackedFiles,
 			conflicts: parsedStatus.conflicts,
 			submodules: parsedStatus.submodulePaths.size,
-			...numstat,
+			linesAdded: numstat.linesAdded,
+			linesRemoved: numstat.linesRemoved,
+			binaryFiles: numstat.binaryFiles,
+			files: changedFiles(parsedStatus, numstat.files),
 		},
 	};
 }
