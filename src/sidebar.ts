@@ -191,15 +191,19 @@ function progressMeter(
 	return `${palette.paint(role, fill)}${palette.paint("dim", glyphs.track.repeat(meterWidth - full - (partial ? 1 : 0)))}`;
 }
 
-function runSummary(activity: RunActivitySnapshot, now: number): string {
-	if (activity.phase === "idle") return "";
+/** The run time, with the "last run" or "Turn N" context that leads it when there is room. */
+function runSummary(
+	activity: RunActivitySnapshot,
+	now: number,
+): { context: string; elapsed: string } | undefined {
+	if (activity.phase === "idle") return undefined;
 	const elapsed = formatDuration(
 		activity.phase === "settled"
 			? (activity.durationMs ?? now - (activity.startedAt ?? now))
 			: now - (activity.startedAt ?? now),
 	);
-	if (activity.phase === "settled") return `last run ${elapsed}`;
-	return activity.turnNumber === undefined ? elapsed : `Turn ${activity.turnNumber}  ${elapsed}`;
+	if (activity.phase === "settled") return { context: "last run ", elapsed };
+	return { context: activity.turnNumber === undefined ? "" : `Turn ${activity.turnNumber}  `, elapsed };
 }
 
 /** The one line that says whether the agent is working, ready, or failed. */
@@ -214,12 +218,13 @@ function statusRow(
 	const failed = snapshot.activity === "error";
 	const glyph = working ? "◆" : failed ? "×" : "●";
 	const label = working ? "Working" : failed ? "Error" : "Ready";
+	const status = `${palette.paint(snapshot.activity, glyph)} ${theme.bold(palette.paint(snapshot.activity, label))}`;
 	const summary = runSummary(snapshot.runActivity, now);
-	return splitRow(
-		`${palette.paint(snapshot.activity, glyph)} ${theme.bold(palette.paint(snapshot.activity, label))}`,
-		summary ? palette.paint("muted", summary) : "",
-		width,
-	);
+	if (!summary) return splitRow(status, "", width);
+	// The status word stays whole; on a narrow sidebar the run time sheds its context first.
+	const full = `${summary.context}${summary.elapsed}`;
+	const fits = visibleWidth(status) + 1 + visibleWidth(full) <= width;
+	return splitRow(status, palette.paint("muted", fits ? full : summary.elapsed), width);
 }
 
 const TOOL_STATUS = {
