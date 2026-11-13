@@ -1,11 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.19.0 — 2026-11-13
 
-- Internal: override `@aws-sdk/xml-builder` to 3.972.43 under Pi 0.84.0, which drops the vulnerable `fast-xml-parser` dev dependency (GHSA-474x-hrwr-fgx4) so `npm audit` passes again. Published package contents and peer ranges are unchanged.
-- `npm run check` passes on Windows: the path-shortening tests stub the Windows home directory and expect drive-letter paths outside the project, and a new `.gitattributes` keeps a Windows checkout LF so `biome format` stays clean ([#115](https://github.com/michaelmjhhhh/pi-atelier/issues/115)).
-- Make the Sidebar resize key configurable with `resizeShortcut` (default `ctrl+shift+r`). A custom key replaces the default instead of adding to it, so `ctrl+shift+r` stays free for other extensions; a key that collides with `f6` or `shortcut` warns and falls back to the default ([#112](https://github.com/michaelmjhhhh/pi-atelier/issues/112)).
 - Default to Plain text mode so a terminal without a Nerd Font no longer shows boxes in the composer status line and footer. Users who never set `nerdFont` switch to Plain text after upgrading; choose **Settings → Font mode → Nerd Font** or set `"nerdFont": true` to keep the icons.
+- Make the Sidebar resize key configurable with `resizeShortcut` (default `ctrl+shift+r`). A custom key replaces the default instead of adding to it, so `ctrl+shift+r` stays free for other extensions; a key that collides with `f6` or `shortcut` warns and falls back to the default ([#112](https://github.com/michaelmjhhhh/pi-atelier/issues/112)).
+- `npm run check` passes on Windows: the path-shortening tests stub the Windows home directory and expect drive-letter paths outside the project, and a new `.gitattributes` keeps a Windows checkout LF so `biome format` stays clean ([#115](https://github.com/michaelmjhhhh/pi-atelier/issues/115)).
+- Internal: override `@aws-sdk/xml-builder` to 3.972.43 under Pi 0.84.0, which drops the vulnerable `fast-xml-parser` dev dependency (GHSA-474x-hrwr-fgx4) so `npm audit` passes again. Published package contents and peer ranges are unchanged.
 
 ## 0.18.0 — 2026-10-31
 
