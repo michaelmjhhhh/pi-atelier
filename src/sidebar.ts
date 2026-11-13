@@ -122,6 +122,27 @@ function truncateStart(text: string, width: number): string {
 	return `…${tail}`;
 }
 
+/**
+ * Fit a path to `width`, giving up whole leading directories first (`…/sidebar.ts`).
+ * A file name that still does not fit keeps its start and its extension around a middle ellipsis.
+ */
+function fitPath(path: string, width: number): string {
+	if (visibleWidth(path) <= width) return path;
+	const directories = path.split("/");
+	const name = directories.pop() ?? path;
+	let tail = name;
+	for (let index = directories.length - 1; index >= 0; index -= 1) {
+		const next = `${directories[index]}/${tail}`;
+		if (visibleWidth(next) + 2 > width) break;
+		tail = next;
+	}
+	if (visibleWidth(tail) + 2 <= width) return `…/${tail}`;
+	if (visibleWidth(name) <= width) return name;
+	if (width <= 3) return truncateStart(name, width);
+	const end = truncateStart(name, Math.floor((width - 1) / 2) + 1).slice(1);
+	return `${truncateToWidth(name, width - visibleWidth(end) - 1, "")}…${end}`;
+}
+
 /** One fact per row: the label on the left, the value on the right. */
 function labeledRow(
 	label: string,
@@ -230,6 +251,20 @@ function toolActivityRow(
 	// Glyph and trailing timing are kept whole. On narrow rows the name gives way
 	// first, then the summary is dropped rather than shown as a lone ellipsis.
 	const available = Math.max(0, contentWidth - trailingWidth - 2);
+	if (!tool.summary) {
+		const name = sanitizeInline(tool.name || "tool");
+		return truncateToWidth(
+			[
+				palette.paint(status.role, status.glyph),
+				palette.paint("muted", truncateToWidth(name, available, "…")),
+				trailing ? palette.paint(tool.status === "done" ? "muted" : status.role, trailing) : "",
+			]
+				.filter(Boolean)
+				.join(" "),
+			contentWidth,
+			"",
+		);
+	}
 	let fittedNameWidth = Math.min(
 		nameWidth,
 		Math.max(Math.min(4, available), available - MIN_TOOL_SUMMARY_COLUMNS - 1),
@@ -243,9 +278,7 @@ function toolActivityRow(
 		"muted",
 		sanitizeInline(truncateToWidth(tool.name || "tool", fittedNameWidth, "…")),
 	);
-	const summary = tool.summary
-		? palette.paint("primary", sanitizeInline(truncateToWidth(tool.summary, summaryWidth, "…")))
-		: palette.paint("dim", PLACEHOLDER);
+	const summary = palette.paint("primary", sanitizeInline(truncateToWidth(tool.summary, summaryWidth, "…")));
 	const row = [
 		palette.paint(status.role, status.glyph),
 		fittedNameWidth > 0 ? fitToWidth(name, fittedNameWidth) : "",
@@ -274,6 +307,7 @@ const TODO_CHECK = {
 /** Rows for one panel, and the summary shown beside its title. */
 interface SectionContent {
 	summary?: string;
+	compactSummary?: string;
 	rows: string[];
 }
 
@@ -338,6 +372,7 @@ function contextSection(
 	const windowText = metrics.contextWindow > 0 ? formatTokens(metrics.contextWindow) : PLACEHOLDER;
 	return {
 		summary: palette.paint("muted", `${formatTokens(metrics.contextTokens)} of ${windowText}`),
+		compactSummary: palette.paint("muted", `${formatTokens(metrics.contextTokens)}/${windowText}`),
 		rows: [
 			meterWidth >= 4
 				? `${progressMeter(percent, meterWidth, palette, role, config.sidebarStyle)} ${percentage}`
@@ -438,7 +473,7 @@ function changedFileRow(
 					addedText(file).padStart(columns.width),
 				);
 	const room = Math.max(1, width - visibleWidth(right) - 1);
-	const path = truncateStart(sanitizeInline(file.path) || PLACEHOLDER, room);
+	const path = fitPath(sanitizeInline(file.path) || PLACEHOLDER, room);
 	// The file name carries the row; its directory recedes.
 	const nameStart = path.lastIndexOf("/") + 1;
 	const left = conflict
@@ -658,6 +693,10 @@ interface Section {
 	title: string;
 	/** Painted text on the right of the crown. */
 	summary?: string;
+	/** A shorter summary to try when the full one does not fit beside the title. */
+	compactSummary?: string;
+	/** Rows already carry the summary's information, so it can be dropped rather than moved into a row. */
+	summaryOptional?: boolean;
 	/** The panel's own color, worn by its title and jewel while its frame stays grey. */
 	hue?: PaletteRole;
 	/** The state that lights this frame; it overrides the hue while it lasts. */
@@ -716,7 +755,11 @@ function activityGroups(
 	const visibleActive = liveTurn ? sortedActive.slice(-MAX_ACTIVE_TOOLS) : sortedActive;
 	const hiddenActive = sortedActive.length - visibleActive.length;
 	const recent = liveTurn ? [] : activity.recentTools.filter((tool) => !activeIds.has(tool.id)).slice(0, 3);
-	const nameWidth = toolNameWidth([...visibleActive, ...recent], width);
+	// Only rows with a summary need their names aligned; a bare name never widens the column.
+	const nameWidth = toolNameWidth(
+		[...visibleActive, ...recent].filter((tool) => tool.summary),
+		width,
+	);
 	const toolCount = activity.completedCount + activity.failedCount;
 	const aggregate = liveTurn
 		? hiddenActive > 0
@@ -776,10 +819,15 @@ function measureGroups(groups: readonly SidebarGroup[], style: SidebarStyle): nu
 const CROWN_PREFIX_WIDTH = visibleWidth("╭─ ✦ ");
 
 /** Whether a summary fits beside the title: on the crown with one rule column, or on a heading row. */
-function summaryFits(section: Section, width: number, style: SidebarStyle): boolean {
-	if (!section.summary) return true;
+function summaryFits(
+	section: Section,
+	text: string | undefined,
+	width: number,
+	style: SidebarStyle,
+): boolean {
+	if (!text) return true;
 	const title = visibleWidth(section.title);
-	const summary = visibleWidth(section.summary);
+	const summary = visibleWidth(text);
 	return style === "framed"
 		? width - CROWN_PREFIX_WIDTH - title - 1 - summary - 3 >= 1
 		: title + 2 + summary <= width;
@@ -802,10 +850,21 @@ function placeSummaries(
 		if (!section) return group;
 		if (!seen.has(section.id)) {
 			seen.add(section.id);
-			if (!summaryFits(section, headingWidth, style)) {
-				const { summary, ...rest } = section;
-				moved.set(section.id, rest);
-				return { ...group, section: rest, rows: [splitRow("", summary ?? "", innerWidth), ...group.rows] };
+			if (!summaryFits(section, section.summary, headingWidth, style)) {
+				const { summary, compactSummary, summaryOptional, ...rest } = section;
+				// Prefer the short form beside the title; otherwise drop or move the summary.
+				const replacement: Section =
+					compactSummary && summaryFits(section, compactSummary, headingWidth, style)
+						? { ...rest, summary: compactSummary }
+						: rest;
+				moved.set(section.id, replacement);
+				return replacement.summary || summaryOptional
+					? { ...group, section: replacement }
+					: {
+							...group,
+							section: replacement,
+							rows: [splitRow("", summary ?? "", innerWidth), ...group.rows],
+						};
 			}
 		}
 		const replacement = moved.get(section.id);
@@ -990,7 +1049,13 @@ export function renderSidebarLines(
 			];
 		},
 		context: () => {
-			const { summary, rows } = contextSection(snapshot, config, contentWidth, palette, theme);
+			const { summary, compactSummary, rows } = contextSection(
+				snapshot,
+				config,
+				contentWidth,
+				palette,
+				theme,
+			);
 			// The frame lights only past the configured warning and danger thresholds.
 			const role = sidebarContextRole(snapshot.metrics.contextPercent, config);
 			const lit = role === "warning" || role === "error" ? role : undefined;
@@ -1001,6 +1066,7 @@ export function renderSidebarLines(
 						id: "context",
 						title: "Context",
 						...(summary ? { summary } : {}),
+						...(compactSummary ? { compactSummary } : {}),
 						...(lit ? { lit } : {}),
 					},
 					rows,
@@ -1026,6 +1092,8 @@ export function renderSidebarLines(
 					? { lit: "error" as const }
 					: {}),
 				...(files.summary ? { summary: files.summary } : {}),
+				// Every listed file shows its own counts, so the totals can go on a narrow frame.
+				summaryOptional: true,
 			};
 			return [
 				{ name: "changedFilesLead", section, rows: files.lead, dropRank: DROP_RANK.workspace },

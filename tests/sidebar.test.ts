@@ -421,12 +421,10 @@ describe("sidebar snapshot and layout", () => {
 			expect(rows[contextIndex + 1]).toMatch(/^[█▏▎▍▌▋▊▉░]+ 8\.1%$/);
 			expect(visibleWidth(rows[contextIndex + 1] ?? "")).toBe(width - 6);
 		}
-		// Too narrow for the crown: the count moves to the first row, right-aligned.
+		// Too narrow for the full count: the frame carries the short form instead.
 		const narrow = renderRows(snapshot(), { width: 28, color: false });
-		expect(sectionRows(narrow, "CONTEXT")).toEqual([
-			expect.stringMatching(/^\s+32k of 400k$/),
-			expect.stringMatching(/^[█▏▎▍▌▋▊▉░]+ 8\.1%$/),
-		]);
+		expect(narrow[headingIndex(narrow, "CONTEXT")]).toMatch(/^CONTEXT\s+32k\/400k$/);
+		expect(sectionRows(narrow, "CONTEXT")).toEqual([expect.stringMatching(/^[█▏▎▍▌▋▊▉░]+ 8\.1%$/)]);
 	});
 
 	it("renders populated usage as one labeled row per value", () => {
