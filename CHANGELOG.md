@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.20.0 — 2026-11-13
 
 - Redesign the Sidebar around what the footer cannot show. The default Sidebar now has four parts: a status line with the run time and the running or recent tools, your TODOs, the context meter with the token count on its frame, and **Changed files**. Every panel keeps its frame, now in one neutral grey with one fact per row. Each title and ✦ jewel keeps a color of its own (Activity blue, Todos pink, Context cyan, Changed files purple); orange, red, and green are left for state. Usage counts use the footer's colors, and changed file names stand out from their directories.
 - Light a frame only when its panel needs attention: Activity takes the working color while the agent runs and turns red on an error, Context turns orange or red past `contextWarning` and `contextDanger`, Changed files turns red on a merge conflict, and Alerts and Prefill are lit while shown. The ✦ jewel pulses on the working Activity frame. On a narrow Sidebar, Context shows a shorter count on its frame (`12k/1.0M`) and Changed files drops its totals, since each row shows its own; any other summary that does not fit becomes the panel's first row. Long paths drop whole leading folders (`…/sidebar.ts`), tools without a summary no longer widen the name column, and the status line drops its "last run" or "Turn N" label before it cuts the status word.
