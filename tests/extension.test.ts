@@ -127,9 +127,21 @@ describe("extension registration", () => {
 				`toggleShortcut "${key}" is already an Atelier shortcut`,
 				"warning",
 			);
-			expect(h.shortcuts).toEqual(["f6", "ctrl+shift+r", "alt+x"]);
+			expect(h.shortcuts).toEqual(["f6", "alt+x", "ctrl+shift+r"]);
 		},
 	);
+
+	it("binds a configured resizeShortcut instead of ctrl+shift+r", async () => {
+		const h = harness();
+		await withPersistedUserConfig({ resizeShortcut: "alt+r" }, async () => {
+			await start(h);
+		});
+		expect(h.shortcuts).toEqual(["f6", "alt+r"]);
+		await command(h, "sidebar manual");
+		await command(h, "sidebar on");
+		await h.shortcutHandlers.get("alt+r")?.(h.ctx);
+		expect(h.terminalWrite).toHaveBeenCalledWith("\u001b[?1002h\u001b[?1006h");
+	});
 
 	it("does not install terminal UI outside TUI mode", async () => {
 		const h = harness("print");
