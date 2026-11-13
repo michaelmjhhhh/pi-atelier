@@ -80,7 +80,7 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 
 | Mode | Behavior |
 | --- | --- |
-| **Manual** (default) | Resize with `Ctrl+Shift+R`, then the arrow keys or by dragging the divider. Enter or mouse release confirms; Escape cancels. Hides below 92 columns and returns at 92. |
+| **Manual** (default) | Resize with `Ctrl+Shift+R` (or your `resizeShortcut`), then the arrow keys or by dragging the divider. Enter or mouse release confirms; Escape cancels. Hides below 92 columns and returns at 92. |
 | **Auto** | Collapses when space is tight and reopens when there is room. At the default width it collapses below 124 columns and reopens at 132. Manual resizing is disabled. |
 
 - Showing or hiding is independent of the mode. A manually hidden sidebar stays hidden when the terminal grows.
@@ -149,6 +149,7 @@ Project settings override user settings, and session changes override both. Font
   "preset": "editorial",
   "nerdFont": false,
   "shortcut": "f6",
+  "resizeShortcut": "ctrl+shift+r",
   "toggleShortcut": "",
   "density": "comfortable",
   "contextWarning": 70,
@@ -164,7 +165,9 @@ Project settings override user settings, and session changes override both. Font
 }
 ```
 
-`toggleShortcut` binds a key that shows or hides the Sidebar directly, like `/atelier sidebar`. It is empty (no binding) by default; set a key such as `"ctrl+shift+b"` and run `/reload`.
+`resizeShortcut` is the Sidebar resize key, `ctrl+shift+r` by default. A custom key replaces the default, so `ctrl+shift+r` stays free for other extensions. A blank value or a key that matches `f6` or `shortcut` warns and falls back to `ctrl+shift+r`. Set a key such as `"alt+r"` and run `/reload`.
+
+`toggleShortcut` binds a key that shows or hides the Sidebar directly, like `/atelier sidebar`. It is empty (no binding) by default; set a key such as `"ctrl+shift+b"` and run `/reload`. A key that matches `f6`, `shortcut`, or `resizeShortcut` is rejected with a warning.
 
 `sidebarWidth` is the sidebar width in columns when a session starts, from 28 through 72. The sidebar still narrows when the terminal leaves less than 64 columns for the main pane.
 
@@ -228,7 +231,7 @@ ignore `progress`. No-color mode uses plain filled/empty blocks.
 | Problem | Fix |
 | --- | --- |
 | Shortcut does nothing | Use `/atelier`, change `shortcut`, then run `/reload`. The default is `f6` on macOS and Windows; media-key keyboards may need Fn+F6. Saved `alt+a` settings resolve to `f6` and Alt+A is no longer registered. Other custom shortcuts add a binding alongside F6. Other extensions or terminal key mappings can still intercept F6. |
-| Editor key stops working | Extension shortcuts take precedence over Pi's built-in keybindings. A `shortcut` or `toggleShortcut` such as `ctrl+b` shadows the editor's cursor-left action. Choose a key Pi does not use, then run `/reload`. |
+| Editor key stops working | Extension shortcuts take precedence over Pi's built-in keybindings. A `shortcut`, `resizeShortcut`, or `toggleShortcut` such as `ctrl+b` shadows the editor's cursor-left action. Choose a key Pi does not use, then run `/reload`. |
 | Status rail missing | Use TUI mode, check **Settings → Atelier footer**, and check for another extension's custom footer. |
 | Icons render as boxes | Choose **Settings → Font mode → Plain text**, or select a Nerd Font in your terminal. |
 | Metrics disagree | Token and cost totals cover the session; context usage covers the current model context. |

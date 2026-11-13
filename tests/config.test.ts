@@ -34,6 +34,17 @@ describe("configuration validation", () => {
 		expect(invalid.warnings).toContain("toggleShortcut must be a string");
 	});
 
+	it("validates the sidebar resize shortcut", () => {
+		expect(DEFAULT_CONFIG.resizeShortcut).toBe("ctrl+shift+r");
+		expect(validateConfig({ resizeShortcut: " alt+r " }).config.resizeShortcut).toBe("alt+r");
+		const blank = validateConfig({ resizeShortcut: "  " });
+		expect(blank.config.resizeShortcut).toBe("ctrl+shift+r");
+		expect(blank.warnings).toContain("resizeShortcut cannot be empty");
+		const invalid = validateConfig({ resizeShortcut: 1 });
+		expect(invalid.config.resizeShortcut).toBe("ctrl+shift+r");
+		expect(invalid.warnings).toContain("resizeShortcut must be a string");
+	});
+
 	it("parses the user-only sidebar width", () => {
 		expect(DEFAULT_CONFIG.sidebarWidth).toBe(44);
 		expect(validateConfig({ sidebarWidth: 36 }).config.sidebarWidth).toBe(36);

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Make the Sidebar resize key configurable with `resizeShortcut` (default `ctrl+shift+r`). A custom key replaces the default instead of adding to it, so `ctrl+shift+r` stays free for other extensions; a key that collides with `f6` or `shortcut` warns and falls back to the default ([#112](https://github.com/michaelmjhhhh/pi-atelier/issues/112)).
 - Default to Plain text mode so a terminal without a Nerd Font no longer shows boxes in the composer status line and footer. Users who never set `nerdFont` switch to Plain text after upgrading; choose **Settings → Font mode → Nerd Font** or set `"nerdFont": true` to keep the icons.
 
 ## 0.18.0 — 2026-10-31
