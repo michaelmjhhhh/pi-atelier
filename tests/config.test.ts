@@ -59,6 +59,18 @@ describe("configuration validation", () => {
 		).toBe(36);
 	});
 
+	it("parses the user-only sidebar style", () => {
+		expect(DEFAULT_CONFIG.sidebarStyle).toBe("framed");
+		expect(validateConfig({ sidebarStyle: "minimal" }).config.sidebarStyle).toBe("minimal");
+		const invalid = validateConfig({ sidebarStyle: "boxed" });
+		expect(invalid.config.sidebarStyle).toBe("framed");
+		expect(invalid.warnings).toContain("Unknown sidebarStyle: boxed");
+		expect(
+			resolveConfig({ user: { sidebarStyle: "minimal" }, project: { sidebarStyle: "framed" } }).config
+				.sidebarStyle,
+		).toBe("minimal");
+	});
+
 	it("keeps legacy Sidebar visibility compatible when no authoritative layout is present", () => {
 		const result = validateConfig({ showSidebarAgent: false, showSidebarTodos: false });
 		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(false);

@@ -146,6 +146,7 @@ describe("Control Center presentation", () => {
 			"Display: editorial",
 			"Font mode: Plain text",
 			"Atelier footer: On",
+			"Sidebar style: Framed",
 			"Sidebar on startup: On",
 			"Completion notifications: On",
 			"Prefill progress: On",

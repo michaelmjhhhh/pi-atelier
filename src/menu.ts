@@ -25,7 +25,7 @@ import {
 import type { SidebarMode, SidebarStatus } from "./split-pane.js";
 import type { AtelierRuntime } from "./state.js";
 import { errorMessage, fitToWidth, isColorEnabled } from "./text.js";
-import type { AtelierConfig } from "./types.js";
+import type { AtelierConfig, SidebarStyle } from "./types.js";
 
 type SaveConfigPatch = typeof saveUserConfigPatch;
 type ThinkingLevel = Parameters<ExtensionAPI["setThinkingLevel"]>[0];
@@ -104,7 +104,12 @@ export function createMenuActions(
 		patch: Partial<
 			Pick<
 				AtelierConfig,
-				"showSidebarOnStartup" | "completionNotifications" | "nerdFont" | "showFooter" | "prefillEnabled"
+				| "showSidebarOnStartup"
+				| "completionNotifications"
+				| "nerdFont"
+				| "showFooter"
+				| "prefillEnabled"
+				| "sidebarStyle"
 			>
 		>,
 		messages: { saved: string; failed: string },
@@ -216,6 +221,15 @@ export function createMenuActions(
 				},
 				false,
 			),
+		setSidebarStyle: (style: SidebarStyle): Promise<void> =>
+			persistPreference(
+				{ sidebarStyle: style },
+				{
+					saved: `Sidebar style: ${sidebarStyleLabel(style)}`,
+					failed: "Sidebar style changed for this session but could not be saved",
+				},
+				false,
+			),
 		setShowFooter: (enabled: boolean): Promise<void> =>
 			persistPreference(
 				{ showFooter: enabled },
@@ -228,6 +242,8 @@ export function createMenuActions(
 			),
 	};
 }
+
+const sidebarStyleLabel = (style: SidebarStyle): string => (style === "framed" ? "Framed" : "Minimal");
 
 async function showSelection(
 	ctx: ExtensionContext,
@@ -433,6 +449,11 @@ export async function openAtelierControlCenter(
 					description: "Global user preference; Off keeps Pi's footer and composer",
 				},
 				{
+					value: "sidebar-style",
+					label: `Sidebar style: ${sidebarStyleLabel(config.sidebarStyle)}`,
+					description: "Framed panels with state-lit borders, or quiet headings (user preference)",
+				},
+				{
 					value: "sidebar-startup",
 					label: `Sidebar on startup: ${config.showSidebarOnStartup ? "On" : "Off"}`,
 					description: "Global user preference",
@@ -471,6 +492,9 @@ export async function openAtelierControlCenter(
 					break;
 				case "footer":
 					await actions.setShowFooter(!runtime.getConfig().showFooter);
+					break;
+				case "sidebar-style":
+					await actions.setSidebarStyle(runtime.getConfig().sidebarStyle === "framed" ? "minimal" : "framed");
 					break;
 				case "sidebar-startup":
 					await actions.setShowSidebarOnStartup(!runtime.getConfig().showSidebarOnStartup);
