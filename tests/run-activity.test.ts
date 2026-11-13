@@ -1,5 +1,7 @@
+import nodePath from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { toDisplayPath } from "../src/display-path.js";
 import {
 	createRunActivityTracker,
 	EMPTY_RUN_ACTIVITY,
@@ -426,19 +428,16 @@ describe("summarizeTool", () => {
 	});
 
 	it("shortens project-relative and home-relative paths", () => {
-		const priorHome = process.env.HOME;
-		process.env.HOME = "/Users/alice";
+		// os.homedir() reads HOME on POSIX and USERPROFILE on Windows.
+		vi.stubEnv("HOME", "/Users/alice");
+		vi.stubEnv("USERPROFILE", "/Users/alice");
 		try {
 			expect(summarizeTool("read", { path: "/repo/src/state.ts" }, "/repo")).toBe("src/state.ts");
 			expect(summarizeTool("read", { path: "/Users/alice/.pi/config.json" }, "/repo")).toBe(
 				"~/.pi/config.json",
 			);
 		} finally {
-			if (priorHome === undefined) {
-				delete process.env.HOME;
-			} else {
-				process.env.HOME = priorHome;
-			}
+			vi.unstubAllEnvs();
 		}
 	});
 
@@ -479,10 +478,14 @@ describe("summarizeTool", () => {
 	});
 
 	it("normalizes paths before deciding whether they are project relative", () => {
-		expect(summarizeTool("read", { path: "/repo/../secret.txt" }, "/repo")).toBe("/secret.txt");
+		// Paths outside the project stay absolute, which includes the drive letter on Windows.
+		const absolute = (path: string) => toDisplayPath(nodePath.resolve(path));
+		expect(summarizeTool("read", { path: "/repo/../secret.txt" }, "/repo")).toBe(absolute("/secret.txt"));
 		expect(summarizeTool("read", { path: "/repo/src/../package.json" }, "/repo/packages/..")).toBe(
 			"package.json",
 		);
-		expect(summarizeTool("read", { path: "/repo-other/secret.txt" }, "/repo")).toBe("/repo-other/secret.txt");
+		expect(summarizeTool("read", { path: "/repo-other/secret.txt" }, "/repo")).toBe(
+			absolute("/repo-other/secret.txt"),
+		);
 	});
 });
