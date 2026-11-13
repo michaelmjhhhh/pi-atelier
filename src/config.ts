@@ -42,6 +42,7 @@ export const DEFAULT_CONFIG: AtelierConfig = {
 	showSidebarToolNames: false,
 	showSidebarOnStartup: true,
 	sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+	sidebarStyle: "framed",
 	sidebarPanelLayout: cloneLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT),
 	completionNotifications: true,
 	showFooter: true,
@@ -72,6 +73,7 @@ const isOrnament = (value: unknown): value is Ornament => value === "none" || va
 const USER_ONLY_KEYS: ReadonlySet<string> = new Set([
 	"showSidebarOnStartup",
 	"sidebarWidth",
+	"sidebarStyle",
 	"completionNotifications",
 	"nerdFont",
 	"showFooter",
@@ -345,6 +347,12 @@ function applyNonDisplay(
 		)
 			config.currencyDecimals = input.currencyDecimals;
 		else warnings.push(`currencyDecimals must be an integer from 0 through ${MAX_CURRENCY_DECIMALS}`);
+	}
+	if ("sidebarStyle" in input) {
+		const style = input.sidebarStyle;
+		if (style === "framed" || style === "minimal") {
+			if (userLayer) config.sidebarStyle = style;
+		} else warnings.push(invalidEnum("sidebarStyle", style));
 	}
 	if ("sidebarWidth" in input) {
 		const width = input.sidebarWidth;
