@@ -214,10 +214,10 @@ describe("sidebar snapshot and layout", () => {
 			36,
 		);
 		const rows = contentRows(lines);
-		expect(rows.indexOf("QUEUE")).toBeGreaterThanOrEqual(0);
-		expect(rows.indexOf("QUEUE")).toBeLessThan(headingIndex(rows, "TOOLS"));
-		expect(headingIndex(rows, "TOOLS")).toBeLessThan(rows.findIndex((row) => /^[◆◇] Working/.test(row)));
-		expect(headingIndex(rows, "AGENT")).toBe(-1);
+		expect(rows.indexOf("Queue")).toBeGreaterThanOrEqual(0);
+		expect(rows.indexOf("Queue")).toBeLessThan(headingIndex(rows, "Tools"));
+		expect(headingIndex(rows, "Tools")).toBeLessThan(rows.findIndex((row) => /^[◆◇] Working/.test(row)));
+		expect(headingIndex(rows, "Agent")).toBe(-1);
 	});
 
 	it("renders an explicit empty state when every configured-visible panel is unavailable", () => {
@@ -239,19 +239,19 @@ describe("sidebar snapshot and layout", () => {
 		expect(lines).toHaveLength(60);
 		expect(lines.every((line) => visibleWidth(line) <= 44)).toBe(true);
 		expect(lines.every((line) => stripAnsi(line).startsWith("  "))).toBe(true);
-		expect(stripAnsi(lines[0] ?? "")).toMatch(/^  ╭─ ✦ ACTIVITY ─+╮$/);
+		expect(stripAnsi(lines[0] ?? "")).toMatch(/^  ╭─ ✦ Activity ─+╮$/);
 		const rows = contentRows(lines);
-		expect(rows.slice(0, 4)).toEqual(["ACTIVITY", "◆ Working", "", ""]);
-		expect(headingIndex(rows, "CONTEXT")).toBeGreaterThan(0);
-		expect(headingIndex(rows, "CHANGED FILES")).toBeGreaterThan(headingIndex(rows, "CONTEXT"));
+		expect(rows.slice(0, 4)).toEqual(["Activity", "◆ Working", "", ""]);
+		expect(headingIndex(rows, "Context")).toBeGreaterThan(0);
+		expect(headingIndex(rows, "Changed files")).toBeGreaterThan(headingIndex(rows, "Context"));
 		// Model, usage, and tool counts are already in the footer.
-		for (const hidden of ["AGENT", "USAGE", "TOOLS"]) expect(headingIndex(rows, hidden)).toBe(-1);
+		for (const hidden of ["Agent", "Usage", "Tools"]) expect(headingIndex(rows, hidden)).toBe(-1);
 	});
 
 	it("lists changed files with right-aligned line counts", () => {
 		const rows = renderRows(snapshot(), { color: false, now: 0 });
-		const files = sectionRows(rows, "CHANGED FILES");
-		expect(rows[headingIndex(rows, "CHANGED FILES")]).toMatch(/^CHANGED FILES\s+\+182\s+−47$/);
+		const files = sectionRows(rows, "Changed files");
+		expect(rows[headingIndex(rows, "Changed files")]).toMatch(/^Changed files\s+\+182\s+−47$/);
 		expect(files).toEqual([
 			expect.stringMatching(/^src\/state\.ts\s+\+120\s+−30$/),
 			expect.stringMatching(/^src\/sidebar\.ts\s+\+50\s+−12$/),
@@ -271,7 +271,7 @@ describe("sidebar snapshot and layout", () => {
 		[{ status: "unavailable" as const }, "Git unavailable"],
 	])("renders the %s Pulse state explicitly", (workspacePulse, expected) => {
 		const rows = renderRows({ ...snapshot(), workspacePulse, dirty: false }, { color: false, now: 0 });
-		expect(sectionRows(rows, "CHANGED FILES")).toEqual([expected]);
+		expect(sectionRows(rows, "Changed files")).toEqual([expected]);
 	});
 
 	it("flags conflicts, clean trees, and stale data", () => {
@@ -289,7 +289,7 @@ describe("sidebar snapshot and layout", () => {
 			{ ...snapshot(), workspacePulse: { status: "conflict", data: conflictData } },
 			{ color: false, now: 0 },
 		);
-		expect(sectionRows(conflictRows, "CHANGED FILES")[0]).toMatch(/^merge\.ts\s+\+3\s+−4$/);
+		expect(sectionRows(conflictRows, "Changed files")[0]).toMatch(/^merge\.ts\s+\+3\s+−4$/);
 		const conflictFg = vi.fn((_color: string, text: string) => text);
 		renderSidebarLines(
 			{ ...snapshot(), workspacePulse: { status: "conflict", data: conflictData } },
@@ -305,13 +305,13 @@ describe("sidebar snapshot and layout", () => {
 			{ ...snapshot(), workspacePulse: { status: "clean", data: { ...data, snapshot: emptyPulse } } },
 			{ color: false, now: 0 },
 		);
-		expect(sectionRows(cleanRows, "CHANGED FILES")).toEqual(["No changes"]);
+		expect(sectionRows(cleanRows, "Changed files")).toEqual(["No changes"]);
 
 		const staleRows = renderRows(
 			{ ...snapshot(), workspacePulse: { status: "stale", data } },
 			{ color: false, now: 0 },
 		);
-		expect(sectionRows(staleRows, "CHANGED FILES").at(-1)).toBe("May be out of date");
+		expect(sectionRows(staleRows, "Changed files").at(-1)).toBe("May be out of date");
 	});
 
 	it("drops the overflow count, then later files, before the first changed file", () => {
@@ -326,7 +326,7 @@ describe("sidebar snapshot and layout", () => {
 		expect(moreGone).toBeGreaterThan(lastFileGone);
 		expect(lastFileGone).toBeGreaterThan(firstFileGone);
 		// The first file and its heading leave together.
-		expect(headingIndex(rowsAt(firstFileGone), "CHANGED FILES")).toBe(-1);
+		expect(headingIndex(rowsAt(firstFileGone), "Changed files")).toBe(-1);
 	});
 
 	it("pulses only the jewel of the lit Activity frame while working", () => {
@@ -335,11 +335,11 @@ describe("sidebar snapshot and layout", () => {
 				.map((line) => stripAnsi(line))
 				.filter((line) => line.includes("╭─"))
 				.join("\n");
-		expect(crowns(snapshot(), 0)).toContain("╭─ ✦ ACTIVITY");
-		expect(crowns(snapshot(), 1_000)).toContain("╭─ ✧ ACTIVITY");
-		expect(crowns(snapshot(), 1_000)).toContain("╭─ ✦ CONTEXT");
+		expect(crowns(snapshot(), 0)).toContain("╭─ ✦ Activity");
+		expect(crowns(snapshot(), 1_000)).toContain("╭─ ✧ Activity");
+		expect(crowns(snapshot(), 1_000)).toContain("╭─ ✦ Context");
 		const ready = { ...snapshot(), activity: "ready" as const };
-		expect(crowns(ready, 1_000)).toContain("╭─ ✦ ACTIVITY");
+		expect(crowns(ready, 1_000)).toContain("╭─ ✦ Activity");
 		expect(renderRows(ready, { color: false, now: 1_000 })[1]).toBe("● Ready");
 	});
 
@@ -350,16 +350,16 @@ describe("sidebar snapshot and layout", () => {
 			now: 0,
 		});
 		for (const [color, heading] of [
-			["syntaxType", "CONTEXT"],
-			["accent", "CHANGED FILES"],
-			["thinkingLow", "AGENT"],
-			["syntaxFunction", "USAGE"],
-			["syntaxString", "TOOLS"],
+			["syntaxType", "Context"],
+			["accent", "Changed files"],
+			["thinkingLow", "Agent"],
+			["syntaxFunction", "Usage"],
+			["syntaxString", "Tools"],
 		]) {
 			expect(fg).toHaveBeenCalledWith(color, heading);
 		}
 		// A lit frame's title takes the state color.
-		expect(fg).toHaveBeenCalledWith("mdHeading", "ACTIVITY");
+		expect(fg).toHaveBeenCalledWith("mdHeading", "Activity");
 		expect(fg).toHaveBeenCalledWith("mdHeading", "Working");
 		expect(fg).toHaveBeenCalledWith("success", "+182");
 		expect(fg).toHaveBeenCalledWith("error", "−47");
@@ -378,7 +378,7 @@ describe("sidebar snapshot and layout", () => {
 	it("renders organized sections without exceeding width", () => {
 		for (const width of [28, 32, 40, 44]) {
 			const rows = renderRows(snapshot(), { config: ALL_PANELS, width: width, color: false });
-			for (const heading of ["AGENT", "CONTEXT", "CHANGED FILES", "USAGE", "TOOLS"]) {
+			for (const heading of ["Agent", "Context", "Changed files", "Usage", "Tools"]) {
 				expect(headingIndex(rows, heading)).toBeGreaterThanOrEqual(0);
 			}
 			expect(
@@ -391,13 +391,13 @@ describe("sidebar snapshot and layout", () => {
 
 	it("shows one Agent fact per row in narrow and wide panels", () => {
 		for (const width of [28, 44, 72]) {
-			const agent = sectionRows(renderRows(snapshot(), { config: ALL_PANELS, width, color: false }), "AGENT");
+			const agent = sectionRows(renderRows(snapshot(), { config: ALL_PANELS, width, color: false }), "Agent");
 			expect(agent[0]).toMatch(/^Model\s+gpt-5\.6-sol$/);
 			expect(agent[1]).toMatch(/^Provider\s+openai-codex$/);
 			expect(agent[2]).toMatch(/^Thinking\s+medium$/);
 			expect(agent[3]).toMatch(/^Billing\s+Subscription$/);
 		}
-		const wide = sectionRows(renderRows(snapshot(), { config: ALL_PANELS, color: false }), "AGENT");
+		const wide = sectionRows(renderRows(snapshot(), { config: ALL_PANELS, color: false }), "Agent");
 		expect(wide[4]).toMatch(/^Session\s+Sidebar implementation$/);
 	});
 
@@ -407,7 +407,7 @@ describe("sidebar snapshot and layout", () => {
 			activeToolCount: 8,
 			availableToolCount: 12,
 		});
-		const agent = sectionRows(renderRows(unnamed, { config: ALL_PANELS, color: false }), "AGENT");
+		const agent = sectionRows(renderRows(unnamed, { config: ALL_PANELS, color: false }), "Agent");
 		expect(agent).toHaveLength(4);
 		expect(agent.join("\n")).not.toContain("Session");
 		expect(agent).not.toContain("—");
@@ -416,15 +416,15 @@ describe("sidebar snapshot and layout", () => {
 	it("renders a context meter with the token count on the crown when it fits", () => {
 		for (const width of [40, 44, 72]) {
 			const rows = renderRows(snapshot(), { width: width, color: false });
-			const contextIndex = headingIndex(rows, "CONTEXT");
-			expect(rows[contextIndex]).toMatch(/^CONTEXT\s+32k of 400k$/);
+			const contextIndex = headingIndex(rows, "Context");
+			expect(rows[contextIndex]).toMatch(/^Context\s+32k of 400k$/);
 			expect(rows[contextIndex + 1]).toMatch(/^[█▏▎▍▌▋▊▉░]+ 8\.1%$/);
 			expect(visibleWidth(rows[contextIndex + 1] ?? "")).toBe(width - 6);
 		}
 		// Too narrow for the full count: the frame carries the short form instead.
 		const narrow = renderRows(snapshot(), { width: 28, color: false });
-		expect(narrow[headingIndex(narrow, "CONTEXT")]).toMatch(/^CONTEXT\s+32k\/400k$/);
-		expect(sectionRows(narrow, "CONTEXT")).toEqual([expect.stringMatching(/^[█▏▎▍▌▋▊▉░]+ 8\.1%$/)]);
+		expect(narrow[headingIndex(narrow, "Context")]).toMatch(/^Context\s+32k\/400k$/);
+		expect(sectionRows(narrow, "Context")).toEqual([expect.stringMatching(/^[█▏▎▍▌▋▊▉░]+ 8\.1%$/)]);
 	});
 
 	it("renders populated usage as one labeled row per value", () => {
@@ -432,7 +432,7 @@ describe("sidebar snapshot and layout", () => {
 		const rows = contentRows(
 			renderSidebarLines(snapshot(), ALL_PANELS, { fg, bold: theme.bold }, 44, 60, { colorEnabled: true }),
 		);
-		expect(sectionRows(rows, "USAGE")).toEqual([
+		expect(sectionRows(rows, "Usage")).toEqual([
 			expect.stringMatching(/^Input\s+50\.0k$/),
 			expect.stringMatching(/^Output\s+1\.9k$/),
 			expect.stringMatching(/^Cache read\s+100\.0k$/),
@@ -457,7 +457,7 @@ describe("sidebar snapshot and layout", () => {
 				cost: 0,
 			},
 		};
-		expect(headingIndex(renderRows(unavailable, { config: ALL_PANELS, color: false }), "USAGE")).toBe(-1);
+		expect(headingIndex(renderRows(unavailable, { config: ALL_PANELS, color: false }), "Usage")).toBe(-1);
 	});
 
 	it("keeps a live Turn's activity to running tools without tool history", () => {
@@ -729,17 +729,17 @@ describe("sidebar snapshot and layout", () => {
 		};
 		const fullRows = rowsAt(80);
 		expect(fullRows).toContain("bash  read");
-		expect(headingIndex(fullRows, "USAGE")).toBeGreaterThan(-1);
+		expect(headingIndex(fullRows, "Usage")).toBeGreaterThan(-1);
 		const namesGone = goneAt((rows) => rows.includes("bash  read"));
 		const filesGone = goneAt((rows) => rows.some((row) => row.startsWith("src/sidebar.ts")));
-		const usageGone = goneAt((rows) => headingIndex(rows, "USAGE") >= 0);
+		const usageGone = goneAt((rows) => headingIndex(rows, "Usage") >= 0);
 		expect(namesGone).toBeGreaterThan(filesGone);
 		expect(filesGone).toBeGreaterThan(usageGone);
 
 		const coreOnly = rowsAt(usageGone);
 		expect(coreOnly).toContainEqual(expect.stringMatching(/^src\/state\.ts\s+\+120/));
 		expect(coreOnly).toContainEqual(expect.stringMatching(/^[◆◇] Working/));
-		expect(headingIndex(coreOnly, "CONTEXT")).toBeGreaterThan(-1);
+		expect(headingIndex(coreOnly, "Context")).toBeGreaterThan(-1);
 	});
 
 	it("normalizes tools, collapses names by default, and expands them from configuration", () => {
@@ -752,22 +752,22 @@ describe("sidebar snapshot and layout", () => {
 		expect(toolsSnapshot.activeToolNames).toEqual(["bash", "edit", "read"]);
 
 		const collapsed = renderRows(toolsSnapshot, { config: ALL_PANELS, color: false });
-		expect(sectionRows(collapsed, "TOOLS")).toEqual([expect.stringMatching(/^Enabled\s+3 of 7$/)]);
+		expect(sectionRows(collapsed, "Tools")).toEqual([expect.stringMatching(/^Enabled\s+3 of 7$/)]);
 
 		const expandedConfig = { ...ALL_PANELS, showSidebarToolNames: true };
 		const expanded = renderRows(toolsSnapshot, { config: expandedConfig, color: false });
-		expect(expanded[headingIndex(expanded, "TOOLS")]).toMatch(/^TOOLS\s+3 of 7$/);
-		expect(sectionRows(expanded, "TOOLS")).toEqual(["bash  edit", "read"]);
+		expect(expanded[headingIndex(expanded, "Tools")]).toMatch(/^Tools\s+3 of 7$/);
+		expect(sectionRows(expanded, "Tools")).toEqual(["bash  edit", "read"]);
 		expect(expanded.join("\n")).not.toContain("[31m");
 
 		for (const width of [44, 56, 72]) {
 			const wide = renderRows(toolsSnapshot, { config: expandedConfig, width: width, color: false });
-			expect(sectionRows(wide, "TOOLS")).toEqual(["bash  edit", "read"]);
+			expect(sectionRows(wide, "Tools")).toEqual(["bash  edit", "read"]);
 		}
 
 		for (const width of [28, 39]) {
 			const narrow = renderRows(toolsSnapshot, { config: expandedConfig, width: width, color: false });
-			expect(sectionRows(narrow, "TOOLS")).toEqual([expect.stringMatching(/^Enabled\s+3 of 7$/)]);
+			expect(sectionRows(narrow, "Tools")).toEqual([expect.stringMatching(/^Enabled\s+3 of 7$/)]);
 		}
 	});
 
@@ -786,7 +786,7 @@ describe("sidebar snapshot and layout", () => {
 			height: fullHeight - 1,
 			color: false,
 		});
-		expect(constrained[headingIndex(constrained, "TOOLS")]).toMatch(/^TOOLS\s+4 of 7$/);
+		expect(constrained[headingIndex(constrained, "Tools")]).toMatch(/^Tools\s+4 of 7$/);
 		expect(constrained).toContain("bash  edit");
 		expect(constrained).not.toContain("read  write");
 	});
@@ -802,7 +802,7 @@ describe("sidebar snapshot and layout", () => {
 			config: { ...ALL_PANELS, showSidebarToolNames: true },
 			color: false,
 		});
-		expect(sectionRows(rows, "TOOLS")).toEqual([expect.stringMatching(/^Enabled\s+0 of 7$/)]);
+		expect(sectionRows(rows, "Tools")).toEqual([expect.stringMatching(/^Enabled\s+0 of 7$/)]);
 	});
 
 	it("shows only sanitized warning and error extension statuses", () => {
@@ -815,7 +815,7 @@ describe("sidebar snapshot and layout", () => {
 			availableToolCount: 12,
 		});
 		const rows = renderRows(statusSnapshot, { color: false });
-		expect(sectionRows(rows, "ALERTS")).toEqual(["▲ sync warning", "✕ index failed"]);
+		expect(sectionRows(rows, "Alerts")).toEqual(["▲ sync warning", "✕ index failed"]);
 		expect(rows).not.toContain("tests passing");
 		expect(rows).not.toContain("api ready");
 		expect(rows.join("\n")).not.toContain("[31m");
@@ -824,14 +824,14 @@ describe("sidebar snapshot and layout", () => {
 	it("suppresses routine healthy extension statuses", () => {
 		const rows = renderRows(snapshot(), { color: false });
 		expect(rows).not.toContain("tests passing");
-		expect(headingIndex(rows, "ALERTS")).toBe(-1);
+		expect(headingIndex(rows, "Alerts")).toBe(-1);
 	});
 
 	it("keeps only the status and context in an 8 row rail", () => {
 		const rows = renderRows(snapshot(), { config: ALL_PANELS, height: 8, color: false, now: 0 });
 		expect(rows[1]).toBe("◆ Working");
-		expect(headingIndex(rows, "CONTEXT")).toBeGreaterThan(0);
-		for (const heading of ["CHANGED FILES", "AGENT", "USAGE", "TOOLS"]) {
+		expect(headingIndex(rows, "Context")).toBeGreaterThan(0);
+		for (const heading of ["Changed files", "Agent", "Usage", "Tools"]) {
 			expect(headingIndex(rows, heading)).toBe(-1);
 		}
 		expect(rows).not.toContain("tests passing");
@@ -855,8 +855,8 @@ describe("sidebar snapshot and layout", () => {
 		});
 		const lines = renderSidebarLines(missing, ALL_PANELS, theme, 32, 60, { colorEnabled: false });
 		const rows = contentRows(lines);
-		expect(sectionRows(rows, "AGENT")[0]).toMatch(/^Model\s+—$/);
-		expect(sectionRows(rows, "CONTEXT")).toEqual(["Unavailable"]);
+		expect(sectionRows(rows, "Agent")[0]).toMatch(/^Model\s+—$/);
+		expect(sectionRows(rows, "Context")).toEqual(["Unavailable"]);
 		expect(lines.every((line) => visibleWidth(line) <= 32)).toBe(true);
 	});
 
@@ -906,9 +906,9 @@ describe("sidebar snapshot and layout", () => {
 			],
 		};
 		const rows = renderRows(populated, { config: configWithoutAgent, height: 64, color: false, now: 0 });
-		expect(headingIndex(rows, "AGENT")).toBe(-1);
+		expect(headingIndex(rows, "Agent")).toBe(-1);
 		expect(rows[1]).toBe("◆ Working");
-		for (const heading of ["TODOS", "CONTEXT", "CHANGED FILES", "USAGE", "TOOLS"]) {
+		for (const heading of ["Todos", "Context", "Changed files", "Usage", "Tools"]) {
 			expect(headingIndex(rows, heading)).toBeGreaterThan(-1);
 		}
 		expect(rows.some((row) => row.includes("Visible TODO"))).toBe(true);
@@ -1280,7 +1280,7 @@ describe("todos panel", () => {
 
 	it("omits todos panel when list is empty", () => {
 		const rows = renderRows(snapshot(), { height: 36, color: false });
-		expect(headingIndex(rows, "TODOS")).toBe(-1);
+		expect(headingIndex(rows, "Todos")).toBe(-1);
 	});
 
 	it("shows the whole list with progress during a live Turn", () => {
@@ -1289,14 +1289,14 @@ describe("todos panel", () => {
 			color: false,
 			now: 20_000,
 		});
-		expect(rows[headingIndex(rows, "TODOS")]).toMatch(/^TODOS\s+1 of 3$/);
-		expect(sectionRows(rows, "TODOS")).toEqual(["✓ Review diff", "◐ Write tests", "○ Commit changes"]);
+		expect(rows[headingIndex(rows, "Todos")]).toMatch(/^Todos\s+1 of 3$/);
+		expect(sectionRows(rows, "Todos")).toEqual(["✓ Review diff", "◐ Write tests", "○ Commit changes"]);
 	});
 
 	it("renders todos with all 3 status states", () => {
 		const rows = renderRows(todoSnapshot(threeStates), { height: 36, color: false });
-		expect(rows[headingIndex(rows, "TODOS")]).toMatch(/^TODOS\s+1 of 3$/);
-		expect(sectionRows(rows, "TODOS")).toEqual(["✓ Review diff", "◐ Write tests", "○ Commit changes"]);
+		expect(rows[headingIndex(rows, "Todos")]).toMatch(/^Todos\s+1 of 3$/);
+		expect(sectionRows(rows, "Todos")).toEqual(["✓ Review diff", "◐ Write tests", "○ Commit changes"]);
 	});
 
 	it("hides todos panel when disabled in the layout", () => {
@@ -1312,7 +1312,7 @@ describe("todos panel", () => {
 			height: 36,
 			color: false,
 		});
-		expect(headingIndex(rows, "TODOS")).toBe(-1);
+		expect(headingIndex(rows, "Todos")).toBe(-1);
 	});
 
 	it("sanitizes ansi codes in todo text", () => {

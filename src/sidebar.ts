@@ -925,9 +925,7 @@ function panelRows(
 ): string[] {
 	const safeWidth = Math.max(4, width);
 	const innerWidth = safeWidth - 4;
-	const title = theme.bold(
-		palette.paint(section.lit ?? section.hue ?? "primary", section.title.toUpperCase()),
-	);
+	const title = theme.bold(palette.paint(section.lit ?? section.hue ?? "primary", section.title));
 	const tail = section.summary
 		? ` ${section.summary}${paintFrame(section, palette, " ╮")}`
 		: paintFrame(section, palette, "╮");

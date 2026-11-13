@@ -333,7 +333,7 @@ describe("extension session", () => {
 		expect(staleSidebar).not.toContain("Test session");
 		expect(staleSidebar).not.toContain("Retired TODO");
 		expect(staleSidebar).not.toContain("retired extension failed");
-		expect(staleSidebar).not.toContain("TODOS");
+		expect(staleSidebar).not.toContain("Todos");
 		expect(oldSessionManager.getBranch).not.toHaveBeenCalled();
 		expect(oldSessionManager.getSessionName).not.toHaveBeenCalled();
 		expect(oldSessionManager.getSessionFile).not.toHaveBeenCalled();
@@ -477,7 +477,7 @@ describe("extension session", () => {
 		expect(replacementSidebar).toContain("Post-shutdown session");
 		expect(replacementSidebar).not.toContain("Shutdown stale TODO");
 		expect(replacementSidebar).not.toContain("shutdown-stale.ts");
-		expect(replacementSidebar).not.toContain("TODOS");
+		expect(replacementSidebar).not.toContain("Todos");
 	});
 
 	it("does not retain published state when initialization fails", async () => {
@@ -560,7 +560,7 @@ describe("extension session", () => {
 		const recoveredSidebar = renderOverlayText(h, h.overlays.length - 1);
 		expect(recoveredSidebar).toContain("Recovered session");
 		expect(recoveredSidebar).not.toContain("Failure stale TODO");
-		expect(recoveredSidebar).not.toContain("TODOS");
+		expect(recoveredSidebar).not.toContain("Todos");
 	});
 
 	it("cancels pending system notifications during shutdown", async () => {

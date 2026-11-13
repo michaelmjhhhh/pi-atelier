@@ -39,7 +39,7 @@ describe("extension registration", () => {
 				});
 				await command(h, "sidebar on");
 				const rendered = h.overlays.at(-1)?.component.render(44).join("\\n") ?? "";
-				expect(rendered).toContain("QUEUE");
+				expect(rendered).toContain("Queue");
 				expect(rendered).toContain("queued 2");
 			},
 		);

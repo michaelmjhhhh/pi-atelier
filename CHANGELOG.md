@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Show framed Sidebar panel titles as written (`Activity`, `Changed files`) instead of in uppercase. Framed and Minimal now use the same titles, and a contributed panel keeps its author's casing (`MCP servers`, not `MCP SERVERS`).
+
 ## 0.20.0 — 2026-11-13
 
 - Redesign the Sidebar around what the footer cannot show. The default Sidebar now has four parts: a status line with the run time and the running or recent tools, your TODOs, the context meter with the token count on its frame, and **Changed files**. Every panel keeps its frame, now in one neutral grey with one fact per row. Each title and ✦ jewel keeps a color of its own (Activity blue, Todos pink, Context cyan, Changed files purple); orange, red, and green are left for state. Usage counts use the footer's colors, and changed file names stand out from their directories.
