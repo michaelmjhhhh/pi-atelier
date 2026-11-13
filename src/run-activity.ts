@@ -59,6 +59,18 @@ export const EMPTY_RUN_ACTIVITY: RunActivitySnapshot = Object.freeze({
 	failedCount: 0,
 });
 
+/** How long the Activity frame glows after a run finishes, so completion is visible at a glance. */
+export const COMPLETION_GLOW_MS = 3_000;
+
+/** Whether a finished run is still inside its completion glow. */
+export function isCompletionGlowing(activity: RunActivitySnapshot, now: number): boolean {
+	if (activity.phase !== "settled" || activity.startedAt === undefined || activity.durationMs === undefined) {
+		return false;
+	}
+	const sinceSettled = now - (activity.startedAt + activity.durationMs);
+	return sinceSettled >= 0 && sinceSettled < COMPLETION_GLOW_MS;
+}
+
 export function responsePerformanceValues(performance?: ResponsePerformance): {
 	ttft: DisplayValue;
 	tps: DisplayValue;

@@ -52,9 +52,12 @@ export const BUILTIN_SIDEBAR_PANEL_IDS = [
 	"tools",
 ] as const;
 
+/** Shown again in the footer, so the sidebar leaves them off until the user turns them on. */
+const HIDDEN_BY_DEFAULT: ReadonlySet<string> = new Set(["agent", "usage", "tools"]);
+
 export const DEFAULT_SIDEBAR_PANEL_LAYOUT: SidebarPanelLayout = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
 	id,
-	visible: true,
+	visible: !HIDDEN_BY_DEFAULT.has(id),
 }));
 
 const BUILTIN_IDS = new Set<string>(BUILTIN_SIDEBAR_PANEL_IDS);
@@ -265,9 +268,9 @@ export function normalizeSidebarPanelLayout(
 		seen.add(id);
 	}
 	if (!normalized.some((entry) => entry.visible)) {
-		warnings.push("sidebarPanelLayout must include at least one visible panel; restoring agent");
-		const agent = normalized.find((entry) => entry.id === "agent");
-		if (agent) agent.visible = true;
+		warnings.push("sidebarPanelLayout must include at least one visible panel; restoring activity");
+		const activity = normalized.find((entry) => entry.id === "activity");
+		if (activity) activity.visible = true;
 	}
 	return normalized;
 }

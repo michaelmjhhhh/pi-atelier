@@ -28,7 +28,11 @@ import {
 	type PrefillThrottle,
 	type PrefillTracker,
 } from "../src/prefill.js";
-import { createRunActivityTracker, type RunActivityTracker } from "../src/run-activity.js";
+import {
+	createRunActivityTracker,
+	isCompletionGlowing,
+	type RunActivityTracker,
+} from "../src/run-activity.js";
 import type { SidebarPanelSetting } from "../src/settings-workspace.js";
 import {
 	buildSidebarSnapshot,
@@ -140,7 +144,6 @@ interface ActiveSession {
 	readonly completionNotifier: CompletionNotifier;
 	readonly retiredState: AtelierState;
 	readonly retiredConfig: AtelierConfig;
-	readonly retiredCwd: string;
 	readonly overlayCancellations: Set<() => void>;
 	readonly overlayLifetime: OverlayLifetime;
 	footerDisposer: (() => void) | undefined;
@@ -243,23 +246,17 @@ export default function atelierExtension(
 		if (!enabled || activeSession !== targetSession) {
 			return buildSidebarSnapshot({
 				state: targetSession.retiredState,
-				cwd: targetSession.retiredCwd,
-				branchEntryCount: 0,
 				activeToolCount: 0,
 				availableToolCount: 0,
 			});
 		}
 		const { ctx, panelRegistry, prefill, runActivity, runtime } = targetSession;
 		const sessionName = ctx.sessionManager.getSessionName();
-		const sessionFile = ctx.sessionManager.getSessionFile();
 		const activeTools = pi.getActiveTools();
 		const prefillProgress = prefill.getSnapshot();
 		return buildSidebarSnapshot({
 			state: { ...runtime.getState(), extensionStatuses: targetSession.extensionStatuses },
-			cwd: ctx.cwd,
 			...(sessionName ? { sessionName } : {}),
-			...(sessionFile ? { sessionFile } : {}),
-			branchEntryCount: ctx.sessionManager.getBranch().length,
 			activeToolCount: activeTools.length,
 			availableToolCount: pi.getAllTools().length,
 			activeToolNames: activeTools,
@@ -793,7 +790,10 @@ export default function atelierExtension(
 			},
 			getConfig: () => (isPublished() ? runtime.getConfig() : config),
 			colorEnabled: isColorEnabled(),
-			shouldAnimate: () => enabled && isPublished() && runActivity.isRunning(),
+			shouldAnimate: () =>
+				enabled &&
+				isPublished() &&
+				(runActivity.isRunning() || isCompletionGlowing(runActivity.getSnapshot(), Date.now())),
 			initialWidth: config.sidebarWidth,
 			onResizeCommit: (width) => {
 				const current = activeSession;
@@ -817,7 +817,6 @@ export default function atelierExtension(
 			completionNotifier,
 			retiredState: createInertAtelierState(autoCompact),
 			retiredConfig: structuredClone(config),
-			retiredCwd: ctx.cwd,
 			overlayCancellations,
 			overlayLifetime: createOverlayLifetime(token, overlayCancellations),
 			footerDisposer: undefined,

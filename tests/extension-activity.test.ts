@@ -116,7 +116,6 @@ describe("extension activity", () => {
 		});
 
 		const sidebarText = renderOverlayText(h, 0, 44);
-		expect(sidebarText).toContain("ACTIVITY");
 		expect(sidebarText).toContain("Turn 3");
 		expect(sidebarText).toContain("◐ bash");
 		expect(sidebarText).toContain("bash");
@@ -136,7 +135,7 @@ describe("extension activity", () => {
 		expect(footerText).not.toContain("npm test");
 	});
 
-	it("forwards provider timing and streamed throughput to both footer and sidebar", async () => {
+	it("forwards provider timing and streamed throughput to the footer only", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(1_000);
 		const h = harness("tui", "linux", true, { loadConfig: withConfigOverrides({ nerdFont: true }) });
@@ -172,7 +171,8 @@ describe("extension activity", () => {
 
 		expect(footerRequestRender).toHaveBeenCalled();
 		expect(footer.render(160).join("\n")).toContain("\uf017 820ms  \uf0e7 —");
-		expect(renderOverlayText(h)).toMatch(/First token\s+820ms/);
+		// The footer already shows response timing, so the sidebar leaves it out.
+		expect(renderOverlayText(h)).not.toContain("820ms");
 
 		vi.setSystemTime(2_920);
 		await h.dispatch("message_update", {
@@ -181,7 +181,6 @@ describe("extension activity", () => {
 			assistantMessageEvent: { type: "text_delta", delta: "more output" },
 		});
 		expect(footer.render(160).join("\n")).toContain("\uf017 820ms  \uf0e7 ~20.0/s");
-		expect(renderOverlayText(h)).toMatch(/Output speed\s+~20\.0 tok\/s/);
 
 		vi.setSystemTime(4_420);
 		await h.dispatch("message_end", {
@@ -190,7 +189,7 @@ describe("extension activity", () => {
 		});
 		// The first chunk holds 2 of 22 estimated tokens, so 100 of 110 fall in the 2.5s window.
 		expect(footer.render(160).join("\n")).toContain("\uf017 820ms  \uf0e7 40.0/s");
-		expect(renderOverlayText(h)).toMatch(/Output speed\s+40\.0 tok\/s/);
+		expect(renderOverlayText(h)).not.toContain("tok/s");
 		workspace.handleInput("\u001b");
 		await opening;
 	});
@@ -271,10 +270,10 @@ describe("extension activity", () => {
 		});
 
 		const withResult = renderOverlayText(h, 0, 44);
-		expect(withResult).toMatch(/Run\s+(<1s|\d+s)/);
+		expect(withResult).toMatch(/Working\s+(<1s|\d+s)/);
 		expect(withResult).not.toContain("src/run-activity.ts");
 		expect(withResult).not.toContain("✓ read");
-		expect(withResult).not.toMatch(/Tools\s+1 done/);
+		expect(withResult).not.toContain("1 tool");
 
 		const rendersBeforeTick = h.overlays[0]?.requestRender.mock.calls.length ?? 0;
 		vi.advanceTimersByTime(1_000);
@@ -284,18 +283,23 @@ describe("extension activity", () => {
 		await h.dispatch("agent_settled", { type: "agent_settled" });
 		const settledRenderCount = h.overlays[0]?.requestRender.mock.calls.length ?? 0;
 		const settledText = renderOverlayText(h, 0, 44);
-		expect(settledText).toMatch(/Last run\s+3s/);
+		expect(settledText).toContain("last run 3s");
 		expect(settledText).not.toContain("settled 3s");
 		expect(settledText).toContain("Ready");
 		expect(settledText).toContain("read");
 		expect(settledText).toContain("src/run-activity.ts");
 		expect(settledText).toMatch(/✓ read\s+src\/run-activity\.ts\s+1s/);
 
+		// The Activity frame glows for a moment after the run, then the animation stops.
 		vi.advanceTimersByTime(3_000);
-		expect(h.overlays[0]?.requestRender.mock.calls.length).toBe(settledRenderCount);
+		expect(h.overlays[0]?.requestRender.mock.calls.length).toBeGreaterThan(settledRenderCount);
+		vi.advanceTimersByTime(1_000);
+		const fadedRenderCount = h.overlays[0]?.requestRender.mock.calls.length ?? 0;
+		vi.advanceTimersByTime(3_000);
+		expect(h.overlays[0]?.requestRender.mock.calls.length).toBe(fadedRenderCount);
 	});
 
-	it("keeps a live Turn overlay to current work without history", async () => {
+	it("keeps a live Turn overlay to running tools and the todo list, without tool history", async () => {
 		const h = harness();
 		h.ctx.sessionManager.getBranch.mockReturnValue([
 			todoBranchEntry({
@@ -326,12 +330,12 @@ describe("extension activity", () => {
 
 		const live = renderOverlayText(h);
 		expect(live).toMatch(/Turn 2\s+(<1s|\d+s)/);
-		expect(live).toContain("newer.ts");
-		expect(live).toContain("+1");
-		expect(live).not.toContain("older.ts");
+		// Up to three running tools each keep a row, oldest first.
+		expect(live.indexOf("older.ts")).toBeGreaterThan(-1);
+		expect(live.indexOf("newer.ts")).toBeGreaterThan(live.indexOf("older.ts"));
+		expect(live).toContain("Done live TODO");
 		expect(live).toContain("Current live TODO");
-		expect(live).not.toContain("Done live TODO");
-		expect(live).not.toContain("Queued live TODO");
+		expect(live).toContain("Queued live TODO");
 	});
 
 	it("accepts fresh Pi event contexts for the active session", async () => {
@@ -345,7 +349,6 @@ describe("extension activity", () => {
 
 		const text = renderOverlayText(h, 0, 44);
 		expect(text).toContain("Working");
-		expect(text).toContain("ACTIVITY");
 		expect(text).toContain("Turn 1");
 	});
 

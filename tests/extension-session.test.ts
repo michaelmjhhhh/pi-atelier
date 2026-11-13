@@ -291,7 +291,7 @@ describe("extension session", () => {
 	it("keeps active Sidebar snapshot failures visible", async () => {
 		const h = harness();
 		await start(h);
-		h.ctx.sessionManager.getBranch.mockImplementation(() => {
+		h.ctx.sessionManager.getSessionName.mockImplementation(() => {
 			throw new Error("snapshot read failed");
 		});
 
@@ -608,8 +608,8 @@ describe("extension session", () => {
 		await inspected;
 		await settleMicrotasks();
 		// Positive control: a published pulse does reach the sidebar.
-		expect(renderOverlayText(active)).toContain("stale-branch");
-		expect(renderOverlayText(active)).toContain("1 file");
+		expect(renderOverlayText(active)).toMatch(/tracked\.txt\s+\+5\s+−2/);
+		expect(renderOverlayText(active)).toMatch(/untracked\.txt\s+new/);
 		await active.dispatch("session_shutdown", { reason: "quit" }, active.ctx);
 		expect(active.overlays[0]?.done).toHaveBeenCalledOnce();
 
@@ -848,8 +848,7 @@ describe("extension session", () => {
 		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
 		await command(h, "sidebar on");
 		const replacementText = renderOverlayText(h, 1, 44);
-		expect(replacementText).toContain("ACTIVITY");
-		expect(replacementText).toMatch(/First token\s+—/);
+		expect(replacementText).toContain("Ready");
 		expect(replacementText).not.toContain("old.ts");
 
 		const replacementRenderCount = h.overlays[1]?.requestRender.mock.calls.length ?? 0;
@@ -900,7 +899,6 @@ describe("extension session", () => {
 			const activeRenderCount = h.overlays[1]?.requestRender.mock.calls.length ?? 0;
 			const activeText = renderOverlayText(h, 1, 44);
 			expect(activeText).toContain("Replacement session");
-			expect(activeText).toContain("ACTIVITY");
 			expect(activeText).toContain("Turn 7");
 			expect(activeText).toContain("◐ bash");
 			expect(activeText).toContain("bash");
@@ -939,7 +937,7 @@ describe("extension session", () => {
 
 			expect(h.overlays[1]?.requestRender.mock.calls.length).toBeGreaterThan(activeRenderCount);
 			const settledText = renderOverlayText(h, 1, 44);
-			expect(settledText).toMatch(/Last run\s+<1s/);
+			expect(settledText).toContain("last run <1s");
 			expect(settledText).not.toContain("Turn 7");
 			expect(settledText).not.toContain("settled");
 			expect(settledText).toContain("✓ bash");
