@@ -343,15 +343,23 @@ describe("sidebar snapshot and layout", () => {
 		expect(renderRows(ready, { color: false, now: 1_000 })[1]).toBe("● Ready");
 	});
 
-	it("paints headings plainly and keeps color for state", () => {
+	it("paints each title in its panel's color and keeps frames neutral", () => {
 		const fg = vi.fn((_color: string, text: string) => text);
 		renderSidebarLines(snapshot(), ALL_PANELS, { fg, bold: theme.bold }, 44, 60, {
 			colorEnabled: true,
 			now: 0,
 		});
-		for (const heading of ["CONTEXT", "CHANGED FILES", "AGENT", "USAGE", "TOOLS"]) {
-			expect(fg).toHaveBeenCalledWith("text", heading);
+		for (const [color, heading] of [
+			["syntaxType", "CONTEXT"],
+			["accent", "CHANGED FILES"],
+			["thinkingLow", "AGENT"],
+			["syntaxFunction", "USAGE"],
+			["syntaxString", "TOOLS"],
+		]) {
+			expect(fg).toHaveBeenCalledWith(color, heading);
 		}
+		// A lit frame's title takes the state color.
+		expect(fg).toHaveBeenCalledWith("mdHeading", "ACTIVITY");
 		expect(fg).toHaveBeenCalledWith("mdHeading", "Working");
 		expect(fg).toHaveBeenCalledWith("success", "+182");
 		expect(fg).toHaveBeenCalledWith("error", "−47");

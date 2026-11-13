@@ -439,7 +439,12 @@ function changedFileRow(
 				);
 	const room = Math.max(1, width - visibleWidth(right) - 1);
 	const path = truncateStart(sanitizeInline(file.path) || PLACEHOLDER, room);
-	return splitRow(palette.paint(conflict ? "error" : "primary", path), right, width);
+	// The file name carries the row; its directory recedes.
+	const nameStart = path.lastIndexOf("/") + 1;
+	const left = conflict
+		? palette.paint("error", path)
+		: `${palette.paint("muted", path.slice(0, nameStart))}${palette.paint("primary", path.slice(nameStart))}`;
+	return splitRow(left, right, width);
 }
 
 interface ChangedFilesSection {
@@ -556,15 +561,22 @@ function usageRows(
 	if (metrics.usageAvailable) {
 		const hit = metrics.cacheHitPercent === undefined ? undefined : `${metrics.cacheHitPercent.toFixed(1)}%`;
 		rows.push(
-			labeledRow("Input", formatUsageTokens(metrics.input), width, palette),
-			labeledRow("Output", formatUsageTokens(metrics.output), width, palette),
-			labeledRow("Cache read", formatUsageTokens(metrics.cacheRead), width, palette),
+			// The same colors as the footer's token counts.
+			labeledRow("Input", formatUsageTokens(metrics.input), width, palette, "input"),
+			labeledRow("Output", formatUsageTokens(metrics.output), width, palette, "output"),
+			labeledRow("Cache read", formatUsageTokens(metrics.cacheRead), width, palette, "cache"),
 			labeledRow("Cache hit", hit ?? PLACEHOLDER, width, palette, hit ? "primary" : "dim"),
 		);
 	}
 	if (metrics.costAvailable) {
 		rows.push(
-			labeledRow("Cost", `$${Math.max(0, metrics.cost).toFixed(config.currencyDecimals)}`, width, palette),
+			labeledRow(
+				"Cost",
+				`$${Math.max(0, metrics.cost).toFixed(config.currencyDecimals)}`,
+				width,
+				palette,
+				"cost",
+			),
 		);
 	}
 	return rows;
@@ -646,9 +658,28 @@ interface Section {
 	title: string;
 	/** Painted text on the right of the crown. */
 	summary?: string;
-	/** The state that lights this frame; frames without one stay a neutral grey. */
+	/** The panel's own color, worn by its title and jewel while its frame stays grey. */
+	hue?: PaletteRole;
+	/** The state that lights this frame; it overrides the hue while it lasts. */
 	lit?: PaletteRole;
 }
+
+/**
+ * Each built-in panel's own color. Orange, red, and green are left to state,
+ * so a lit frame never looks like a panel's resting color.
+ */
+const PANEL_HUE: Record<BuiltinSidebarPanelId, PaletteRole> = {
+	agent: "input",
+	activity: "ready",
+	alerts: "warning",
+	todos: "chartPink",
+	context: "cache",
+	prefill: "working",
+	workspace: "accent",
+	usage: "chartGold",
+	subagents: "output",
+	tools: "chartPink",
+};
 
 interface SidebarGroup {
 	name: string;
@@ -830,7 +861,9 @@ function panelRows(
 ): string[] {
 	const safeWidth = Math.max(4, width);
 	const innerWidth = safeWidth - 4;
-	const title = theme.bold(palette.paint("primary", section.title.toUpperCase()));
+	const title = theme.bold(
+		palette.paint(section.lit ?? section.hue ?? "primary", section.title.toUpperCase()),
+	);
 	const tail = section.summary
 		? ` ${section.summary}${paintFrame(section, palette, " ╮")}`
 		: paintFrame(section, palette, "╮");
@@ -838,7 +871,7 @@ function panelRows(
 		0,
 		safeWidth - CROWN_PREFIX_WIDTH - visibleWidth(section.title) - 1 - visibleWidth(tail),
 	);
-	const jewelRole: PaletteRole = section.lit ?? "muted";
+	const jewelRole: PaletteRole = section.lit ?? section.hue ?? "muted";
 	const crown = `${paintFrame(section, palette, "╭─ ")}${palette.paint(jewelRole, jewel)} ${title} ${paintFrame(section, palette, "─".repeat(fill))}${tail}`;
 	const edge = paintFrame(section, palette, "│");
 	return [
@@ -857,7 +890,7 @@ function headingRows(
 	palette: AtelierPalette,
 	theme: ThemeLike,
 ): string[] {
-	const title = theme.bold(palette.paint(section.lit ?? "primary", section.title));
+	const title = theme.bold(palette.paint(section.lit ?? section.hue ?? "primary", section.title));
 	return [splitRow(title, section.summary ?? "", width), ...rows, ""];
 }
 
@@ -1067,7 +1100,12 @@ export function renderSidebarLines(
 		if (!entry.visible) continue;
 		if (isBuiltinSidebarPanelId(entry.id)) {
 			availableVisible = true;
-			ordered.push(...builtinPanels[entry.id]());
+			const hue = PANEL_HUE[entry.id];
+			ordered.push(
+				...builtinPanels[entry.id]().map((group) =>
+					group.section ? { ...group, section: { ...group.section, hue } } : group,
+				),
+			);
 			continue;
 		}
 		const panel = contributed.get(entry.id);
@@ -1090,7 +1128,7 @@ export function renderSidebarLines(
 					.map((row) => palette.paint(row.role ?? panel.role ?? "primary", row.text));
 		ordered.push({
 			name: `contributed:${panel.id}`,
-			section: { id: panel.id, title: panel.title || panel.id },
+			section: { id: panel.id, title: panel.title || panel.id, hue: panel.role ?? "accent" },
 			rows: rows.length > 0 ? rows : [palette.paint("dim", "No data")],
 			dropRank: DROP_RANK.contributed,
 		});
