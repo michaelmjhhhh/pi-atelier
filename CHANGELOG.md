@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Default to Plain text mode to avoid Nerd Font icons rendering as boxes in unsupported terminals; set `"nerdFont": true` to opt back into Nerd Font icons.
+- Default to Plain text mode so a terminal without a Nerd Font no longer shows boxes in the composer status line and footer. Users who never set `nerdFont` switch to Plain text after upgrading; choose **Settings → Font mode → Nerd Font** or set `"nerdFont": true` to keep the icons.
 
 ## 0.18.0 — 2026-10-31
 

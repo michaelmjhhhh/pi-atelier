@@ -37,6 +37,7 @@ describe("extension session", () => {
 			for (const text of ["READY", "project", "main", "10.0%"]) expect(selectorFooter).toContain(text);
 
 			expect(editor.render(80)[0]).toContain("READY");
+			expect(footer.render(80).join("\n")).not.toContain("READY");
 		} finally {
 			footer.dispose();
 		}

@@ -30,7 +30,7 @@ pi install npm:pi-atelier
 Start Pi and open the control center with `/atelier` or **F6** (**Fn+F6** on keyboards with media keys).
 
 > [!TIP]
-> If icons render as boxes, choose **Settings → Font mode → Plain text**, or select a Nerd Font in your terminal. See [Terminal font](#terminal-font).
+> Atelier starts in Plain text mode, which works with any monospace font. For icons, select a Nerd Font in your terminal and choose **Settings → Font mode → Nerd Font**. See [Terminal font](#terminal-font).
 
 > [!NOTE]
 > Atelier uses the core packages of the running Pi host. Its npm peers are optional so installing it never pulls in a second copy of Pi; update Pi itself separately. Pi packages run with your system permissions, so review third-party source before installing.
@@ -46,7 +46,7 @@ Start Pi and open the control center with `/atelier` or **F6** (**Fn+F6** on key
 
 ### Terminal font
 
-Plain text mode is the default because terminals without a Nerd Font render its icons as boxes; it works with any monospace font and keeps colors, metrics, and the responsive layout. Set `"nerdFont": true` to restore Nerd Font icons; the terminal font must cover those glyphs, and a Symbols Nerd Font Mono fallback is sufficient.
+Plain text mode is the default. It works with any monospace font and keeps colors, metrics, and the responsive layout. Nerd Font mode adds icons but needs a terminal font that covers them, such as one from [nerdfonts.com](https://www.nerdfonts.com) or a Symbols Nerd Font Mono fallback; without one, the icons render as boxes. Switch in **Settings → Font mode** or set `"nerdFont": true`.
 
 ## Features
 
@@ -147,7 +147,7 @@ Project settings override user settings, and session changes override both. Font
 ```json
 {
   "preset": "editorial",
-  "nerdFont": true,
+  "nerdFont": false,
   "shortcut": "f6",
   "toggleShortcut": "",
   "density": "comfortable",
