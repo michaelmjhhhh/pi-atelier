@@ -52,9 +52,9 @@ Plain text mode is the default. It works with any monospace font and keeps color
 
 | | |
 | --- | --- |
-| **Session visibility** | Model, thinking level, context, token usage, cost, and session details in a compact status rail and sidebar. |
+| **Session visibility** | Model, thinking level, context, token usage, and cost in a compact status rail, with optional sidebar panels for the same details. |
 | **Live activity** | Agent and tool activity, TODOs, response timing, and completion notifications on macOS and Windows. |
-| **Workspace context** | Workspace identity and read-only Git status next to your session. |
+| **Workspace context** | The files you have changed, with lines added and removed per file, from read-only Git status. |
 | **Subagent costs** | Colored per-child cost curves from pi-subagents accounting events, with matching legends and real observation markers. `/atelier usage` opens a larger framed graph with keyboard focus and per-reply costs. Kitty-compatible terminals get native graphics; others get text strokes. |
 | **Prefill progress** | While a local model is still reading a long prompt, a temporary sidebar panel shows how far through the prompt it is, how fast it is reading, and how long until the first token. |
 | **Personalization** | Display presets, configurable segments and panels, optional Nerd Font icons, and model and tool controls. |
@@ -87,6 +87,9 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 - The preferred width survives terminal resizes and mode changes.
 - A confirmed resize is saved as `sidebarWidth` and becomes the starting width for new sessions. Escape keeps the saved width.
 - Mode and visibility are session-scoped. The startup visibility preference is set in Settings.
+- The sidebar shows what the footer cannot: whether the agent is working and which tools are running, your TODOs, the context meter, and the files you changed with lines added and removed. Model, usage, and tool counts are already in the footer, so the Agent, Usage, and Tools panels start hidden; turn them on in **Settings → Display**. A layout you saved earlier keeps its own choices.
+- Every panel has the same neutral grey frame; its title and ✦ keep a color of their own. A frame lights up only when its panel needs attention: Activity while the agent works (red on an error), Context past your warning and danger thresholds, Changed files on a merge conflict. Inside the panels, color marks state only. When a run finishes, the Activity frame glows green for three seconds, then returns to grey.
+- **Settings → Sidebar style** switches between **Framed** (the default) and **Minimal**: no frames, just quiet headings that take the state color instead. The setting is saved as the user-only `sidebarStyle` (`"framed"` or `"minimal"`).
 - The TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension. Atelier does not change `todo` results, so the agent keeps task ids and `list` output.
 
 ### Prefill progress
@@ -142,7 +145,7 @@ Pi supports one custom footer and one custom editor at a time. Extension load or
 | User | `~/.pi/agent/pi-atelier.json` |
 | Project (trusted only) | `<project>/.pi/pi-atelier.json` |
 
-Project settings override user settings, and session changes override both. Font mode, footer, sidebar startup, sidebar width, notification preferences, and the prefill provider allow-list are user-only.
+Project settings override user settings, and session changes override both. Font mode, footer, sidebar startup, sidebar width, sidebar style, notification preferences, and the prefill provider allow-list are user-only.
 
 ```json
 {
@@ -157,6 +160,7 @@ Project settings override user settings, and session changes override both. Font
   "showFooter": true,
   "showSidebarOnStartup": true,
   "sidebarWidth": 44,
+  "sidebarStyle": "framed",
   "showSidebarToolNames": false,
   "completionNotifications": true,
   "prefillEnabled": true,
