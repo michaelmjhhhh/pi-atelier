@@ -103,7 +103,7 @@ describe("sidebar todos integration", () => {
 				],
 				nextId: 3,
 			},
-			progress: "1/2",
+			progress: "1 of 2",
 			texts: ["Completed task", "Pending task"],
 		},
 		{
@@ -116,7 +116,7 @@ describe("sidebar todos integration", () => {
 				],
 				nextId: 4,
 			},
-			progress: "1/3",
+			progress: "1 of 3",
 			texts: ["Done", "Working", "Pending"],
 		},
 	])("shows TODOS panel reconstructed from $name branch entries", async ({ details, progress, texts }) => {
@@ -190,7 +190,7 @@ describe("sidebar todos integration", () => {
 
 		const sidebarText = renderOverlayText(h, 0, 44);
 		expect(sidebarText).toContain("TODOS");
-		expect(sidebarText).toContain("0/1");
+		expect(sidebarText).toContain("0 of 1");
 		expect(sidebarText).toContain("Valid");
 		expect(sidebarText).not.toContain("Deleted");
 		expect(sidebarText).not.toContain("Unknown");
@@ -208,7 +208,7 @@ describe("sidebar todos integration", () => {
 		await command(h, "sidebar on");
 
 		let sidebarText = renderOverlayText(h, 0, 44);
-		expect(sidebarText).toContain("0/1");
+		expect(sidebarText).toContain("0 of 1");
 		expect(sidebarText).toContain("Initial task");
 
 		// Trigger new todo result
@@ -228,7 +228,7 @@ describe("sidebar todos integration", () => {
 		);
 
 		sidebarText = renderOverlayText(h, 0, 44);
-		expect(sidebarText).toContain("1/2");
+		expect(sidebarText).toContain("1 of 2");
 		expect(sidebarText).toContain("Initial task");
 		expect(sidebarText).toContain("New task");
 	});
@@ -299,7 +299,7 @@ describe("sidebar todos integration", () => {
 			const initialSidebar = renderOverlayText(h, 0, 44);
 			expect(initialSidebar).not.toContain("AGENT");
 			expect(initialSidebar).toContain("TODOS");
-			expect(initialSidebar).toContain("1/2");
+			expect(initialSidebar).toContain("1 of 2");
 			expect(initialSidebar).toContain("Visible TODO");
 
 			await start(h, replacementContext(h.ctx, "Reloaded session"));
@@ -307,7 +307,7 @@ describe("sidebar todos integration", () => {
 			const reloadedSidebar = renderOverlayText(h, 1, 44);
 			expect(reloadedSidebar).not.toContain("AGENT");
 			expect(reloadedSidebar).toContain("TODOS");
-			expect(reloadedSidebar).toContain("1/2");
+			expect(reloadedSidebar).toContain("1 of 2");
 			expect(reloadedSidebar).toContain("Visible TODO");
 		});
 	});

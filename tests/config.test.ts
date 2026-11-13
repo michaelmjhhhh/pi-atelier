@@ -191,7 +191,8 @@ describe("configuration validation", () => {
 
 	it("rejects non-boolean showSidebarAgent with warning", () => {
 		const result = validateConfig({ showSidebarAgent: "off" });
-		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(true);
+		// The invalid value leaves Agent at its default: hidden.
+		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(false);
 		expect(result.warnings).toContain("showSidebarAgent must be boolean");
 	});
 });
@@ -279,14 +280,15 @@ describe("configuration files", () => {
 	});
 
 	it("ignores project and session legacy Sidebar visibility when the user omits it", async () => {
-		await writeJson(projectPath, { showSidebarAgent: false, showSidebarTodos: false });
+		// Each value is the opposite of its panel's default, so an applied value would show.
+		await writeJson(projectPath, { showSidebarAgent: true, showSidebarTodos: false });
 		const result = await loadConfig({
 			userPath,
 			projectPath,
 			projectTrusted: true,
-			session: { showSidebarAgent: false, showSidebarTodos: false },
+			session: { showSidebarAgent: true, showSidebarTodos: false },
 		});
-		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(true);
+		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(false);
 		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "todos")?.visible).toBe(true);
 	});
 
