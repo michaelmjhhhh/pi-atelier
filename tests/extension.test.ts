@@ -470,7 +470,7 @@ describe("extension registration", () => {
 		await h.mounted(1);
 		expect(h.overlays).toHaveLength(2);
 		expect(h.custom.mock.calls.length).toBe(before + 1);
-		expect(renderOverlayText(h, h.overlays.length - 1, 80)).toContain("DISPLAY SETTINGS");
+		expect(renderOverlayText(h, h.overlays.length - 1, 80)).toContain("Display settings");
 		h.overlays.at(-1)?.component.handleInput("\u001b");
 		await opening;
 

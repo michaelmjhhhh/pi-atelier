@@ -90,10 +90,10 @@ describe("Display Settings Workspace", () => {
 		]);
 		discovered = true;
 		expect(text(h.component)).toContain("Queue");
-		expect(text(h.component)).toContain("Missing  unavailable");
+		expect(text(h.component)).toMatch(/● Missing +unavailable/);
 
-		// Two display rows, nine segments, and three actions precede the configured layout.
-		for (let index = 0; index < 14 + configuredLayout.length; index += 1) h.component.handleInput("\u001b[B");
+		// Two display rows and nine segments precede the configured layout.
+		for (let index = 0; index < 11 + configuredLayout.length; index += 1) h.component.handleInput("\u001b[B");
 		h.component.handleInput(" ");
 		h.component.handleInput("s");
 		expect(h.persist).toHaveBeenCalled();
@@ -135,7 +135,7 @@ describe("Display Settings Workspace", () => {
 		// metrics is required and rejects toggling.
 		h.component.handleInput("\u001b[A");
 		h.component.handleInput(" ");
-		expect(text(h.component)).toContain("metrics is required");
+		expect(text(h.component)).toContain("Tokens & cost is always shown");
 		h.component.handleInput("\u001b");
 		expect(h.close).toHaveBeenCalledOnce();
 		expect(h.layers.session).toBeDefined();
@@ -155,7 +155,7 @@ describe("Display Settings Workspace", () => {
 		h.component.handleInput(" ");
 		h.component.handleInput("s");
 		await settleMicrotasks();
-		expect(text(h.component)).toContain("Saved as User default");
+		expect(text(h.component)).toContain("Saved as your default");
 		expect(h.persist).toHaveBeenCalledOnce();
 		expect(h.layers.user).toMatchObject({ preset: "minimal", density: "compact" });
 		expect(h.close).not.toHaveBeenCalled();
@@ -205,10 +205,9 @@ describe("Display Settings Workspace", () => {
 			},
 		});
 		const rendered = text(h.component);
-		expect(rendered).toContain("Density      compact       user");
-		expect(rendered).toContain("order user");
-		expect(rendered.indexOf("1  ○ brand")).toBeLessThan(rendered.indexOf("2  ● activity"));
-		expect(rendered.indexOf("2  ● activity")).toBeLessThan(rendered.indexOf("3  ◆ metrics"));
+		expect(rendered).toMatch(/Density +compact +saved/);
+		expect(rendered.indexOf("○ Brand")).toBeLessThan(rendered.indexOf("● Activity"));
+		expect(rendered.indexOf("● Activity")).toBeLessThan(rendered.indexOf("● Tokens & cost"));
 	});
 
 	it.each([40, 80, 120])("uses one real responsive Status Rail preview at %s columns", (width) => {
@@ -248,18 +247,20 @@ describe("Display Settings Workspace", () => {
 	});
 
 	it("keeps top, middle, and bottom scroll states structurally focused", () => {
-		const top = harness({}, DEFAULT_CONFIG, undefined, () => 39);
-		const topLines = text(top.component);
+		const top = harness({}, DEFAULT_CONFIG, undefined, () => 20);
+		const topLines = text(top.component, 126);
 		expect(topLines).toContain("↓ more");
 		expect(topLines).not.toContain("↑ more");
 
-		const middle = harness({}, DEFAULT_CONFIG, undefined, () => 15);
-		const middleLines = text(middle.component);
+		// The stacked layout is tall enough to scroll in both directions from the middle.
+		const middle = harness({}, DEFAULT_CONFIG, undefined, () => 16);
+		for (let index = 0; index < 10; index += 1) middle.component.handleInput("\u001b[B");
+		const middleLines = text(middle.component, 60);
 		expect(middleLines).toContain("↑ more");
 		expect(middleLines).toContain("↓ more");
 
 		for (let index = 0; index < 100; index += 1) middle.component.handleInput("\u001b[B");
-		const bottomLines = text(middle.component);
+		const bottomLines = text(middle.component, 60);
 		expect(bottomLines).toContain("↑ more");
 		expect(bottomLines).not.toContain("↓ more");
 	});
@@ -280,43 +281,43 @@ describe("Display Settings Workspace", () => {
 		for (let index = 0; index < 100; index += 1) h.component.handleInput("\u001b[B");
 		const lines = h.component.render(126);
 		expect(lines.join("\n")).toContain("Contributed › title");
-		expect(lines.join("\n")).toContain("› Restore default");
+		expect(lines.join("\n")).toContain("› ○ tools");
 		expect(lines).toHaveLength(39);
 		expect(lines.every((line) => visibleWidth(line) <= 126)).toBe(true);
 	});
 
-	it("keeps the focused last Sidebar action visible while scrolling", () => {
-		const h = harness({}, DEFAULT_CONFIG, undefined, () => 39);
+	it("keeps the focused last Sidebar panel visible while scrolling", () => {
+		const h = harness({}, DEFAULT_CONFIG, undefined, () => 14);
 		for (let index = 0; index < 100; index += 1) h.component.handleInput("\u001b[B");
 		const lines = h.component.render(126);
-		expect(lines.join("\n")).toContain("› Restore default");
+		expect(lines.join("\n")).toContain("› ○ tools");
 		expect(lines.at(-1)).toContain("╰");
-		expect(lines).toHaveLength(39);
+		expect(lines).toHaveLength(14);
 	});
 
 	it("shows deterministic scroll indicators and adapts to live viewport resizing", () => {
-		let viewport = 39;
+		let viewport = 13;
 		const h = harness({}, DEFAULT_CONFIG, undefined, () => viewport);
 		for (let index = 0; index < 100; index += 1) h.component.handleInput("\u001b[B");
 		const bottom = h.component.render(126).join("\n");
 		expect(bottom).toContain("↑ more");
 		expect(bottom).not.toContain("↓ more");
 
-		viewport = 30;
+		viewport = 12;
 		const smaller = h.component.render(126);
-		expect(smaller).toHaveLength(30);
-		expect(smaller.join("\n")).toContain("› Restore default");
+		expect(smaller).toHaveLength(12);
+		expect(smaller.join("\n")).toContain("› ○ tools");
 		expect(smaller.join("\n")).toContain("↑ more");
 
 		viewport = 50;
 		const larger = h.component.render(126);
 		expect(larger).toHaveLength(50);
-		expect(larger.join("\n")).toContain("› Restore default");
+		expect(larger.join("\n")).toContain("› ○ tools");
 		expect(larger.join("\n")).not.toContain("↓ more");
 		expect(larger.every((line) => visibleWidth(line) <= 126)).toBe(true);
 	});
 
-	it("keeps value, provenance, and action shortcut columns fixed", () => {
+	it("keeps value and provenance columns fixed", () => {
 		const h = harness();
 		const before = h.component.render(120);
 		h.component.handleInput("\u001b[B");
@@ -327,22 +328,16 @@ describe("Display Settings Workspace", () => {
 			expect(beforeLine.indexOf(label === "Preset" ? "editorial" : "comfortable")).toBe(
 				afterLine.indexOf(label === "Preset" ? "editorial" : "comfortable"),
 			);
-			expect(beforeLine.indexOf("product")).toBe(afterLine.indexOf("product"));
+			expect(beforeLine.indexOf("default")).toBe(afterLine.indexOf("default"));
 		}
-		const save = requiredRow(before, "Save default");
-		const revert = requiredRow(before, "Revert session");
-		const undo = requiredRow(before, "Undo");
-		expect(save.lastIndexOf("S")).toBe(revert.lastIndexOf("R"));
-		expect(revert.lastIndexOf("R")).toBe(undo.lastIndexOf("—"));
 	});
 
-	it("uses stacked panels narrowly and equal-bottom side-by-side panels widely", () => {
+	it("stacks the Status rail and Sidebar sections narrowly and sets them side by side widely", () => {
 		const h = harness();
 		const narrow = h.component.render(40);
-		expect(requiredIndex(narrow, " Display ")).toBeLessThan(requiredIndex(narrow, " Segment Editor "));
+		expect(requiredIndex(narrow, "Status rail ─")).toBeLessThan(requiredIndex(narrow, "Sidebar ─"));
 		const wide = h.component.render(120);
-		const sideBySide = wide.find((line) => line.includes(" Display ") && line.includes(" Segment Editor "));
+		const sideBySide = wide.find((line) => line.includes("Status rail ─") && line.includes("Sidebar ─"));
 		expect(sideBySide).toBeDefined();
-		expect(wide.some((line) => (line.match(/└/g) ?? []).length === 2)).toBe(true);
 	});
 });

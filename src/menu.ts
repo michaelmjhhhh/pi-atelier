@@ -198,8 +198,8 @@ export function createMenuActions(
 			persistPreference(
 				{ completionNotifications: enabled },
 				{
-					saved: `Completion notifications ${enabled ? "enabled" : "disabled"}`,
-					failed: "Completion notifications changed for this session but could not be saved",
+					saved: `Notifications ${enabled ? "on" : "off"}`,
+					failed: "Notifications changed for this session but could not be saved",
 				},
 				false,
 			),
@@ -216,8 +216,8 @@ export function createMenuActions(
 			persistPreference(
 				{ nerdFont: enabled },
 				{
-					saved: `Font mode: ${enabled ? "Nerd Font" : "Plain text"}`,
-					failed: "Font mode changed for this session but could not be saved",
+					saved: `Font: ${enabled ? "Nerd Font" : "Plain text"}`,
+					failed: "Font changed for this session but could not be saved",
 				},
 				false,
 			),
@@ -405,6 +405,16 @@ export async function openDisplaySettingsWorkspace(
 
 const onOff = (value: boolean): string => (value ? "On" : "Off");
 
+/** Width of the setting-name column, so every current value starts in the same column. */
+const SETTING_NAME_WIDTH = 20;
+
+/** A Settings row: name and current value as aligned columns, then a plain description. */
+const setting = (value: string, name: string, current: string, description: string): SelectItem => ({
+	value,
+	label: `${name.padEnd(SETTING_NAME_WIDTH)}${current}`,
+	description,
+});
+
 export async function openAtelierControlCenter(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
@@ -433,46 +443,54 @@ export async function openAtelierControlCenter(
 		for (;;) {
 			const config = runtime.getConfig();
 			const choice = await choose("Settings", [
-				{
-					value: "display",
-					label: `Display: ${runtime.getDisplaySettings().preset}`,
-					description: "Session overrides, preview, Undo, Revert, and Save",
-				},
-				{
-					value: "font-mode",
-					label: `Font mode: ${config.nerdFont ? "Nerd Font" : "Plain text"}`,
-					description: "Global user preference; plain text needs no Nerd Font",
-				},
-				{
-					value: "footer",
-					label: `Atelier footer: ${onOff(config.showFooter)}`,
-					description: "Global user preference; Off keeps Pi's footer and composer",
-				},
-				{
-					value: "sidebar-style",
-					label: `Sidebar style: ${sidebarStyleLabel(config.sidebarStyle)}`,
-					description: "Framed panels with state-lit borders, or quiet headings (user preference)",
-				},
-				{
-					value: "sidebar-startup",
-					label: `Sidebar on startup: ${config.showSidebarOnStartup ? "On" : "Off"}`,
-					description: "Global user preference",
-				},
-				{
-					value: "notifications",
-					label: `Completion notifications: ${onOff(config.completionNotifications)}`,
-					description: "User preference",
-				},
-				{
-					value: "prefill",
-					label: `Prefill progress: ${onOff(config.prefillEnabled)}`,
-					description: "Show how far a local model has read the prompt (user preference)",
-				},
-				{
-					value: "sidebar-tools",
-					label: `Sidebar tool list: ${sidebar.isToolListExpanded() ? "Expanded" : "Collapsed"}`,
-					description: "User preference",
-				},
+				setting(
+					"display",
+					"Display",
+					runtime.getDisplaySettings().preset,
+					"Status rail segments, density, and sidebar panels",
+				),
+				setting(
+					"font-mode",
+					"Font",
+					config.nerdFont ? "Nerd Font" : "Plain text",
+					"Plain text needs no Nerd Font installed",
+				),
+				setting(
+					"footer",
+					"Atelier footer",
+					onOff(config.showFooter),
+					"Off restores Pi's own footer and composer",
+				),
+				setting(
+					"sidebar-style",
+					"Sidebar style",
+					sidebarStyleLabel(config.sidebarStyle),
+					"Framed panels with lit borders, or quiet headings",
+				),
+				setting(
+					"sidebar-startup",
+					"Sidebar at startup",
+					onOff(config.showSidebarOnStartup),
+					"Show the sidebar when Pi starts",
+				),
+				setting(
+					"sidebar-tools",
+					"Sidebar tool list",
+					sidebar.isToolListExpanded() ? "Expanded" : "Collapsed",
+					"List tool names in the sidebar",
+				),
+				setting(
+					"notifications",
+					"Notifications",
+					onOff(config.completionNotifications),
+					"Notify when a run finishes",
+				),
+				setting(
+					"prefill",
+					"Prefill progress",
+					onOff(config.prefillEnabled),
+					"How far a local model has read the prompt",
+				),
 				{ value: "back", label: "Back" },
 			]);
 			switch (choice) {
@@ -597,7 +615,7 @@ export async function openAtelierControlCenter(
 
 	for (;;) {
 		const category = await choose("◆ Atelier Control Center", [
-			{ value: "settings", label: "Settings", description: "Persisted defaults and Display workspace" },
+			{ value: "settings", label: "Settings", description: "Display, footer, sidebar, and notifications" },
 			{
 				value: "controls",
 				label: "Controls",

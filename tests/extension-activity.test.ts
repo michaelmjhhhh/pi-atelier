@@ -147,7 +147,7 @@ describe("extension activity", () => {
 		const workspace = h.overlays.at(-1)!.component;
 		// Walk to the performance segment by name; its position in the list is not part of this test.
 		for (let guard = 20; guard > 0; guard -= 1) {
-			if (workspace.render(120).at(-2)!.includes("performance ·")) break;
+			if (workspace.render(120).some((line) => line.includes("› ○ Speed"))) break;
 			workspace.handleInput("\u001b[B");
 		}
 		workspace.handleInput(" ");

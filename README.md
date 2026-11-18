@@ -30,7 +30,7 @@ pi install npm:pi-atelier
 Start Pi and open the control center with `/atelier` or **F6** (**Fn+F6** on keyboards with media keys).
 
 > [!TIP]
-> Atelier starts in Plain text mode, which works with any monospace font. For icons, select a Nerd Font in your terminal and choose **Settings → Font mode → Nerd Font**. See [Terminal font](#terminal-font).
+> Atelier starts in Plain text mode, which works with any monospace font. For icons, select a Nerd Font in your terminal and choose **Settings → Font → Nerd Font**. See [Terminal font](#terminal-font).
 
 > [!NOTE]
 > Atelier uses the core packages of the running Pi host. Its npm peers are optional so installing it never pulls in a second copy of Pi; update Pi itself separately. Pi packages run with your system permissions, so review third-party source before installing.
@@ -46,7 +46,7 @@ Start Pi and open the control center with `/atelier` or **F6** (**Fn+F6** on key
 
 ### Terminal font
 
-Plain text mode is the default. It works with any monospace font and keeps colors, metrics, and the responsive layout. Nerd Font mode adds icons but needs a terminal font that covers them, such as one from [nerdfonts.com](https://www.nerdfonts.com) or a Symbols Nerd Font Mono fallback; without one, the icons render as boxes. Switch in **Settings → Font mode** or set `"nerdFont": true`.
+Plain text mode is the default. It works with any monospace font and keeps colors, metrics, and the responsive layout. Nerd Font mode adds icons but needs a terminal font that covers them, such as one from [nerdfonts.com](https://www.nerdfonts.com) or a Symbols Nerd Font Mono fallback; without one, the icons render as boxes. Switch in **Settings → Font** or set `"nerdFont": true`.
 
 ## Features
 
@@ -175,7 +175,7 @@ Project settings override user settings, and session changes override both. Font
 
 `sidebarWidth` is the sidebar width in columns when a session starts, from 28 through 72. The sidebar still narrows when the terminal leaves less than 64 columns for the main pane.
 
-Use **Settings → Display** to reorder or hide status rail segments and sidebar panels. Undo restores the latest Display or Sidebar edit, including a Display Revert. The legacy user settings `showSidebarAgent` and `showSidebarTodos` still apply when `sidebarPanelLayout` is absent. A layout you saved before Prefill existed gains that panel next to Context on the next start.
+Use **Settings → Display** to reorder or hide status rail segments and sidebar panels. A live preview of the status rail stays pinned at the top. Press Enter to show or hide the selected item, Shift+↑/↓ to move it, ←/→ to change the preset or density, Tab to jump between sections, and `s` to save as your default. Status rail changes apply to the session at once; sidebar changes apply when you save. Undo (`u`) restores the latest Display or Sidebar edit, including a Display Revert. The legacy user settings `showSidebarAgent` and `showSidebarTodos` still apply when `sidebarPanelLayout` is absent. A layout you saved before Prefill existed gains that panel next to Context on the next start.
 
 ### Sidebar panels from other extensions
 
@@ -237,7 +237,7 @@ ignore `progress`. No-color mode uses plain filled/empty blocks.
 | Shortcut does nothing | Use `/atelier`, change `shortcut`, then run `/reload`. The default is `f6` on macOS and Windows; media-key keyboards may need Fn+F6. Saved `alt+a` settings resolve to `f6` and Alt+A is no longer registered. Other custom shortcuts add a binding alongside F6. Other extensions or terminal key mappings can still intercept F6. |
 | Editor key stops working | Extension shortcuts take precedence over Pi's built-in keybindings. A `shortcut`, `resizeShortcut`, or `toggleShortcut` such as `ctrl+b` shadows the editor's cursor-left action. Choose a key Pi does not use, then run `/reload`. |
 | Status rail missing | Use TUI mode, check **Settings → Atelier footer**, and check for another extension's custom footer. |
-| Icons render as boxes | Choose **Settings → Font mode → Plain text**, or select a Nerd Font in your terminal. |
+| Icons render as boxes | Choose **Settings → Font → Plain text**, or select a Nerd Font in your terminal. |
 | Metrics disagree | Token and cost totals cover the session; context usage covers the current model context. |
 
 ## Privacy
