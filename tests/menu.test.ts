@@ -143,14 +143,14 @@ describe("Control Center presentation", () => {
 	it("routes the settings root category to its destination", async () => {
 		const category = "settings";
 		const expectedLabels = [
-			"Display: editorial",
-			"Font mode: Plain text",
-			"Atelier footer: On",
-			"Sidebar style: Framed",
-			"Sidebar on startup: On",
-			"Completion notifications: On",
-			"Prefill progress: On",
-			"Sidebar tool list: Collapsed",
+			"Display             editorial",
+			"Font                Plain text",
+			"Atelier footer      On",
+			"Sidebar style       Framed",
+			"Sidebar at startup  On",
+			"Sidebar tool list   Collapsed",
+			"Notifications       On",
+			"Prefill progress    On",
 			"Back",
 		];
 		const sidebar = sidebarControls();
@@ -415,7 +415,7 @@ describe("menu actions", () => {
 		await h.actions.setCompletionNotifications(false);
 		expect(h.runtime.getConfig().completionNotifications).toBe(false);
 		expect(h.savePatch).toHaveBeenCalledWith("/tmp/user.json", { completionNotifications: false });
-		expect(h.ctx.ui.notify).toHaveBeenCalledWith("Completion notifications disabled", "info");
+		expect(h.ctx.ui.notify).toHaveBeenCalledWith("Notifications off", "info");
 	});
 
 	it("rolls back tools and reports synchronous action failures", () => {
