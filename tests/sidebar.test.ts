@@ -463,8 +463,10 @@ describe("sidebar snapshot and layout", () => {
 	it("keeps a live Turn's activity to running tools without tool history", () => {
 		const rows = renderRows(withActivity(activeActivity()), { color: false, now: 20_000 });
 		expect(rows[1]).toMatch(/^◆ Working\s+Turn 3  19s$/);
-		expect(rows[2]).toMatch(/^◐ read\s+src\/state\.ts\s+18s$/);
-		expect(rows[3]).toBe("");
+		expect(rows[2]).toMatch(/^First token\s+—$/);
+		expect(rows[3]).toMatch(/^Output speed\s+—$/);
+		expect(rows[4]).toMatch(/^◐ read\s+src\/state\.ts\s+18s$/);
+		expect(rows[5]).toBe("");
 		expect(rows.join("\n")).not.toMatch(/npm test/);
 		expect(rows.join("\n")).not.toMatch(/\d+ tools?\b/);
 	});
@@ -600,7 +602,7 @@ describe("sidebar snapshot and layout", () => {
 			}),
 			{ color: false, now: 20_000 },
 		);
-		expect(rows.slice(2, 6)).toEqual([
+		expect(rows.slice(4, 8)).toEqual([
 			expect.stringMatching(/^◐ read\s+same-a\s+8s$/),
 			expect.stringMatching(/^◐ bash\s+same-b\s+8s$/),
 			expect.stringMatching(/^◐ grep\s+later\s+7s$/),

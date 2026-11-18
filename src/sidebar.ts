@@ -10,6 +10,7 @@ import {
 	EMPTY_RUN_ACTIVITY,
 	formatDuration,
 	isCompletionGlowing,
+	responsePerformanceValues,
 	type RunActivitySnapshot,
 	type ToolActivity,
 } from "./run-activity.js";
@@ -301,6 +302,25 @@ function toolCountRow(activity: RunActivitySnapshot, palette: AtelierPalette): s
 	return activity.failedCount > 0
 		? `${palette.paint("muted", `${tools}, `)}${palette.paint("error", `${activity.failedCount} failed`)}`
 		: palette.paint("muted", tools);
+}
+
+/** First-token time and output speed of the latest response; dim placeholders until it reports them. */
+function responsePerformanceRows(
+	activity: RunActivitySnapshot,
+	width: number,
+	palette: AtelierPalette,
+): string[] {
+	const { ttft, tps } = responsePerformanceValues(activity.performance);
+	return [
+		labeledRow("First token", ttft.text, width, palette, ttft.available ? "output" : "dim"),
+		labeledRow(
+			width < 25 ? "Speed" : "Output speed",
+			tps.available ? `${tps.text} tok/s` : tps.text,
+			width,
+			palette,
+			tps.available ? "output" : "dim",
+		),
+	];
 }
 
 const TODO_CHECK = {
@@ -685,6 +705,7 @@ const DROP_RANK = {
 	latestRecentTool: 70,
 	activeTool: 75,
 	alerts: 80,
+	performance: 85,
 	todos: 90,
 	/** Transient section with a row cap: it outranks every optional section, so a short terminal
 	 * loses Changed files or Todos before it loses the one thing the user is waiting for. */
@@ -782,6 +803,12 @@ function activityGroups(
 			section,
 			rows: [statusRow(snapshot, width, palette, theme, now)],
 			dropRank: DROP_RANK.required,
+		},
+		{
+			name: "activityPerformance",
+			section,
+			rows: activity.phase === "idle" ? [] : responsePerformanceRows(activity, width, palette),
+			dropRank: DROP_RANK.performance,
 		},
 		...visibleActive.map((tool, index) => ({
 			name: `activityActive:${tool.id}`,
