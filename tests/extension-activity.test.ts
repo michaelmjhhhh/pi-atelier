@@ -135,7 +135,7 @@ describe("extension activity", () => {
 		expect(footerText).not.toContain("npm test");
 	});
 
-	it("forwards provider timing and streamed throughput to the footer only", async () => {
+	it("forwards provider timing and streamed throughput to the footer and sidebar", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(1_000);
 		const h = harness("tui", "linux", true, { loadConfig: withConfigOverrides({ nerdFont: true }) });
@@ -171,8 +171,7 @@ describe("extension activity", () => {
 
 		expect(footerRequestRender).toHaveBeenCalled();
 		expect(footer.render(160).join("\n")).toContain("\uf017 820ms  \uf0e7 —");
-		// The footer already shows response timing, so the sidebar leaves it out.
-		expect(renderOverlayText(h)).not.toContain("820ms");
+		expect(renderOverlayText(h)).toMatch(/First token\s+820ms/);
 
 		vi.setSystemTime(2_920);
 		await h.dispatch("message_update", {
@@ -189,7 +188,7 @@ describe("extension activity", () => {
 		});
 		// The first chunk holds 2 of 22 estimated tokens, so 100 of 110 fall in the 2.5s window.
 		expect(footer.render(160).join("\n")).toContain("\uf017 820ms  \uf0e7 40.0/s");
-		expect(renderOverlayText(h)).not.toContain("tok/s");
+		expect(renderOverlayText(h)).toMatch(/Output speed\s+40\.0 tok\/s/);
 		workspace.handleInput("\u001b");
 		await opening;
 	});
