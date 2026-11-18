@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Restore the Activity panel's **First token** and **Output speed** rows, removed from the Sidebar in 0.20.0. They appear once a run starts and keep the last response's values after it ends; on a short terminal they give way before Todos and the running tools' status line, but after the tool rows ([#121](https://github.com/michaelmjhhhh/pi-atelier/issues/121)).
+- Restore the Activity panel's **First token** and **Output speed** rows, removed from the Sidebar in 0.20.0. They appear once a run starts and keep the last response's values after it ends; on a short terminal they give way after the tool rows and Alerts, but before Todos and Prefill ([#121](https://github.com/michaelmjhhhh/pi-atelier/issues/121)).
 - Show framed Sidebar panel titles as written (`Activity`, `Changed files`) instead of in uppercase. Framed and Minimal now use the same titles, and a contributed panel keeps its author's casing (`MCP servers`, not `MCP SERVERS`).
 
 ## 0.20.0 — 2026-11-13

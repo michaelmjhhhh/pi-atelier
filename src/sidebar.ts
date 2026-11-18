@@ -705,6 +705,7 @@ const DROP_RANK = {
 	latestRecentTool: 70,
 	activeTool: 75,
 	alerts: 80,
+	/** No footer preset shows response timing, so it outlasts the tool rows. */
 	performance: 85,
 	todos: 90,
 	/** Transient section with a row cap: it outranks every optional section, so a short terminal
