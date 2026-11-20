@@ -702,6 +702,8 @@ const DROP_RANK = {
 	workspace: 30,
 	olderRecentTool: 50,
 	aggregate: 60,
+	/** Running tools past the cap matter more during a run than the count of finished ones. */
+	moreRunning: 65,
 	latestRecentTool: 70,
 	activeTool: 75,
 	alerts: 80,
@@ -772,32 +774,29 @@ function activityGroups(
 				: undefined;
 	const section: Section = { id: "activity", title: "Activity", ...(lit ? { lit } : {}) };
 	const activity = snapshot.runActivity;
-	const liveTurn = activity.phase === "running";
+	const running = activity.phase === "running";
 	const activeIds = new Set(activity.activeTools.map((tool) => tool.id));
 	const sortedActive = activity.activeTools
 		.map((tool, index) => ({ index, tool }))
 		.sort((left, right) => left.tool.startedAt - right.tool.startedAt || left.index - right.index)
 		.map(({ tool }) => tool);
 	// The newest running tools stay in view; older ones are counted.
-	const visibleActive = liveTurn ? sortedActive.slice(-MAX_ACTIVE_TOOLS) : sortedActive;
+	const visibleActive = running ? sortedActive.slice(-MAX_ACTIVE_TOOLS) : sortedActive;
 	const hiddenActive = sortedActive.length - visibleActive.length;
-	const recent = liveTurn ? [] : activity.recentTools.filter((tool) => !activeIds.has(tool.id)).slice(0, 3);
+	// Finished tools stay listed while the run goes on: a slow model can spend most of a run
+	// generating, and a list that only shows running tools would look empty the whole time.
+	const recent = activity.recentTools.filter((tool) => !activeIds.has(tool.id)).slice(0, 3);
 	// Only rows with a summary need their names aligned; a bare name never widens the column.
 	const nameWidth = toolNameWidth(
 		[...visibleActive, ...recent].filter((tool) => tool.summary),
 		width,
 	);
+	const moreRunning = hiddenActive > 0 ? [palette.paint("muted", `${hiddenActive} more running`)] : [];
 	const toolCount = activity.completedCount + activity.failedCount;
-	const aggregate = liveTurn
-		? hiddenActive > 0
-			? [palette.paint("muted", `${hiddenActive} more running`)]
-			: []
-		: toolCount === 0
-			? []
-			: [toolCountRow(activity, palette)];
+	const aggregate = toolCount === 0 ? [] : [toolCountRow(activity, palette)];
 	// When every counted tool has its own row, the count only matters once a row is dropped for height.
 	const summarizes =
-		liveTurn || toolCount > recent.length ? undefined : recent.map((tool) => `activityRecent:${tool.id}`);
+		toolCount > recent.length ? undefined : recent.map((tool) => `activityRecent:${tool.id}`);
 	return [
 		{
 			name: "activityStatus",
@@ -817,6 +816,7 @@ function activityGroups(
 			rows: [toolActivityRow(tool, width, nameWidth, palette, now)],
 			dropRank: DROP_RANK.activeTool + (index + 1) / 100,
 		})),
+		{ name: "activityMoreRunning", section, rows: moreRunning, dropRank: DROP_RANK.moreRunning },
 		...recent.map((tool, index) => ({
 			name: `activityRecent:${tool.id}`,
 			section,

@@ -270,8 +270,7 @@ describe("extension activity", () => {
 
 		const withResult = renderOverlayText(h, 0, 44);
 		expect(withResult).toMatch(/Working\s+(<1s|\d+s)/);
-		expect(withResult).not.toContain("src/run-activity.ts");
-		expect(withResult).not.toContain("✓ read");
+		expect(withResult).toMatch(/✓ read\s+src\/run-activity\.ts/);
 		expect(withResult).not.toContain("1 tool");
 
 		const rendersBeforeTick = h.overlays[0]?.requestRender.mock.calls.length ?? 0;
@@ -298,7 +297,7 @@ describe("extension activity", () => {
 		expect(h.overlays[0]?.requestRender.mock.calls.length).toBe(fadedRenderCount);
 	});
 
-	it("keeps a live Turn overlay to running tools and the todo list, without tool history", async () => {
+	it("lists running tools oldest first and the whole todo list during a run", async () => {
 		const h = harness();
 		h.ctx.sessionManager.getBranch.mockReturnValue([
 			todoBranchEntry({
