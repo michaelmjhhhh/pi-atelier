@@ -460,15 +460,15 @@ describe("sidebar snapshot and layout", () => {
 		expect(headingIndex(renderRows(unavailable, { config: ALL_PANELS, color: false }), "Usage")).toBe(-1);
 	});
 
-	it("keeps a live Turn's activity to running tools without tool history", () => {
+	it("keeps finished tools listed below running ones during a live Turn", () => {
 		const rows = renderRows(withActivity(activeActivity()), { color: false, now: 20_000 });
 		expect(rows[1]).toMatch(/^◆ Working\s+Turn 3  19s$/);
 		expect(rows[2]).toMatch(/^First token\s+—$/);
 		expect(rows[3]).toMatch(/^Output speed\s+—$/);
 		expect(rows[4]).toMatch(/^◐ read\s+src\/state\.ts\s+18s$/);
-		expect(rows[5]).toBe("");
-		expect(rows.join("\n")).not.toMatch(/npm test/);
-		expect(rows.join("\n")).not.toMatch(/\d+ tools?\b/);
+		expect(rows[5]).toMatch(/^✓ bash\s+npm test\s+4s$/);
+		expect(rows[6]).toBe("3 tools, 1 failed");
+		expect(rows[7]).toBe("");
 	});
 
 	it.each([
@@ -609,7 +609,7 @@ describe("sidebar snapshot and layout", () => {
 			"1 more running",
 		]);
 		expect(rows.join("\n")).not.toContain("earliest");
-		expect(rows.findIndex((row) => /write\s+recent/.test(row))).toBe(-1);
+		expect(rows[8]).toMatch(/^✓ write\s+recent\s+1s$/);
 	});
 
 	it("caps recent tools, deduplicates active IDs, and bounds long summaries", () => {
