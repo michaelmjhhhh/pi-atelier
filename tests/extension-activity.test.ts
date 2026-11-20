@@ -297,7 +297,7 @@ describe("extension activity", () => {
 		expect(h.overlays[0]?.requestRender.mock.calls.length).toBe(fadedRenderCount);
 	});
 
-	it("keeps a live Turn overlay to running tools and the todo list, without tool history", async () => {
+	it("lists running tools oldest first and the whole todo list during a run", async () => {
 		const h = harness();
 		h.ctx.sessionManager.getBranch.mockReturnValue([
 			todoBranchEntry({

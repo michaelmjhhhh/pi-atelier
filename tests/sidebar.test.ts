@@ -460,7 +460,7 @@ describe("sidebar snapshot and layout", () => {
 		expect(headingIndex(renderRows(unavailable, { config: ALL_PANELS, color: false }), "Usage")).toBe(-1);
 	});
 
-	it("keeps finished tools listed below running ones during a live Turn", () => {
+	it("keeps finished tools listed below running ones during a run", () => {
 		const rows = renderRows(withActivity(activeActivity()), { color: false, now: 20_000 });
 		expect(rows[1]).toMatch(/^◆ Working\s+Turn 3  19s$/);
 		expect(rows[2]).toMatch(/^First token\s+—$/);
