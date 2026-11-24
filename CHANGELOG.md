@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.21.0 — 2026-11-24
 
 - Redesign **Settings → Display**. One frame holds a pinned status rail preview, then the **Status rail** and **Sidebar** sections side by side (stacked on narrow terminals), then a line describing the selected item and a key bar. The nested boxes, the duplicate Sidebar preview, the legends, and the row numbers are gone. Segments use plain names (**Tokens & cost**, **Speed**, **Extension status**). Preset and Density show where their value comes from (`default`, `saved`, `project`, or `this session`), and a segment's description says when a saved, project, or session setting changed its visibility or the order. The frame title shows **Unsaved changes** until you save.
 - Save, Revert, Undo, and Restore default are keys (`s`, `r`, `u`, `d`) shown in the key bar instead of list rows, so ↑/↓ only moves through settings, in reading order. Tab jumps between the two sections, ←/→ steps the preset back or forward and toggles density, and keys that do nothing right now are dimmed. Revert with no session changes now says so instead of discarding the Undo for a sidebar edit.
