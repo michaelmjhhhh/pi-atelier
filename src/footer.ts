@@ -17,6 +17,8 @@ import type {
 
 const WORKING_DOT_FRAMES = ["...", "..", "."] as const;
 const WORKING_ANIMATION_INTERVAL_MS = 400;
+const REVERSE_ON = "\u001b[7m";
+const REVERSE_OFF = "\u001b[27m";
 
 // Nerd Font glyphs, matching the icon vocabulary used by shell prompts. The Sidebar reuses
 // the ones for facts it also shows, so one fact keeps one icon.
@@ -183,7 +185,11 @@ const SEGMENT_ITEMS: Record<SegmentId, (context: ItemContext) => FooterItem[]> =
 	brand: ({ palette, symbols }) => [
 		item("brand", iconFor(palette)(symbols.brand, palette.paint("muted", "ATELIER"), "accent")),
 	],
-	pi: ({ palette, theme, symbols }) => [item("pi", palette.paint("accent", theme.bold(symbols.pi)))],
+	// Reverse video turns the accent into a three-cell chip, since a terminal draws any glyph,
+	// Nerd Font icons included, within one cell.
+	pi: ({ palette, theme, symbols }) => [
+		item("pi", theme.bold(palette.paint("accent", `${REVERSE_ON} ${symbols.pi} ${REVERSE_OFF}`))),
+	],
 	activity: ({ state, palette, theme, workingDots, config }) => [
 		item(
 			"activity",
