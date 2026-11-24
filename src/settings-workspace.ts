@@ -421,15 +421,26 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 		tell(message, "warning");
 		request();
 	};
-	const refresh = (): void => {
-		display = cloneDisplay(options.getDisplaySettings());
+	/** Replace the Display, keeping the focus on its row, or on the segment of a field row that went away. */
+	const setDisplay = (next: DisplaySettings): void => {
+		const focusedRow = rows()[focus];
+		display = next;
+		if (!focusedRow) return;
+		const parent =
+			focusedRow.kind === "field"
+				? display.segmentLayout.find((entry) => segmentFields(entry.id).includes(focusedRow.id))
+				: undefined;
+		const index = rowIndex(focusedRow);
+		if (index >= 0) focus = index;
+		else if (parent) focus = Math.max(0, rowIndex({ kind: "segment", id: parent.id }));
 	};
+	const refresh = (): void => setDisplay(cloneDisplay(options.getDisplaySettings()));
 	const commitMutation = (next: DisplaySettings, message: string): void => {
 		undo = { kind: "display", value: cloneOverride(options.getSessionDisplayOverride()) };
 		const complete = cloneDisplay(next);
 		complete.preset = derivePresetIdentity(complete);
 		options.replaceSessionDisplayOverride(complete);
-		display = complete;
+		setDisplay(complete);
 		tell(message);
 		request(true);
 	};

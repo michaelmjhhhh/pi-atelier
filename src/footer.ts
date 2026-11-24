@@ -1,5 +1,6 @@
 import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { DEFAULT_CONFIG } from "./config.js";
+import { isFooterFieldId } from "./display.js";
 import { formatTokens } from "./metrics.js";
 import { type AtelierPalette, createPalette, type PaletteRole, type ThemeLike } from "./palette.js";
 import { responsePerformanceValues } from "./run-activity.js";
@@ -81,7 +82,8 @@ type FooterSurface = "all" | "header" | "telemetry";
 
 /**
  * Placement per item. Related readings share a `group` (a quiet space between
- * them); lower `dropRank` items give way first and `Infinity` marks required ones.
+ * them); lower `dropRank` items give way first and `Infinity` marks ones no width
+ * drops. Display settings can still hide any of them.
  */
 const ITEM_META: Record<
 	FooterItemId,
@@ -258,7 +260,7 @@ const SEGMENT_ITEMS: Record<SegmentId, (context: ItemContext) => FooterItem[]> =
 				icon(symbols.cache, paintValue(cache, "cache", palette)),
 			),
 			item("cost", cost),
-		].filter((footerItem) => shows(footerItem.id as FooterFieldId));
+		].filter(({ id }) => !isFooterFieldId(id) || shows(id));
 	},
 	performance: ({ state, config, palette, symbols, shows }) => {
 		const icon = iconFor(palette);
@@ -428,12 +430,15 @@ function renderFooter(
 	let placed: PlacedItem[];
 	if (surface === "telemetry") {
 		const { metrics } = state;
+		const performance = responsePerformanceValues(state.performance);
 		const available: Partial<Record<FooterItemId, boolean>> = {
 			input: metrics.usageAvailable,
 			output: metrics.usageAvailable,
 			cache: metrics.cacheHitPercent !== undefined || (config.preset === "classic" && metrics.usageAvailable),
 			cost: metrics.costAvailable,
-			performance: responsePerformanceValues(state.performance).ttft.available,
+			// Wait for a reading the user shows, not one they hid.
+			performance:
+				(shows("ttft") && performance.ttft.available) || (shows("tps") && performance.tps.available),
 		};
 		placed = items
 			.filter((footerItem) => !ITEM_META[footerItem.id].header && available[footerItem.id] !== false)
