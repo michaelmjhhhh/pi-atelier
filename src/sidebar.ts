@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type Component, type OverlayHandle, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { DEFAULT_CONFIG } from "./config.js";
-import { contextRole } from "./footer.js";
+import { contextRole, FOOTER_ICONS } from "./footer.js";
 import { type PrefillSnapshot, formatPrefillRows } from "./prefill.js";
 import { hasCapturingOverlay } from "./image-compositor.js";
 import { formatTokens } from "./metrics.js";
@@ -81,16 +81,16 @@ const MAX_LISTED_FILES = 5;
 const MAX_LISTED_TODOS = 8;
 
 /**
- * Nerd Font panel icons, in place of the ✦ jewel. Codicons, except where the footer already
- * draws the same thing (context) or Codicons have no fitting shape (prefill), so one fact keeps one icon.
+ * Nerd Font panel icons, in place of the ✦ jewel. Codicons, except the footer's own icons for
+ * the facts it also shows (model, context) and Prefill, which Codicons have no fitting shape for.
  * All sit in the Basic Multilingual Plane, which every Nerd Font build covers at one column.
  */
 const PANEL_ICONS: Record<BuiltinSidebarPanelId, string> = {
-	agent: "\ueb08", // nf-cod-hubot, the footer's model icon
+	agent: FOOTER_ICONS.model,
 	activity: "\ueb31", // nf-cod-pulse
 	alerts: "\uea6c", // nf-cod-warning
 	todos: "\ueab3", // nf-cod-checklist
-	context: "\uf2db", // nf-fa-microchip, the footer's context icon
+	context: FOOTER_ICONS.context,
 	prefill: "\uf252", // nf-fa-hourglass_half
 	workspace: "\ueae1", // nf-cod-diff
 	usage: "\ueb03", // nf-cod-graph

@@ -16,8 +16,9 @@ import type {
 const WORKING_DOT_FRAMES = ["...", "..", "."] as const;
 const WORKING_ANIMATION_INTERVAL_MS = 400;
 
-// Nerd Font glyphs, matching the icon vocabulary used by shell prompts.
-const FOOTER_ICONS = {
+// Nerd Font glyphs, matching the icon vocabulary used by shell prompts. The Sidebar reuses
+// the ones for facts it also shows, so one fact keeps one icon.
+export const FOOTER_ICONS = {
 	brand: "\ue795", // nf-dev-terminal
 	model: "\ueb08", // nf-cod-hubot
 	thinking: "\uf0eb", // nf-fa-lightbulb
