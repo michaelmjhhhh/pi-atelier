@@ -21,7 +21,6 @@ const WORKING_ANIMATION_INTERVAL_MS = 400;
 // Nerd Font glyphs, matching the icon vocabulary used by shell prompts. The Sidebar reuses
 // the ones for facts it also shows, so one fact keeps one icon.
 export const FOOTER_ICONS = {
-	pi: "\u{f0400}", // nf-md-pi_box
 	brand: "\ue795", // nf-dev-terminal
 	model: "\ueb08", // nf-cod-hubot
 	thinking: "\uf0eb", // nf-fa-lightbulb
@@ -39,7 +38,6 @@ export const FOOTER_ICONS = {
 } as const;
 
 const PLAIN_SYMBOLS: Record<keyof typeof FOOTER_ICONS, string> = {
-	pi: "π",
 	brand: "",
 	model: "",
 	thinking: "think",
@@ -183,7 +181,7 @@ const SEGMENT_ITEMS: Record<SegmentId, (context: ItemContext) => FooterItem[]> =
 	brand: ({ palette, symbols }) => [
 		item("brand", iconFor(palette)(symbols.brand, palette.paint("muted", "ATELIER"), "accent")),
 	],
-	pi: ({ palette, theme, symbols }) => [item("pi", palette.paint("accent", theme.bold(symbols.pi)))],
+	pi: ({ palette, theme }) => [item("pi", palette.paint("accent", theme.bold("π")))],
 	activity: ({ state, palette, theme, workingDots, config }) => [
 		item(
 			"activity",

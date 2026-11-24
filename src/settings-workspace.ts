@@ -111,7 +111,7 @@ const SEGMENT_LABELS: Record<SegmentId, string> = {
 };
 
 const SEGMENT_DESCRIPTIONS: Record<SegmentId, string> = {
-	pi: "A pi mark at the start of the rail, a compact alternative to Brand.",
+	pi: "A single π at the start of the rail, a compact alternative to Brand.",
 	brand: "The Atelier mark at the start of the rail.",
 	activity: "Whether Pi is working or ready.",
 	metrics: "Input and output tokens, cache hit rate, and cost.",
