@@ -80,6 +80,69 @@ const MAX_LISTED_FILES = 5;
 /** Open todos listed before the rest are counted. */
 const MAX_LISTED_TODOS = 8;
 
+/**
+ * Nerd Font panel icons, in place of the ✦ jewel. Codicons, except where the footer already
+ * draws the same thing (context) or Codicons have no fitting shape (prefill), so one fact keeps one icon.
+ * All sit in the Basic Multilingual Plane, which every Nerd Font build covers at one column.
+ */
+const PANEL_ICONS: Record<BuiltinSidebarPanelId, string> = {
+	agent: "\ueb08", // nf-cod-hubot, the footer's model icon
+	activity: "\ueb31", // nf-cod-pulse
+	alerts: "\uea6c", // nf-cod-warning
+	todos: "\ueab3", // nf-cod-checklist
+	context: "\uf2db", // nf-fa-microchip, the footer's context icon
+	prefill: "\uf252", // nf-fa-hourglass_half
+	workspace: "\ueae1", // nf-cod-diff
+	usage: "\ueb03", // nf-cod-graph
+	subagents: "\uea7e", // nf-cod-organization
+	tools: "\ueb6d", // nf-cod-tools
+};
+const CONTRIBUTED_PANEL_ICON = "\ueae6"; // nf-cod-extensions
+const EMPTY_SIDEBAR_ICON = "\uebd2"; // nf-cod-layers
+
+/** Status marks at the start of a row: Unicode shapes in Plain text, the panel icons' family in Nerd Font. */
+interface SidebarGlyphs {
+	working: string;
+	ready: string;
+	error: string;
+	toolRunning: string;
+	toolDone: string;
+	toolFailed: string;
+	todoDone: string;
+	todoActive: string;
+	todoPending: string;
+	alertError: string;
+	alertWarning: string;
+}
+
+const PLAIN_GLYPHS: SidebarGlyphs = {
+	working: "◆",
+	ready: "●",
+	error: "×",
+	toolRunning: "◐",
+	toolDone: "✓",
+	toolFailed: "✗",
+	todoDone: "✓",
+	todoActive: "◐",
+	todoPending: "○",
+	alertError: "✕",
+	alertWarning: "▲",
+};
+
+const NERD_GLYPHS: SidebarGlyphs = {
+	working: "\uea77", // nf-cod-sync
+	ready: "\ueba4", // nf-cod-pass
+	error: "\uea87", // nf-cod-error
+	toolRunning: "\uea77", // nf-cod-sync
+	toolDone: "\ueab2", // nf-cod-check
+	toolFailed: "\uea76", // nf-cod-close
+	todoDone: "\uebb3", // nf-cod-pass_filled
+	todoActive: "\uf042", // nf-fa-circle_half_stroke
+	todoPending: "\uebb5", // nf-cod-circle_large
+	alertError: "\uea87", // nf-cod-error
+	alertWarning: "\uea6c", // nf-cod-warning
+};
+
 /** Text, or the placeholder (painted dim) when there is none. */
 function valueRow(value: string | undefined, palette: AtelierPalette, role: PaletteRole): string {
 	const text = value === undefined ? "" : sanitizeInline(value);
@@ -214,10 +277,11 @@ function statusRow(
 	palette: AtelierPalette,
 	theme: ThemeLike,
 	now: number,
+	glyphs: SidebarGlyphs,
 ): string {
 	const working = snapshot.activity === "working";
 	const failed = snapshot.activity === "error";
-	const glyph = working ? "◆" : failed ? "×" : "●";
+	const glyph = working ? glyphs.working : failed ? glyphs.error : glyphs.ready;
 	const label = working ? "Working" : failed ? "Error" : "Ready";
 	const status = `${palette.paint(snapshot.activity, glyph)} ${theme.bold(palette.paint(snapshot.activity, label))}`;
 	const summary = runSummary(snapshot.runActivity, now);
@@ -229,10 +293,10 @@ function statusRow(
 }
 
 const TOOL_STATUS = {
-	running: { role: "working", glyph: "◐" },
-	done: { role: "ready", glyph: "✓" },
-	failed: { role: "error", glyph: "✗" },
-} as const satisfies Record<ToolActivity["status"], { role: PaletteRole; glyph: string }>;
+	running: { role: "working", glyph: "toolRunning" },
+	done: { role: "ready", glyph: "toolDone" },
+	failed: { role: "error", glyph: "toolFailed" },
+} as const satisfies Record<ToolActivity["status"], { role: PaletteRole; glyph: keyof SidebarGlyphs }>;
 
 const MIN_TOOL_SUMMARY_COLUMNS = 6;
 
@@ -248,8 +312,10 @@ function toolActivityRow(
 	nameWidth: number,
 	palette: AtelierPalette,
 	now: number,
+	glyphs: SidebarGlyphs,
 ): string {
 	const status = TOOL_STATUS[tool.status];
+	const glyph = palette.paint(status.role, glyphs[status.glyph]);
 	const elapsed = tool.durationMs ?? now - tool.startedAt;
 	// Successful tools under a second carry no timing worth reading; failures always keep theirs.
 	const trailing = tool.status !== "done" || elapsed >= 1_000 ? formatDuration(elapsed) : "";
@@ -261,7 +327,7 @@ function toolActivityRow(
 		const name = sanitizeInline(tool.name || "tool");
 		return truncateToWidth(
 			[
-				palette.paint(status.role, status.glyph),
+				glyph,
 				palette.paint("muted", truncateToWidth(name, available, "…")),
 				trailing ? palette.paint(tool.status === "done" ? "muted" : status.role, trailing) : "",
 			]
@@ -286,7 +352,7 @@ function toolActivityRow(
 	);
 	const summary = palette.paint("primary", sanitizeInline(truncateToWidth(tool.summary, summaryWidth, "…")));
 	const row = [
-		palette.paint(status.role, status.glyph),
+		glyph,
 		fittedNameWidth > 0 ? fitToWidth(name, fittedNameWidth) : "",
 		summaryWidth > 0 ? fitToWidth(summary, summaryWidth) : "",
 		trailing ? palette.paint(tool.status === "done" ? "muted" : status.role, trailing) : "",
@@ -324,10 +390,10 @@ function responsePerformanceRows(
 }
 
 const TODO_CHECK = {
-	completed: { role: "ready", glyph: "✓" },
-	in_progress: { role: "warning", glyph: "◐" },
-	pending: { role: "dim", glyph: "○" },
-} as const satisfies Record<NormalizedTodo["status"], { role: PaletteRole; glyph: string }>;
+	completed: { role: "ready", glyph: "todoDone" },
+	in_progress: { role: "warning", glyph: "todoActive" },
+	pending: { role: "dim", glyph: "todoPending" },
+} as const satisfies Record<NormalizedTodo["status"], { role: PaletteRole; glyph: keyof SidebarGlyphs }>;
 
 /** Rows for one panel, and the summary shown beside its title. */
 interface SectionContent {
@@ -336,7 +402,12 @@ interface SectionContent {
 	rows: string[];
 }
 
-function todoSection(snapshot: SidebarSnapshot, width: number, palette: AtelierPalette): SectionContent {
+function todoSection(
+	snapshot: SidebarSnapshot,
+	width: number,
+	palette: AtelierPalette,
+	glyphs: SidebarGlyphs,
+): SectionContent {
 	const todos = snapshot.todos;
 	if (todos.length === 0) return { rows: [] };
 	const done = todos.filter((todo) => todo.status === "completed").length;
@@ -351,7 +422,7 @@ function todoSection(snapshot: SidebarSnapshot, width: number, palette: AtelierP
 			...shown.map((todo) => {
 				const check = TODO_CHECK[todo.status];
 				const text = truncateToWidth(sanitizeInline(todo.text), Math.max(0, width - 2), "…");
-				return `${palette.paint(check.role, check.glyph)} ${palette.paint(todo.status === "completed" ? "dim" : "primary", text)}`;
+				return `${palette.paint(check.role, glyphs[check.glyph])} ${palette.paint(todo.status === "completed" ? "dim" : "primary", text)}`;
 			}),
 			...(overflow > 0 ? [palette.paint("muted", `${overflow} more`)] : []),
 		],
@@ -728,6 +799,8 @@ interface Section {
 	summaryOptional?: boolean;
 	/** The panel's own color, worn by its title and jewel while its frame stays grey. */
 	hue?: PaletteRole;
+	/** Nerd Font icon worn before the title, in place of the ✦ jewel; absent in Plain text mode. */
+	icon?: string;
 	/** The state that lights this frame; it overrides the hue while it lasts. */
 	lit?: PaletteRole;
 }
@@ -765,6 +838,7 @@ function activityGroups(
 	palette: AtelierPalette,
 	theme: ThemeLike,
 	now: number,
+	glyphs: SidebarGlyphs,
 ): SidebarGroup[] {
 	const lit: PaletteRole | undefined =
 		snapshot.activity !== "ready"
@@ -801,7 +875,7 @@ function activityGroups(
 		{
 			name: "activityStatus",
 			section,
-			rows: [statusRow(snapshot, width, palette, theme, now)],
+			rows: [statusRow(snapshot, width, palette, theme, now, glyphs)],
 			dropRank: DROP_RANK.required,
 		},
 		{
@@ -813,14 +887,14 @@ function activityGroups(
 		...visibleActive.map((tool, index) => ({
 			name: `activityActive:${tool.id}`,
 			section,
-			rows: [toolActivityRow(tool, width, nameWidth, palette, now)],
+			rows: [toolActivityRow(tool, width, nameWidth, palette, now, glyphs)],
 			dropRank: DROP_RANK.activeTool + (index + 1) / 100,
 		})),
 		{ name: "activityMoreRunning", section, rows: moreRunning, dropRank: DROP_RANK.moreRunning },
 		...recent.map((tool, index) => ({
 			name: `activityRecent:${tool.id}`,
 			section,
-			rows: [toolActivityRow(tool, width, nameWidth, palette, now)],
+			rows: [toolActivityRow(tool, width, nameWidth, palette, now, glyphs)],
 			dropRank:
 				index === 0 ? DROP_RANK.latestRecentTool : DROP_RANK.olderRecentTool + (recent.length - index - 1),
 		})),
@@ -851,6 +925,11 @@ function measureGroups(groups: readonly SidebarGroup[], style: SidebarStyle): nu
 
 const CROWN_PREFIX_WIDTH = visibleWidth("╭─ ✦ ");
 
+/** The title as its heading shows it: a minimal heading leads with the icon; a crown sets its own jewel. */
+function headingTitle(section: Section, style: SidebarStyle): string {
+	return style === "minimal" && section.icon ? `${section.icon} ${section.title}` : section.title;
+}
+
 /** Whether a summary fits beside the title: on the crown with one rule column, or on a heading row. */
 function summaryFits(
 	section: Section,
@@ -859,7 +938,7 @@ function summaryFits(
 	style: SidebarStyle,
 ): boolean {
 	if (!text) return true;
-	const title = visibleWidth(section.title);
+	const title = visibleWidth(headingTitle(section, style));
 	const summary = visibleWidth(text);
 	return style === "framed"
 		? width - CROWN_PREFIX_WIDTH - title - 1 - summary - 3 >= 1
@@ -949,7 +1028,7 @@ function panelRows(
 	width: number,
 	palette: AtelierPalette,
 	theme: ThemeLike,
-	jewel: string,
+	pulse: boolean,
 ): string[] {
 	const safeWidth = Math.max(4, width);
 	const innerWidth = safeWidth - 4;
@@ -962,7 +1041,14 @@ function panelRows(
 		safeWidth - CROWN_PREFIX_WIDTH - visibleWidth(section.title) - 1 - visibleWidth(tail),
 	);
 	const jewelRole: PaletteRole = section.lit ?? section.hue ?? "muted";
-	const crown = `${paintFrame(section, palette, "╭─ ")}${palette.paint(jewelRole, jewel)} ${title} ${paintFrame(section, palette, "─".repeat(fill))}${tail}`;
+	// A working frame's jewel pulses: ✦ hollows to ✧, and an icon, whose shape carries meaning, dims instead.
+	const breathing = section.lit === "working" && pulse;
+	const jewel = section.icon
+		? breathing
+			? palette.paintTint(jewelRole, section.icon, 0.3)
+			: palette.paint(jewelRole, section.icon)
+		: palette.paint(jewelRole, breathing ? "✧" : "✦");
+	const crown = `${paintFrame(section, palette, "╭─ ")}${jewel} ${title} ${paintFrame(section, palette, "─".repeat(fill))}${tail}`;
 	const edge = paintFrame(section, palette, "│");
 	return [
 		truncateToWidth(crown, safeWidth, ""),
@@ -980,8 +1066,10 @@ function headingRows(
 	palette: AtelierPalette,
 	theme: ThemeLike,
 ): string[] {
-	const title = theme.bold(palette.paint(section.lit ?? section.hue ?? "primary", section.title));
-	return [splitRow(title, section.summary ?? "", width), ...rows, ""];
+	const role = section.lit ?? section.hue ?? "primary";
+	const title = theme.bold(palette.paint(role, section.title));
+	const heading = section.icon ? `${palette.paint(role, section.icon)} ${title}` : title;
+	return [splitRow(heading, section.summary ?? "", width), ...rows, ""];
 }
 
 function renderGroups(
@@ -1010,7 +1098,7 @@ function renderGroups(
 		}
 		rendered.push(
 			...(style === "framed"
-				? panelRows(section, rows, width, palette, theme, section.lit === "working" && pulse ? "✧" : "✦")
+				? panelRows(section, rows, width, palette, theme, pulse)
 				: headingRows(section, rows, width, palette, theme)),
 		);
 	}
@@ -1044,6 +1132,7 @@ export function renderSidebarLines(
 	// A frame's crown spans the whole panel; a minimal heading spans the content.
 	const headingWidth = style === "framed" ? panelWidth : contentWidth;
 	const alerts = statusAlerts(snapshot);
+	const glyphs = config.nerdFont ? NERD_GLYPHS : PLAIN_GLYPHS;
 	const builtinPanels: Record<BuiltinSidebarPanelId, () => SidebarGroup[]> = {
 		agent: () => [
 			{
@@ -1053,7 +1142,7 @@ export function renderSidebarLines(
 				dropRank: DROP_RANK.agent,
 			},
 		],
-		activity: () => activityGroups(snapshot, contentWidth, palette, theme, now),
+		activity: () => activityGroups(snapshot, contentWidth, palette, theme, now, glyphs),
 		alerts: () => [
 			{
 				name: "alerts",
@@ -1063,13 +1152,20 @@ export function renderSidebarLines(
 					lit: alerts.some((alert) => alert.role === "error") ? "error" : "warning",
 				},
 				rows: alerts.map(({ role, text }) =>
-					palette.paint(role, truncateToWidth(`${role === "error" ? "✕" : "▲"} ${text}`, contentWidth, "…")),
+					palette.paint(
+						role,
+						truncateToWidth(
+							`${role === "error" ? glyphs.alertError : glyphs.alertWarning} ${text}`,
+							contentWidth,
+							"…",
+						),
+					),
 				),
 				dropRank: DROP_RANK.alerts,
 			},
 		],
 		todos: () => {
-			const { summary, rows } = todoSection(snapshot, contentWidth, palette);
+			const { summary, rows } = todoSection(snapshot, contentWidth, palette, glyphs);
 			return [
 				{
 					name: "todos",
@@ -1200,9 +1296,10 @@ export function renderSidebarLines(
 		if (isBuiltinSidebarPanelId(entry.id)) {
 			availableVisible = true;
 			const hue = PANEL_HUE[entry.id];
+			const icon = config.nerdFont ? { icon: PANEL_ICONS[entry.id] } : {};
 			ordered.push(
 				...builtinPanels[entry.id]().map((group) =>
-					group.section ? { ...group, section: { ...group.section, hue } } : group,
+					group.section ? { ...group, section: { ...group.section, hue, ...icon } } : group,
 				),
 			);
 			continue;
@@ -1227,7 +1324,12 @@ export function renderSidebarLines(
 					.map((row) => palette.paint(row.role ?? panel.role ?? "primary", row.text));
 		ordered.push({
 			name: `contributed:${panel.id}`,
-			section: { id: panel.id, title: panel.title || panel.id, hue: panel.role ?? "accent" },
+			section: {
+				id: panel.id,
+				title: panel.title || panel.id,
+				hue: panel.role ?? "accent",
+				...(config.nerdFont ? { icon: CONTRIBUTED_PANEL_ICON } : {}),
+			},
 			rows: rows.length > 0 ? rows : [palette.paint("dim", "No data")],
 			dropRank: DROP_RANK.contributed,
 		});
@@ -1235,7 +1337,11 @@ export function renderSidebarLines(
 	if (!availableVisible) {
 		ordered.push({
 			name: "empty",
-			section: { id: "__empty__", title: "Sidebar" },
+			section: {
+				id: "__empty__",
+				title: "Sidebar",
+				...(config.nerdFont ? { icon: EMPTY_SIDEBAR_ICON } : {}),
+			},
 			rows: ["No available panels", "Open /atelier Settings"],
 			dropRank: DROP_RANK.required,
 		});

@@ -46,7 +46,7 @@ Start Pi and open the control center with `/atelier` or **F6** (**Fn+F6** on key
 
 ### Terminal font
 
-Plain text mode is the default. It works with any monospace font and keeps colors, metrics, and the responsive layout. Nerd Font mode adds icons but needs a terminal font that covers them, such as one from [nerdfonts.com](https://www.nerdfonts.com) or a Symbols Nerd Font Mono fallback; without one, the icons render as boxes. Switch in **Settings → Font** or set `"nerdFont": true`.
+Plain text mode is the default. It works with any monospace font and keeps colors, metrics, and the responsive layout. Nerd Font mode adds icons to the footer and the Sidebar (one per panel title, plus tool, todo, and alert marks) but needs a terminal font that covers them, such as one from [nerdfonts.com](https://www.nerdfonts.com) or a Symbols Nerd Font Mono fallback; without one, the icons render as boxes. Switch in **Settings → Font** or set `"nerdFont": true`.
 
 ## Features
 
@@ -88,7 +88,7 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 - A confirmed resize is saved as `sidebarWidth` and becomes the starting width for new sessions. Escape keeps the saved width.
 - Mode and visibility are session-scoped. The startup visibility preference is set in Settings.
 - The sidebar shows what the footer cannot: whether the agent is working and which tools are running or just finished, your TODOs, the context meter, and the files you changed with lines added and removed. Model, usage, and tool counts are already in the footer, so the Agent, Usage, and Tools panels start hidden; turn them on in **Settings → Display**. Activity also lists the first-token time and output speed of the latest response, which the footer shows only when its `performance` segment is on. A layout you saved earlier keeps its own choices.
-- Every panel has the same neutral grey frame; its title and ✦ keep a color of their own. A frame lights up only when its panel needs attention: Activity while the agent works (red on an error), Context past your warning and danger thresholds, Changed files on a merge conflict. Inside the panels, color marks state only. When a run finishes, the Activity frame glows green for three seconds, then returns to grey.
+- Every panel has the same neutral grey frame; its title and ✦ (in Nerd Font mode, the panel's icon) keep a color of their own. A frame lights up only when its panel needs attention: Activity while the agent works (red on an error), Context past your warning and danger thresholds, Changed files on a merge conflict. Inside the panels, color marks state only. When a run finishes, the Activity frame glows green for three seconds, then returns to grey.
 - **Settings → Sidebar style** switches between **Framed** (the default) and **Minimal**: no frames, just quiet headings that take the state color instead. The setting is saved as the user-only `sidebarStyle` (`"framed"` or `"minimal"`).
 - The TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension. Atelier does not change `todo` results, so the agent keeps task ids and `list` output.
 
