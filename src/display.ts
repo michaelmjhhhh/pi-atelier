@@ -11,6 +11,7 @@ import type {
 
 export const PRODUCT_SEGMENT_ORDER = [
 	"brand",
+	"pi",
 	"activity",
 	"metrics",
 	"performance",

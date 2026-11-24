@@ -58,6 +58,7 @@ type FooterSymbols = typeof PLAIN_SYMBOLS;
 type FooterZone = "left" | "right";
 type FooterItemId =
 	| "brand"
+	| "pi"
 	| "status"
 	| "activity"
 	| "model"
@@ -90,6 +91,7 @@ const ITEM_META: Record<
 	{ zone: FooterZone; group: string; dropRank: number; header: boolean }
 > = {
 	brand: { zone: "left", group: "brand", dropRank: 0, header: true },
+	pi: { zone: "left", group: "pi", dropRank: 5, header: true },
 	status: { zone: "left", group: "status", dropRank: 0, header: true },
 	activity: { zone: "left", group: "activity", dropRank: Number.POSITIVE_INFINITY, header: true },
 	model: { zone: "left", group: "model", dropRank: 60, header: true },
@@ -179,6 +181,7 @@ const SEGMENT_ITEMS: Record<SegmentId, (context: ItemContext) => FooterItem[]> =
 	brand: ({ palette, symbols }) => [
 		item("brand", iconFor(palette)(symbols.brand, palette.paint("muted", "ATELIER"), "accent")),
 	],
+	pi: ({ palette, theme }) => [item("pi", palette.paint("accent", theme.bold("π")))],
 	activity: ({ state, palette, theme, workingDots, config }) => [
 		item(
 			"activity",

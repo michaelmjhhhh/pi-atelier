@@ -14,10 +14,11 @@ describe("configuration validation", () => {
 	it("defines complete templates with the default segments visible", () => {
 		for (const template of [DEFAULT_CONFIG, ...Object.values(DISPLAY_TEMPLATES)]) {
 			expect(template.segmentLayout.map((entry) => entry.id)).toEqual(PRODUCT_SEGMENT_ORDER);
-			expect(new Set(template.segmentLayout.map((entry) => entry.id)).size).toBe(9);
+			expect(new Set(template.segmentLayout.map((entry) => entry.id)).size).toBe(10);
 			expect(visibility(template.segmentLayout, "metrics")).toBe(true);
 			expect(visibility(template.segmentLayout, "context")).toBe(true);
 			expect(visibility(template.segmentLayout, "brand")).toBe(false);
+			expect(visibility(template.segmentLayout, "pi")).toBe(false);
 			expect(visibility(template.segmentLayout, "performance")).toBe(false);
 		}
 	});
@@ -131,7 +132,7 @@ describe("configuration validation", () => {
 			{ id: "metrics", visible: false },
 			{ id: "brand", visible: false },
 		]);
-		expect(result.config.segmentLayout.map((entry) => entry.id)).toHaveLength(9);
+		expect(result.config.segmentLayout.map((entry) => entry.id)).toHaveLength(10);
 		expect(result.warnings.filter((warning) => warning.includes("duplicate"))).toHaveLength(1);
 		expect(result.warnings.filter((warning) => warning.includes("malformed"))).toHaveLength(1);
 	});

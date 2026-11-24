@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add a **Pi** status rail segment: a single `π` in the accent color, a compact alternative to **Brand**. It is hidden by default; turn it on in **Settings → Display**. A layout you saved earlier lists it last, hidden ([#130](https://github.com/michaelmjhhhh/pi-atelier/issues/130)).
 - Let every status rail segment be hidden. **Tokens & cost** and **Context** were always shown before ([#131](https://github.com/michaelmjhhhh/pi-atelier/issues/131)).
 - Add per-field toggles to the status rail. In **Settings → Display**, each shown segment lists its fields below it (input, output, cache, cost; first token, tokens per second; window size, auto-compact; model name, thinking level; folder, branch), and Enter shows or hides one. Saved as `hiddenFooterFields`, which a project or session can override and which a preset change keeps ([#131](https://github.com/michaelmjhhhh/pi-atelier/issues/131)).
 
