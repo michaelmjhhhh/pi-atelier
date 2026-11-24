@@ -357,11 +357,14 @@ function compose(
 			visibleWidth(leftText) + visibleWidth(rightText) + (leftText && rightText ? (flow ? flowGap : 2) : 0)
 		);
 	};
+	const dropped: PlacedItem[] = [];
 	const drop = (candidates: readonly PlacedItem[]): void => {
 		for (const candidate of candidates) {
 			if (measured() <= width) return;
 			const index = active.indexOf(candidate);
-			if (index >= 0) active.splice(index, 1);
+			if (index < 0) continue;
+			active.splice(index, 1);
+			dropped.push(candidate);
 		}
 	};
 
@@ -382,6 +385,18 @@ function compose(
 	for (const placed of active.filter(isRequired)) {
 		if (measured() <= width) break;
 		if (placed.full !== placed.compact) compactIds.add(placed.id);
+	}
+	// Dropping stops at the first fit, so a wide late drop can free room for a narrow early one,
+	// such as Pi. Bring dropped items back, most important first, wherever they still fit.
+	for (const candidate of dropped.reverse()) {
+		if (measured() > width) break;
+		const previous = [...active];
+		active.splice(
+			0,
+			active.length,
+			...items.filter((placed) => placed === candidate || previous.includes(placed)),
+		);
+		if (measured() > width) active.splice(0, active.length, ...previous);
 	}
 
 	// A clipped header would hide essential state from the complete footer below.
