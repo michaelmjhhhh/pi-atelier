@@ -30,7 +30,7 @@ import {
 	type WorkspacePulseRefresh,
 } from "./workspace-pulse.js";
 
-const SESSION_DISPLAY_OVERRIDE_KEYS = ["preset", "density", "segmentLayout"] as const;
+const SESSION_DISPLAY_OVERRIDE_KEYS = ["preset", "density", "segmentLayout", "hiddenFooterFields"] as const;
 
 export interface RuntimeDependencies {
 	pi: ExtensionAPI;
@@ -205,8 +205,8 @@ export class AtelierRuntime {
 	}
 
 	getDisplaySettings(): DisplaySettings {
-		const { preset, density, segmentLayout } = this.#config;
-		return { preset, density, segmentLayout };
+		const { preset, density, segmentLayout, hiddenFooterFields } = this.#config;
+		return { preset, density, segmentLayout, hiddenFooterFields };
 	}
 
 	getDisplayProvenance(): DisplayProvenance {

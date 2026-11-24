@@ -303,6 +303,32 @@ describe("AtelierRuntime", () => {
 		expect(runtime.getSessionDisplayOverride()).toBeUndefined();
 	});
 
+	it("overrides and saves hidden footer fields through the Session layer", () => {
+		const runtime = buildRuntime(
+			{ displayLayers: { user: { hiddenFooterFields: ["cost"] } } },
+			fakeContext([]),
+		);
+
+		runtime.replaceSessionDisplayOverride({ hiddenFooterFields: ["thinking", "branch"] });
+		expect(runtime.getDisplaySettings().hiddenFooterFields).toEqual(["thinking", "branch"]);
+		expect(runtime.getDisplayProvenance().fields).toBe("session");
+		expect(runtime.getSessionDisplayOverride()).toEqual({ hiddenFooterFields: ["thinking", "branch"] });
+
+		// Showing every field again is a choice of its own, not a missing value.
+		runtime.replaceSessionDisplayOverride({ hiddenFooterFields: [] });
+		expect(runtime.getDisplaySettings().hiddenFooterFields).toEqual([]);
+
+		runtime.clearSessionDisplayOverride();
+		expect(runtime.getDisplaySettings().hiddenFooterFields).toEqual(["cost"]);
+		expect(runtime.getDisplayProvenance().fields).toBe("user");
+
+		runtime.replaceSessionDisplayOverride({ hiddenFooterFields: [] });
+		runtime.applySavedUserDisplayPatch({ hiddenFooterFields: [] });
+		expect(runtime.getDisplaySettings().hiddenFooterFields).toEqual([]);
+		expect(runtime.getDisplayProvenance().fields).toBe("user");
+		expect(runtime.getSessionDisplayOverride()).toBeUndefined();
+	});
+
 	it("selects again for the next work cycle and still updates configuration", () => {
 		const random = vi.fn().mockReturnValueOnce(0).mockReturnValueOnce(0.999_999);
 		const { runtime, requestRender } = createRuntime(random);

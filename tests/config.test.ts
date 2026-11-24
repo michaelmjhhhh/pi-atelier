@@ -11,7 +11,7 @@ const visibility = (layout: typeof DEFAULT_CONFIG.segmentLayout, id: string) =>
 	layout.find((entry) => entry.id === id)?.visible;
 
 describe("configuration validation", () => {
-	it("defines complete templates with the required segments visible", () => {
+	it("defines complete templates with the default segments visible", () => {
 		for (const template of [DEFAULT_CONFIG, ...Object.values(DISPLAY_TEMPLATES)]) {
 			expect(template.segmentLayout.map((entry) => entry.id)).toEqual(PRODUCT_SEGMENT_ORDER);
 			expect(new Set(template.segmentLayout.map((entry) => entry.id)).size).toBe(9);
@@ -128,12 +128,46 @@ describe("configuration validation", () => {
 		});
 		expect(result.config.segmentLayout.slice(0, 3)).toEqual([
 			{ id: "menu", visible: true },
-			{ id: "metrics", visible: true },
+			{ id: "metrics", visible: false },
 			{ id: "brand", visible: false },
 		]);
 		expect(result.config.segmentLayout.map((entry) => entry.id)).toHaveLength(9);
 		expect(result.warnings.filter((warning) => warning.includes("duplicate"))).toHaveLength(1);
 		expect(result.warnings.filter((warning) => warning.includes("malformed"))).toHaveLength(1);
+	});
+
+	it("keeps every segment hideable", () => {
+		const result = validateConfig({
+			segmentLayout: PRODUCT_SEGMENT_ORDER.map((id) => ({ id, visible: false })),
+		});
+		expect(result.config.segmentLayout.every((entry) => !entry.visible)).toBe(true);
+		expect(result.config.preset).toBe("custom");
+	});
+
+	it("parses hidden footer fields in canonical order and keeps them across presets", () => {
+		const result = validateConfig({ hiddenFooterFields: ["thinking", "cost", "bogus", "cost", 3] });
+		expect(result.config.hiddenFooterFields).toEqual(["cost", "thinking"]);
+		expect(result.warnings).toContain("Unknown hiddenFooterFields: bogus");
+		expect(result.warnings).toContain("hiddenFooterFields must be a string");
+		// Fields refine a preset rather than define one.
+		expect(result.config.preset).toBe("editorial");
+		expect(result.displayProvenance.fields).toBe("user");
+
+		const layered = resolveConfig({
+			user: { hiddenFooterFields: ["cost"] },
+			project: { preset: "minimal" },
+			session: { hiddenFooterFields: ["branch"] },
+		});
+		expect(layered.config.preset).toBe("minimal");
+		expect(layered.config.hiddenFooterFields).toEqual(["branch"]);
+		expect(layered.displayProvenance.fields).toBe("session");
+		expect(
+			resolveConfig({ user: { hiddenFooterFields: ["cost"] }, project: { preset: "minimal" } }).config
+				.hiddenFooterFields,
+		).toEqual(["cost"]);
+		expect(validateConfig({ hiddenFooterFields: "cost" }).warnings).toContain(
+			"hiddenFooterFields must be an array",
+		);
 	});
 
 	it("uses legacy fallback for non-array layouts and retains hidden omissions", () => {
@@ -145,7 +179,7 @@ describe("configuration validation", () => {
 		]);
 		expect(visibility(result.config.segmentLayout, "performance")).toBe(true);
 		expect(visibility(result.config.segmentLayout, "git")).toBe(false);
-		expect(visibility(result.config.segmentLayout, "metrics")).toBe(true);
+		expect(visibility(result.config.segmentLayout, "metrics")).toBe(false);
 	});
 
 	it.each([

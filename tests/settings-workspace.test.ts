@@ -92,8 +92,9 @@ describe("Display Settings Workspace", () => {
 		expect(text(h.component)).toContain("Queue");
 		expect(text(h.component)).toMatch(/● Missing +unavailable/);
 
-		// Two display rows and nine segments precede the configured layout.
-		for (let index = 0; index < 11 + configuredLayout.length; index += 1) h.component.handleInput("\u001b[B");
+		// Tab to the Sidebar; the configured layout precedes the discovered panel.
+		h.component.handleInput("\t");
+		for (let index = 0; index < configuredLayout.length; index += 1) h.component.handleInput("\u001b[B");
 		h.component.handleInput(" ");
 		h.component.handleInput("s");
 		expect(h.persist).toHaveBeenCalled();
@@ -123,19 +124,21 @@ describe("Display Settings Workspace", () => {
 		expect(resolveDisplayLayers(h.layers).display.preset).toBe("editorial");
 	});
 
-	it("accumulates Segment edits, protects required entries, and retains overrides on close", () => {
+	it("accumulates Segment edits and retains overrides on close", () => {
 		const h = harness();
-		// Focus performance (preset, density, brand, activity, metrics, performance).
-		for (let index = 0; index < 5; index += 1) h.component.handleInput("\u001b[B");
+		// Focus performance: preset, density, brand, activity, metrics and its four fields precede it.
+		for (let index = 0; index < 9; index += 1) h.component.handleInput("\u001b[B");
 		h.component.handleInput(" ");
 		expect(
 			resolveDisplayLayers(h.layers).display.segmentLayout.find((entry) => entry.id === "performance")
 				?.visible,
 		).toBe(true);
-		// metrics is required and rejects toggling.
-		h.component.handleInput("\u001b[A");
+		// Back up past the four metrics fields; metrics can be hidden too.
+		for (let index = 0; index < 5; index += 1) h.component.handleInput("\u001b[A");
 		h.component.handleInput(" ");
-		expect(text(h.component)).toContain("Tokens & cost is always shown");
+		expect(
+			resolveDisplayLayers(h.layers).display.segmentLayout.find((entry) => entry.id === "metrics")?.visible,
+		).toBe(false);
 		h.component.handleInput("\u001b");
 		expect(h.close).toHaveBeenCalledOnce();
 		expect(h.layers.session).toBeDefined();
@@ -176,6 +179,7 @@ describe("Display Settings Workspace", () => {
 		);
 		expect(Object.keys(h.persist.mock.calls[0]?.[0] ?? {}).sort()).toEqual([
 			"density",
+			"hiddenFooterFields",
 			"preset",
 			"segmentLayout",
 		]);
@@ -299,7 +303,8 @@ describe("Display Settings Workspace", () => {
 		let viewport = 13;
 		const h = harness({}, DEFAULT_CONFIG, undefined, () => viewport);
 		for (let index = 0; index < 100; index += 1) h.component.handleInput("\u001b[B");
-		const bottom = h.component.render(126).join("\n");
+		// Stacked, the last Sidebar panel is the last line; side by side the longer rail continues.
+		const bottom = h.component.render(60).join("\n");
 		expect(bottom).toContain("↑ more");
 		expect(bottom).not.toContain("↓ more");
 
