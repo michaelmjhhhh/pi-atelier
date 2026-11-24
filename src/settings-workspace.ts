@@ -3,6 +3,7 @@ import {
 	applyDisplayTemplate,
 	cloneLayout,
 	derivePresetIdentity,
+	isPinnedSegment,
 	reorderSegment,
 	segmentFields,
 	TEMPLATE_NAMES,
@@ -97,6 +98,7 @@ const MIN_SCROLL_ROWS = 10;
 const MIN_DETAIL_SCROLL_ROWS = 3;
 
 const SEGMENT_LABELS: Record<SegmentId, string> = {
+	pi: "Pi",
 	brand: "Brand",
 	activity: "Activity",
 	metrics: "Tokens & cost",
@@ -109,6 +111,7 @@ const SEGMENT_LABELS: Record<SegmentId, string> = {
 };
 
 const SEGMENT_DESCRIPTIONS: Record<SegmentId, string> = {
+	pi: "A single π at the start of the rail, a compact alternative to Brand.",
 	brand: "The Atelier mark at the start of the rail.",
 	activity: "Whether Pi is working or ready.",
 	metrics: "Input and output tokens, cache hit rate, and cost.",
@@ -589,6 +592,11 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 		const layout = row.kind === "segment" ? display.segmentLayout : sidebarDraft;
 		const index = layout.findIndex((entry) => entry.id === row.id);
 		const target = direction === "earlier" ? index - 1 : index + 1;
+		const neighbor = row.kind === "segment" ? display.segmentLayout[target] : undefined;
+		if (row.kind === "segment" && (isPinnedSegment(row.id) || (neighbor && isPinnedSegment(neighbor.id)))) {
+			warn(`${SEGMENT_LABELS.pi} always leads the rail`);
+			return;
+		}
 		if (target < 0 || target >= layout.length) {
 			warn(`${label} is already ${direction === "earlier" ? "first" : "last"}`);
 			return;
@@ -632,6 +640,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 				const visibility = provenance.visibility[row.id];
 				return [
 					SEGMENT_DESCRIPTIONS[row.id],
+					isPinnedSegment(row.id) ? "Always first." : "",
 					visibility === "product" ? "" : `Visibility ${SOURCE_PHRASES[visibility]}.`,
 					provenance.order === "product" ? "" : `Order ${SOURCE_PHRASES[provenance.order]}.`,
 				]
@@ -705,7 +714,13 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 			...segmentRows().map((row) =>
 				row.kind === "field"
 					? toggleLine(row, rowLabel(row), !display.hiddenFooterFields.includes(row.id), 1)
-					: toggleLine(row, rowLabel(row), isSegmentVisible(row)),
+					: toggleLine(
+							row,
+							rowLabel(row),
+							isSegmentVisible(row),
+							0,
+							row.kind === "segment" && isPinnedSegment(row.id) ? "always first" : "",
+						),
 			),
 		];
 		const sidebarSection = (columnWidth: number): LayoutLine[] => [
@@ -759,7 +774,8 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 				? feedback.message
 				: theme.fg(feedback.kind, feedback.message)
 			: theme.fg("muted", describe(selected));
-		const reorderable = selected?.kind === "segment" || selected?.kind === "sidebarPanel";
+		const reorderable =
+			(selected?.kind === "segment" && !isPinnedSegment(selected.id)) || selected?.kind === "sidebarPanel";
 		const toggleable =
 			selected?.kind === "sidebarPanel" || selected?.kind === "segment" || selected?.kind === "field";
 		const hints: KeyHint[] = [

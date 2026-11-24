@@ -10,6 +10,7 @@ import type {
 } from "./types.js";
 
 export const PRODUCT_SEGMENT_ORDER = [
+	"pi",
 	"brand",
 	"activity",
 	"metrics",
@@ -43,6 +44,9 @@ export const segmentFields = (id: SegmentId): readonly FooterFieldId[] =>
 
 export const isFooterFieldId = (value: unknown): value is FooterFieldId =>
 	typeof value === "string" && FIELD_IDS.has(value);
+
+/** Pi always leads the rail, so it is listed first and cannot be moved. */
+export const isPinnedSegment = (id: SegmentId): boolean => id === "pi";
 
 export const isSegmentId = (value: unknown): value is SegmentId =>
 	typeof value === "string" && SEGMENT_IDS.has(value);
@@ -90,9 +94,21 @@ export const normalizeSegmentLayout = (entries: readonly SegmentLayoutEntry[]): 
 		seen.add(entry.id);
 		result.push({ id: entry.id, visible: entry.visible });
 	}
-	for (const id of PRODUCT_SEGMENT_ORDER) {
-		if (!seen.has(id)) result.push({ id, visible: false });
-	}
+	// A segment the entries predate joins its neighbour in product order, hidden, so Pi lands
+	// before Brand at the start of the rail instead of after Menu. A segment with no listed
+	// neighbour is appended.
+	PRODUCT_SEGMENT_ORDER.forEach((id, rank) => {
+		if (seen.has(id)) return;
+		const indexOf = (neighbour: SegmentId | undefined): number =>
+			neighbour === undefined ? -1 : result.findIndex((entry) => entry.id === neighbour);
+		const preceding = indexOf(PRODUCT_SEGMENT_ORDER[rank - 1]);
+		const following = indexOf(PRODUCT_SEGMENT_ORDER[rank + 1]);
+		const index = preceding >= 0 ? preceding + 1 : following >= 0 ? following : result.length;
+		result.splice(index, 0, { id, visible: false });
+		seen.add(id);
+	});
+	const pinned = result.findIndex((entry) => isPinnedSegment(entry.id));
+	if (pinned > 0) result.unshift(...result.splice(pinned, 1));
 	return result;
 };
 
@@ -120,7 +136,8 @@ export const reorderSegment = (
 	const target = direction === "earlier" ? index - 1 : index + 1;
 	const current = result[index];
 	const neighbor = result[target];
-	if (index < 0 || !current || !neighbor) return result;
+	if (index < 0 || !current || !neighbor || isPinnedSegment(current.id) || isPinnedSegment(neighbor.id))
+		return result;
 	result[index] = neighbor;
 	result[target] = current;
 	return result;
