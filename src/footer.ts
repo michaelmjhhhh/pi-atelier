@@ -9,6 +9,7 @@ import type {
 	AtelierMetrics,
 	AtelierState,
 	DisplayValue,
+	FooterFieldId,
 	FooterState,
 	SegmentId,
 } from "./types.js";
@@ -162,6 +163,7 @@ interface ItemContext {
 	palette: AtelierPalette;
 	symbols: FooterSymbols;
 	workingDots: string;
+	shows(field: FooterFieldId): boolean;
 }
 
 const item = (id: FooterItemId, full: string, compact = full): FooterItem => ({ id, full, compact });
@@ -182,31 +184,31 @@ const SEGMENT_ITEMS: Record<SegmentId, (context: ItemContext) => FooterItem[]> =
 			activityText(state, palette, theme, workingDots, true, config.nerdFont),
 		),
 	],
-	model: ({ state, palette, theme, symbols }) => {
+	model: ({ state, palette, theme, symbols, shows }) => {
 		const icon = iconFor(palette);
 		const items: FooterItem[] = [];
-		const model = state.modelId ? sanitizeInline(state.modelId) : "";
+		const model = state.modelId && shows("model") ? sanitizeInline(state.modelId) : "";
 		if (model) {
 			const paint = (text: string) =>
 				icon(symbols.model, palette.paint("accent", theme.bold(text)), "accent");
 			items.push(item("model", paint(model), paint(truncateToWidth(model, 24, "…"))));
 		}
-		const thinking = state.thinkingLevel ? sanitizeInline(state.thinkingLevel) : "";
+		const thinking = state.thinkingLevel && shows("thinking") ? sanitizeInline(state.thinkingLevel) : "";
 		if (thinking) {
 			const role = thinking === "off" ? "dim" : "accent";
 			items.push(item("thinking", icon(symbols.thinking, palette.paint(role, thinking), role)));
 		}
 		return items;
 	},
-	git: ({ state, palette, symbols }) => {
+	git: ({ state, palette, symbols, shows }) => {
 		const icon = iconFor(palette);
 		const items: FooterItem[] = [];
-		const workspace = state.workspaceLabel ? sanitizeInline(state.workspaceLabel) : "";
+		const workspace = state.workspaceLabel && shows("workspace") ? sanitizeInline(state.workspaceLabel) : "";
 		if (workspace) {
 			const paint = (text: string) => icon(symbols.workspace, palette.paint("cache", text), "cache");
 			items.push(item("workspace", paint(workspace), paint(truncateToWidth(workspace, 18, "…"))));
 		}
-		const branch = state.branch ? sanitizeInline(state.branch) : "";
+		const branch = state.branch && shows("branch") ? sanitizeInline(state.branch) : "";
 		if (branch) {
 			const dirty = state.dirty ? palette.paint("warning", "*") : "";
 			const paint = (text: string) => icon(symbols.git, `${palette.paint("input", text)}${dirty}`, "input");
@@ -218,7 +220,7 @@ const SEGMENT_ITEMS: Record<SegmentId, (context: ItemContext) => FooterItem[]> =
 		const statuses = state.extensionStatuses.map(sanitizeInline).filter(Boolean).join(" ");
 		return statuses ? [item("status", palette.paint("muted", statuses))] : [];
 	},
-	metrics: ({ state: { metrics }, config, palette, symbols }) => {
+	metrics: ({ state: { metrics }, config, palette, symbols, shows }) => {
 		const icon = iconFor(palette);
 		const input = availableValue(metrics.usageAvailable, metrics.input);
 		const output = availableValue(metrics.usageAvailable, metrics.output);
@@ -256,23 +258,19 @@ const SEGMENT_ITEMS: Record<SegmentId, (context: ItemContext) => FooterItem[]> =
 				icon(symbols.cache, paintValue(cache, "cache", palette)),
 			),
 			item("cost", cost),
-		];
+		].filter((footerItem) => shows(footerItem.id as FooterFieldId));
 	},
-	performance: ({ state, config, palette, symbols }) => {
+	performance: ({ state, config, palette, symbols, shows }) => {
 		const icon = iconFor(palette);
 		const values = responsePerformanceValues(state.performance);
 		const speedUnit = values.tps.available && config.nerdFont ? palette.paint("muted", "/s") : "";
-		return [
-			item(
-				"performance",
-				[
-					icon(symbols.performance, paintValue(values.ttft, "output", palette)),
-					icon(symbols.speed, paintValue(values.tps, "output", palette) + speedUnit),
-				].join("  "),
-			),
-		];
+		const parts = [
+			shows("ttft") ? icon(symbols.performance, paintValue(values.ttft, "output", palette)) : "",
+			shows("tps") ? icon(symbols.speed, paintValue(values.tps, "output", palette) + speedUnit) : "",
+		].filter(Boolean);
+		return parts.length > 0 ? [item("performance", parts.join("  "))] : [];
 	},
-	context: ({ state: { metrics }, config, palette, symbols }) => {
+	context: ({ state: { metrics }, config, palette, symbols, shows }) => {
 		const role = contextRole(metrics.contextPercent, config, "context");
 		const compact = iconFor(palette)(
 			symbols.context,
@@ -280,8 +278,11 @@ const SEGMENT_ITEMS: Record<SegmentId, (context: ItemContext) => FooterItem[]> =
 			role,
 		);
 		const window =
-			metrics.contextWindow > 0 ? palette.paint("muted", ` / ${formatTokens(metrics.contextWindow)}`) : "";
-		const autoCompact = metrics.autoCompact ? ` ${palette.paint("muted", symbols.autoCompact)}` : "";
+			metrics.contextWindow > 0 && shows("contextWindow")
+				? palette.paint("muted", ` / ${formatTokens(metrics.contextWindow)}`)
+				: "";
+		const autoCompact =
+			metrics.autoCompact && shows("autoCompact") ? ` ${palette.paint("muted", symbols.autoCompact)}` : "";
 		return [item("context", `${compact}${window}${autoCompact}`, compact)];
 	},
 	menu: ({ config, palette, symbols }) => {
@@ -417,7 +418,9 @@ function renderFooter(
 	if (width <= 0) return { line: "", workingActivity: undefined };
 	const palette = createPalette(theme, colorEnabled);
 	const symbols = config.nerdFont ? FOOTER_ICONS : PLAIN_SYMBOLS;
-	const items = buildItems({ state, config, theme, palette, symbols, workingDots });
+	const hidden = new Set(config.hiddenFooterFields);
+	const shows = (field: FooterFieldId): boolean => !hidden.has(field);
+	const items = buildItems({ state, config, theme, palette, symbols, workingDots, shows });
 	const workingActivity =
 		state.activity === "working" && config.density !== "compact"
 			? items.find((footerItem) => footerItem.id === "activity")?.full

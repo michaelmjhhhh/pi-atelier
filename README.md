@@ -155,6 +155,7 @@ Project settings override user settings, and session changes override both. Font
   "resizeShortcut": "ctrl+shift+r",
   "toggleShortcut": "",
   "density": "comfortable",
+  "hiddenFooterFields": [],
   "contextWarning": 70,
   "contextDanger": 90,
   "showFooter": true,
@@ -173,9 +174,19 @@ Project settings override user settings, and session changes override both. Font
 
 `toggleShortcut` binds a key that shows or hides the Sidebar directly, like `/atelier sidebar`. It is empty (no binding) by default; set a key such as `"ctrl+shift+b"` and run `/reload`. A key that matches `f6`, `shortcut`, or `resizeShortcut` is rejected with a warning.
 
+`hiddenFooterFields` hides single readings inside status rail segments and keeps them hidden when you switch presets:
+
+| Segment | Fields |
+| --- | --- |
+| Tokens & cost | `input`, `output`, `cache`, `cost` |
+| Speed | `ttft`, `tps` |
+| Context | `contextWindow`, `autoCompact` |
+| Model | `model`, `thinking` |
+| Git | `workspace`, `branch` |
+
 `sidebarWidth` is the sidebar width in columns when a session starts, from 28 through 72. The sidebar still narrows when the terminal leaves less than 64 columns for the main pane.
 
-Use **Settings → Display** to reorder or hide status rail segments and sidebar panels. A live preview of the status rail stays pinned at the top. Press Enter to show or hide the selected item, Shift+↑/↓ to move it, ←/→ to change the preset or density, Tab to jump between sections, and `s` to save as your default. Status rail changes apply to the session at once; sidebar changes apply when you save. Undo (`u`) restores the latest Display or Sidebar edit, including a Display Revert. The legacy user settings `showSidebarAgent` and `showSidebarTodos` still apply when `sidebarPanelLayout` is absent. A layout you saved before Prefill existed gains that panel next to Context on the next start.
+Use **Settings → Display** to reorder or hide status rail segments and sidebar panels. Every segment can be hidden, and each shown segment lists its fields below it so you can hide single readings, such as cost or the thinking level. A live preview of the status rail stays pinned at the top. Press Enter to show or hide the selected item, Shift+↑/↓ to move it, ←/→ to change the preset or density, Tab to jump between sections, and `s` to save as your default. Status rail changes apply to the session at once; sidebar changes apply when you save. Undo (`u`) restores the latest Display or Sidebar edit, including a Display Revert. The legacy user settings `showSidebarAgent` and `showSidebarTodos` still apply when `sidebarPanelLayout` is absent. A layout you saved before Prefill existed gains that panel next to Context on the next start.
 
 ### Sidebar panels from other extensions
 

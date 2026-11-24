@@ -3,9 +3,10 @@ import {
 	applyDisplayTemplate,
 	cloneLayout,
 	derivePresetIdentity,
-	isRequiredSegment,
 	reorderSegment,
+	segmentFields,
 	TEMPLATE_NAMES,
+	toggleFooterField,
 	toggleSegmentVisibility,
 } from "./display.js";
 import { renderFooterLine } from "./footer.js";
@@ -18,6 +19,7 @@ import type {
 	DisplayPatch,
 	DisplayProvenance,
 	DisplaySettings,
+	FooterFieldId,
 	FooterState,
 	SegmentId,
 	SessionDisplayOverride,
@@ -78,6 +80,7 @@ type Row =
 	| { kind: "preset" }
 	| { kind: "density" }
 	| { kind: "segment"; id: SegmentId }
+	| { kind: "field"; id: FooterFieldId }
 	| { kind: "sidebarPanel"; id: SidebarPanelId };
 /** The two visible sections, which are also the Tab stops. */
 type Section = "rail" | "sidebar";
@@ -117,6 +120,36 @@ const SEGMENT_DESCRIPTIONS: Record<SegmentId, string> = {
 	menu: "The shortcut that opens the Control Center.",
 };
 
+const FIELD_LABELS: Record<FooterFieldId, string> = {
+	input: "Input tokens",
+	output: "Output tokens",
+	cache: "Cache",
+	cost: "Cost",
+	ttft: "First token",
+	tps: "Tokens per second",
+	contextWindow: "Window size",
+	autoCompact: "Auto-compact",
+	model: "Model name",
+	thinking: "Thinking level",
+	workspace: "Folder",
+	branch: "Branch",
+};
+
+const FIELD_DESCRIPTIONS: Record<FooterFieldId, string> = {
+	input: "Tokens sent to the model this session.",
+	output: "Tokens the model wrote this session.",
+	cache: "How much of the input came from the prompt cache.",
+	cost: "What this session has cost so far.",
+	ttft: "How long the last response took to start.",
+	tps: "How fast the last response was written.",
+	contextWindow: "The size of the context window, after the percentage.",
+	autoCompact: "A mark shown while auto-compaction is on.",
+	model: "The current model's name.",
+	thinking: "The current thinking level.",
+	workspace: "The project folder.",
+	branch: "The Git branch, with * when there are uncommitted changes.",
+};
+
 const SOURCE_LABELS: Record<ConfigurationSource, string> = {
 	product: "default",
 	user: "saved",
@@ -148,6 +181,7 @@ const sameRow = (left: Row, right: Row): boolean =>
 const cloneDisplay = (value: DisplaySettings): DisplaySettings => ({
 	...value,
 	segmentLayout: cloneLayout(value.segmentLayout),
+	hiddenFooterFields: [...value.hiddenFooterFields],
 });
 const cloneOverride = (value: SessionDisplayOverride | undefined): SessionDisplayOverride | undefined =>
 	value === undefined ? undefined : structuredClone(value);
@@ -338,9 +372,15 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 	const rows = (): Row[] => [
 		{ kind: "preset" },
 		{ kind: "density" },
-		...display.segmentLayout.map((entry): Row => ({ kind: "segment", id: entry.id })),
+		...segmentRows(),
 		...sidebarDraft.map((entry): Row => ({ kind: "sidebarPanel", id: entry.id })),
 	];
+	/** Each segment, followed by its fields while the segment is shown. */
+	const segmentRows = (): Row[] =>
+		display.segmentLayout.flatMap((entry): Row[] => [
+			{ kind: "segment", id: entry.id },
+			...(entry.visible ? segmentFields(entry.id).map((id): Row => ({ kind: "field", id })) : []),
+		]);
 	const rowIndex = (target: Row, allRows = rows()): number =>
 		allRows.findIndex((row) => sameRow(row, target));
 	const panelTitle = (id: SidebarPanelId): string =>
@@ -353,6 +393,8 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 				return "Density";
 			case "segment":
 				return SEGMENT_LABELS[row.id];
+			case "field":
+				return FIELD_LABELS[row.id];
 			case "sidebarPanel":
 				return panelTitle(row.id);
 		}
@@ -476,7 +518,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 		// A custom layout steps onto the first preset going forward and the last going back.
 		const index = current < 0 ? (step > 0 ? 0 : count - 1) : (current + step + count) % count;
 		const next = TEMPLATE_NAMES[index] ?? "editorial";
-		commitMutation(applyDisplayTemplate(next), `Switched to the ${next} preset`);
+		commitMutation(applyDisplayTemplate(next, display.hiddenFooterFields), `Switched to the ${next} preset`);
 	};
 	const toggleDensity = (): void => {
 		const density = display.density === "compact" ? "comfortable" : "compact";
@@ -494,14 +536,21 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 				return;
 			case "segment": {
 				const label = SEGMENT_LABELS[row.id];
-				if (isRequiredSegment(row.id)) {
-					warn(`${label} is always shown; Shift+↑/↓ moves it`);
-					return;
-				}
 				const visible = display.segmentLayout.find((entry) => entry.id === row.id)?.visible;
 				commitMutation(
 					{ ...cloneDisplay(display), segmentLayout: toggleSegmentVisibility(display.segmentLayout, row.id) },
 					`${label} ${visible ? "hidden" : "shown"}`,
+				);
+				return;
+			}
+			case "field": {
+				const hidden = display.hiddenFooterFields.includes(row.id);
+				commitMutation(
+					{
+						...cloneDisplay(display),
+						hiddenFooterFields: toggleFooterField(display.hiddenFooterFields, row.id),
+					},
+					`${FIELD_LABELS[row.id]} ${hidden ? "shown" : "hidden"}`,
 				);
 				return;
 			}
@@ -518,7 +567,11 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 	const move = (direction: "earlier" | "later"): void => {
 		const row = rows()[focus];
 		if (!row || (row.kind !== "segment" && row.kind !== "sidebarPanel")) {
-			warn("Only rail segments and sidebar panels can be moved");
+			warn(
+				row?.kind === "field"
+					? "Fields keep their place in the segment; move the segment instead"
+					: "Only rail segments and sidebar panels can be moved",
+			);
 			return;
 		}
 		const label = rowLabel(row);
@@ -568,13 +621,19 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 				const visibility = provenance.visibility[row.id];
 				return [
 					SEGMENT_DESCRIPTIONS[row.id],
-					isRequiredSegment(row.id) ? "Always shown." : "",
 					visibility === "product" ? "" : `Visibility ${SOURCE_PHRASES[visibility]}.`,
 					provenance.order === "product" ? "" : `Order ${SOURCE_PHRASES[provenance.order]}.`,
 				]
 					.filter(Boolean)
 					.join(" ");
 			}
+			case "field":
+				return [
+					FIELD_DESCRIPTIONS[row.id],
+					provenance.fields === "product" ? "" : `Fields ${SOURCE_PHRASES[provenance.fields]}.`,
+				]
+					.filter(Boolean)
+					.join(" ");
 			case "sidebarPanel":
 				return options.getSidebarPanelSettings().find((setting) => setting.id === row.id)?.available === false
 					? "Not available in this session. It keeps its place for later."
@@ -600,8 +659,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 		const marker = (focused: boolean): string => (focused ? theme.fg("accent", "›") : " ");
 		const name = (text: string, focused: boolean, quiet = false): string =>
 			focused ? theme.fg("accent", text) : quiet ? theme.fg("muted", text) : text;
-		const dot = (visible: boolean, locked = false): string =>
-			locked ? theme.fg("muted", "●") : visible ? theme.fg("accent", "●") : theme.fg("dim", "○");
+		const dot = (visible: boolean): string => (visible ? theme.fg("accent", "●") : theme.fg("dim", "○"));
 
 		const settingLine = (row: Row, value: string, source: ConfigurationSource): LayoutLine => {
 			const focused = isFocused(row);
@@ -612,11 +670,13 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 				focused,
 			};
 		};
-		const toggleLine = (row: Row, title: string, visible: boolean, tag = "", locked = false): LayoutLine => {
+		const isSegmentVisible = (row: Row): boolean =>
+			display.segmentLayout.some((entry) => entry.visible && sameRow({ kind: "segment", id: entry.id }, row));
+		const toggleLine = (row: Row, title: string, visible: boolean, depth = 0, tag = ""): LayoutLine => {
 			const focused = isFocused(row);
 			const label = name(title, focused, !visible);
 			return {
-				line: `${marker(focused)} ${dot(visible, locked)} ${tag ? `${fitToWidth(label, 18)}${theme.fg("dim", tag)}` : label}`,
+				line: `${marker(focused)} ${"  ".repeat(depth)}${dot(visible)} ${tag ? `${fitToWidth(label, 18)}${theme.fg("dim", tag)}` : label}`,
 				focused,
 			};
 		};
@@ -631,16 +691,11 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 			settingLine({ kind: "preset" }, display.preset, provenance.preset),
 			settingLine({ kind: "density" }, display.density, provenance.density),
 			{ line: "" },
-			...display.segmentLayout.map((entry) => {
-				const required = isRequiredSegment(entry.id);
-				return toggleLine(
-					{ kind: "segment", id: entry.id },
-					SEGMENT_LABELS[entry.id],
-					entry.visible,
-					required ? "always shown" : "",
-					required,
-				);
-			}),
+			...segmentRows().map((row) =>
+				row.kind === "field"
+					? toggleLine(row, rowLabel(row), !display.hiddenFooterFields.includes(row.id), 1)
+					: toggleLine(row, rowLabel(row), isSegmentVisible(row)),
+			),
 		];
 		const sidebarSection = (columnWidth: number): LayoutLine[] => [
 			sectionHeading(
@@ -654,6 +709,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 					{ kind: "sidebarPanel", id: entry.id },
 					sidebarSettings.get(entry.id)?.title || entry.id,
 					entry.visible,
+					0,
 					sidebarSettings.get(entry.id)?.available === false ? "unavailable" : "",
 				),
 			),
@@ -694,7 +750,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 			: theme.fg("muted", describe(selected));
 		const reorderable = selected?.kind === "segment" || selected?.kind === "sidebarPanel";
 		const toggleable =
-			selected?.kind === "sidebarPanel" || (selected?.kind === "segment" && !isRequiredSegment(selected.id));
+			selected?.kind === "sidebarPanel" || selected?.kind === "segment" || selected?.kind === "field";
 		const hints: KeyHint[] = [
 			{ key: "↑↓", label: "select", priority: 7 },
 			...(selected?.kind === "preset" || selected?.kind === "density"

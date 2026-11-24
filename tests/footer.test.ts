@@ -645,8 +645,7 @@ describe("footer", () => {
 		);
 		const contextOnly = renderFooterLine(state, withVisible(["context"]), plainTheme, 160);
 		expect(contextOnly).toContain(`${icons.context} 27.0%`);
-		// Required metrics remains visible even when omitted by a legacy-style fixture.
-		expect(contextOnly).toContain(`${icons.input} 324k`);
+		expect(contextOnly).not.toContain(`${icons.input} 324k`);
 		expect(contextOnly).not.toContain("● READY");
 	});
 

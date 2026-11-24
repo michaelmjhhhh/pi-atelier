@@ -35,6 +35,7 @@ function harness() {
 			preset: config.preset,
 			density: config.density,
 			segmentLayout: config.segmentLayout.map((entry) => ({ ...entry })),
+			hiddenFooterFields: [...config.hiddenFooterFields],
 		})),
 		getDisplayProvenance: vi.fn(() => resolveDisplayLayers({}).provenance),
 		getSessionDisplayOverride: vi.fn(() => undefined),

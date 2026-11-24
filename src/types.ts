@@ -1,4 +1,4 @@
-import type { DENSITIES, PRODUCT_SEGMENT_ORDER, TEMPLATE_NAMES } from "./display.js";
+import type { DENSITIES, FOOTER_FIELD_IDS, PRODUCT_SEGMENT_ORDER, TEMPLATE_NAMES } from "./display.js";
 import type { BUILTIN_SIDEBAR_PANEL_IDS } from "./sidebar-panels.js";
 import type { PrefillView } from "./prefill.js";
 import type { SubagentUsageSnapshot } from "./subagent-usage.js";
@@ -9,6 +9,8 @@ export type TemplateName = (typeof TEMPLATE_NAMES)[number];
 export type PresetName = TemplateName | "custom";
 export type ActivityState = "ready" | "working" | "error";
 export type SegmentId = (typeof PRODUCT_SEGMENT_ORDER)[number];
+/** A reading inside a rail segment that can be hidden on its own. */
+export type FooterFieldId = (typeof FOOTER_FIELD_IDS)[number];
 export type Density = (typeof DENSITIES)[number];
 export type BuiltinSidebarPanelId = (typeof BUILTIN_SIDEBAR_PANEL_IDS)[number];
 /** Framed panels with state-lit borders, or frameless headings for a quieter Sidebar. */
@@ -39,12 +41,14 @@ export interface DisplaySettings {
 	preset: PresetName;
 	density: Density;
 	segmentLayout: SegmentLayout;
+	hiddenFooterFields: FooterFieldId[];
 }
 
 export interface DisplayPatch {
 	preset?: PresetName;
 	density?: Density;
 	segmentLayout?: SegmentLayout;
+	hiddenFooterFields?: FooterFieldId[];
 	sidebarPanelLayout?: SidebarPanelLayout;
 }
 
@@ -53,6 +57,7 @@ export interface DisplayProvenance {
 	density: ConfigurationSource;
 	order: ConfigurationSource;
 	visibility: Record<SegmentId, ConfigurationSource>;
+	fields: ConfigurationSource;
 }
 
 export interface DisplayLayerState {

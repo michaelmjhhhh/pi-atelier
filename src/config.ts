@@ -4,7 +4,9 @@ import {
 	applyDisplayTemplate,
 	cloneLayout,
 	derivePresetIdentity,
+	FOOTER_FIELD_IDS,
 	isDensity,
+	isFooterFieldId,
 	isPresetName,
 	isSegmentId,
 	legacySegmentsToLayout,
@@ -21,6 +23,7 @@ import type {
 	DisplayLayerState,
 	DisplayProvenance,
 	DisplaySettings,
+	FooterFieldId,
 	PresetName,
 	SegmentId,
 	SegmentLayout,
@@ -157,6 +160,19 @@ function parsePersistedLayout(value: unknown, warnings: string[]): SegmentLayout
 	return normalizeSegmentLayout(entries);
 }
 
+function parseHiddenFooterFields(value: unknown, warnings: string[]): FooterFieldId[] | undefined {
+	if (!Array.isArray(value)) {
+		warnings.push("hiddenFooterFields must be an array");
+		return undefined;
+	}
+	const hidden = new Set<FooterFieldId>();
+	for (const item of value) {
+		if (isFooterFieldId(item)) hidden.add(item);
+		else warnings.push(invalidEnum("hiddenFooterFields", item));
+	}
+	return FOOTER_FIELD_IDS.filter((id) => hidden.has(id));
+}
+
 function parseLegacySegments(value: unknown, warnings: string[]): SegmentLayout | undefined {
 	if (!Array.isArray(value)) {
 		warnings.push("segments must be an array");
@@ -192,6 +208,7 @@ export function resolveDisplayLayers(layers: DisplayLayerState): {
 		preset: DEFAULT_CONFIG.preset,
 		density: DEFAULT_CONFIG.density,
 		segmentLayout: cloneLayout(DEFAULT_CONFIG.segmentLayout),
+		hiddenFooterFields: [...DEFAULT_CONFIG.hiddenFooterFields],
 	};
 	const provenance: DisplayProvenance = {
 		preset: "product",
@@ -201,6 +218,7 @@ export function resolveDisplayLayers(layers: DisplayLayerState): {
 			SegmentId,
 			ConfigurationSource
 		>,
+		fields: "product",
 	};
 	const compatibility: CompatibilityState = {
 		preset: "editorial",
@@ -241,7 +259,7 @@ export function resolveDisplayLayers(layers: DisplayLayerState): {
 				provenance.preset = source;
 				suppliedPreset = true;
 				if (input.preset !== "custom") {
-					display = applyDisplayTemplate(input.preset);
+					display = applyDisplayTemplate(input.preset, display.hiddenFooterFields);
 					provenance.density = source;
 					provenance.order = source;
 					markAllVisibility();
@@ -255,6 +273,14 @@ export function resolveDisplayLayers(layers: DisplayLayerState): {
 				provenance.density = source;
 				changedTemplateField = true;
 			} else warnings.push(invalidEnum("density", input.density));
+		}
+
+		if ("hiddenFooterFields" in input) {
+			const hidden = parseHiddenFooterFields(input.hiddenFooterFields, warnings);
+			if (hidden) {
+				display.hiddenFooterFields = hidden;
+				provenance.fields = source;
+			}
 		}
 
 		const layout = "segmentLayout" in input ? parsePersistedLayout(input.segmentLayout, warnings) : undefined;
@@ -452,6 +478,7 @@ export function resolveConfig(input: {
 	const config: AtelierConfig = {
 		...DEFAULT_CONFIG,
 		segmentLayout: cloneLayout(DEFAULT_CONFIG.segmentLayout),
+		hiddenFooterFields: [...DEFAULT_CONFIG.hiddenFooterFields],
 		sidebarPanelLayout: cloneLayout(DEFAULT_CONFIG.sidebarPanelLayout),
 	};
 	const warnings: string[] = [];

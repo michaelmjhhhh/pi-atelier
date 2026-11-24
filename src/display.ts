@@ -1,6 +1,7 @@
 import type {
 	Density,
 	DisplaySettings,
+	FooterFieldId,
 	PresetName,
 	SegmentId,
 	SegmentLayout,
@@ -22,12 +23,26 @@ export const PRODUCT_SEGMENT_ORDER = [
 export const TEMPLATE_NAMES = ["editorial", "minimal", "classic"] as const;
 export const DENSITIES = ["comfortable", "compact"] as const;
 
-const REQUIRED_SEGMENT_IDS: ReadonlySet<SegmentId> = new Set(["metrics", "context"]);
+/** Readings inside a segment that can be hidden on their own, in rail order. */
+export const SEGMENT_FIELDS = {
+	metrics: ["input", "output", "cache", "cost"],
+	performance: ["ttft", "tps"],
+	context: ["contextWindow", "autoCompact"],
+	model: ["model", "thinking"],
+	git: ["workspace", "branch"],
+} as const satisfies Partial<Record<SegmentId, readonly string[]>>;
+export const FOOTER_FIELD_IDS = Object.values(SEGMENT_FIELDS).flat();
+
+const FIELD_IDS: ReadonlySet<string> = new Set(FOOTER_FIELD_IDS);
 const SEGMENT_IDS: ReadonlySet<string> = new Set(PRODUCT_SEGMENT_ORDER);
 const PRESET_NAMES: ReadonlySet<string> = new Set([...TEMPLATE_NAMES, "custom"]);
 const DENSITY_NAMES: ReadonlySet<string> = new Set(DENSITIES);
 
-export const isRequiredSegment = (id: SegmentId): boolean => REQUIRED_SEGMENT_IDS.has(id);
+export const segmentFields = (id: SegmentId): readonly FooterFieldId[] =>
+	(SEGMENT_FIELDS as Partial<Record<SegmentId, readonly FooterFieldId[]>>)[id] ?? [];
+
+export const isFooterFieldId = (value: unknown): value is FooterFieldId =>
+	typeof value === "string" && FIELD_IDS.has(value);
 
 export const isSegmentId = (value: unknown): value is SegmentId =>
 	typeof value === "string" && SEGMENT_IDS.has(value);
@@ -43,7 +58,8 @@ const layout = (visible: readonly SegmentId[]): SegmentLayout => {
 	return PRODUCT_SEGMENT_ORDER.map((id) => ({ id, visible: shown.has(id) }));
 };
 
-export const DISPLAY_TEMPLATES: Record<TemplateName, Omit<DisplaySettings, "preset">> = {
+/** Templates pick segments only; hidden fields carry across a preset change. */
+export const DISPLAY_TEMPLATES: Record<TemplateName, Pick<DisplaySettings, "density" | "segmentLayout">> = {
 	editorial: {
 		density: "comfortable",
 		segmentLayout: layout(["activity", "metrics", "context", "model", "git", "statuses", "menu"]),
@@ -77,17 +93,22 @@ export const normalizeSegmentLayout = (entries: readonly SegmentLayoutEntry[]): 
 	for (const id of PRODUCT_SEGMENT_ORDER) {
 		if (!seen.has(id)) result.push({ id, visible: false });
 	}
-	for (const entry of result) {
-		if (isRequiredSegment(entry.id)) entry.visible = true;
-	}
 	return result;
 };
 
 export const toggleSegmentVisibility = (value: readonly SegmentLayoutEntry[], id: SegmentId): SegmentLayout =>
 	value.map((entry) => ({
 		...entry,
-		visible: entry.id === id && !isRequiredSegment(id) ? !entry.visible : entry.visible,
+		visible: entry.id === id ? !entry.visible : entry.visible,
 	}));
+
+/** Hidden fields in a stable order, so equal choices compare and persist identically. */
+export const toggleFooterField = (hidden: readonly FooterFieldId[], id: FooterFieldId): FooterFieldId[] => {
+	const next = new Set(hidden);
+	if (next.has(id)) next.delete(id);
+	else next.add(id);
+	return FOOTER_FIELD_IDS.filter((field) => next.has(field));
+};
 
 export const reorderSegment = (
 	value: readonly SegmentLayoutEntry[],
@@ -119,11 +140,15 @@ export const derivePresetIdentity = (
 		);
 	}) ?? "custom";
 
-export const applyDisplayTemplate = (name: TemplateName): DisplaySettings => {
+export const applyDisplayTemplate = (
+	name: TemplateName,
+	hiddenFooterFields: readonly FooterFieldId[] = [],
+): DisplaySettings => {
 	const template = DISPLAY_TEMPLATES[name];
 	return {
 		preset: name,
 		density: template.density,
 		segmentLayout: cloneLayout(template.segmentLayout),
+		hiddenFooterFields: [...hiddenFooterFields],
 	};
 };

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Let every status rail segment be hidden. **Tokens & cost** and **Context** were always shown before ([#131](https://github.com/michaelmjhhhh/pi-atelier/issues/131)).
+- Add per-field toggles to the status rail. In **Settings → Display**, each shown segment lists its fields below it (input, output, cache, cost; first token, tokens per second; window size, auto-compact; model name, thinking level; folder, branch), and Enter shows or hides one. Saved as `hiddenFooterFields`, which a project or session can override and which a preset change keeps ([#131](https://github.com/michaelmjhhhh/pi-atelier/issues/131)).
+
 ## 0.21.0 — 2026-11-24
 
 - Redesign **Settings → Display**. One frame holds a pinned status rail preview, then the **Status rail** and **Sidebar** sections side by side (stacked on narrow terminals), then a line describing the selected item and a key bar. The nested boxes, the duplicate Sidebar preview, the legends, and the row numbers are gone. Segments use plain names (**Tokens & cost**, **Speed**, **Extension status**). Preset and Density show where their value comes from (`default`, `saved`, `project`, or `this session`), and a segment's description says when a saved, project, or session setting changed its visibility or the order. The frame title shows **Unsaved changes** until you save.
