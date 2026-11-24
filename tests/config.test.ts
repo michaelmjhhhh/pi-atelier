@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG, loadConfig, resolveConfig, saveUserConfigPatch } from "../src/config.js";
-import { DISPLAY_TEMPLATES, PRODUCT_SEGMENT_ORDER } from "../src/display.js";
+import { DISPLAY_TEMPLATES, PRODUCT_SEGMENT_ORDER, reorderSegment } from "../src/display.js";
 
 const validateConfig = (user: unknown) => resolveConfig({ user });
 
@@ -135,6 +135,7 @@ describe("configuration validation", () => {
 			{ id: "brand", visible: false },
 		]);
 		expect(result.config.segmentLayout.map((entry) => entry.id)).toEqual([
+			"pi",
 			"menu",
 			"metrics",
 			"performance",
@@ -142,7 +143,6 @@ describe("configuration validation", () => {
 			"model",
 			"git",
 			"statuses",
-			"pi",
 			"brand",
 			"activity",
 		]);
@@ -189,6 +189,18 @@ describe("configuration validation", () => {
 		const layout = validateConfig({ segmentLayout: saved }).config.segmentLayout;
 		expect(layout[0]).toEqual({ id: "pi", visible: false });
 		expect(layout.slice(1)).toEqual(saved);
+	});
+
+	it("keeps Pi first even when a saved layout lists it elsewhere", () => {
+		const saved = [...PRODUCT_SEGMENT_ORDER.filter((id) => id !== "pi"), "pi" as const].map((id) => ({
+			id,
+			visible: true,
+		}));
+		const layout = validateConfig({ segmentLayout: saved }).config.segmentLayout;
+		expect(layout[0]).toEqual({ id: "pi", visible: true });
+		expect(layout.slice(1)).toEqual(saved.slice(0, -1));
+		expect(reorderSegment(layout, "pi", "later")).toEqual(layout);
+		expect(reorderSegment(layout, "brand", "earlier")).toEqual(layout);
 	});
 
 	it("uses legacy fallback for non-array layouts and retains hidden omissions", () => {

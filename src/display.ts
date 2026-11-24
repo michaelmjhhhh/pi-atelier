@@ -45,6 +45,9 @@ export const segmentFields = (id: SegmentId): readonly FooterFieldId[] =>
 export const isFooterFieldId = (value: unknown): value is FooterFieldId =>
 	typeof value === "string" && FIELD_IDS.has(value);
 
+/** Pi always leads the rail, so it is listed first and cannot be moved. */
+export const isPinnedSegment = (id: SegmentId): boolean => id === "pi";
+
 export const isSegmentId = (value: unknown): value is SegmentId =>
 	typeof value === "string" && SEGMENT_IDS.has(value);
 
@@ -104,6 +107,8 @@ export const normalizeSegmentLayout = (entries: readonly SegmentLayoutEntry[]): 
 		result.splice(index, 0, { id, visible: false });
 		seen.add(id);
 	});
+	const pinned = result.findIndex((entry) => isPinnedSegment(entry.id));
+	if (pinned > 0) result.unshift(...result.splice(pinned, 1));
 	return result;
 };
 
@@ -131,7 +136,8 @@ export const reorderSegment = (
 	const target = direction === "earlier" ? index - 1 : index + 1;
 	const current = result[index];
 	const neighbor = result[target];
-	if (index < 0 || !current || !neighbor) return result;
+	if (index < 0 || !current || !neighbor || isPinnedSegment(current.id) || isPinnedSegment(neighbor.id))
+		return result;
 	result[index] = neighbor;
 	result[target] = current;
 	return result;
