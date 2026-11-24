@@ -126,7 +126,7 @@ describe("Display Settings Workspace", () => {
 
 	it("accumulates Segment edits and retains overrides on close", () => {
 		const h = harness();
-		// Focus performance: preset, density, brand, pi, activity, metrics and its four fields precede it.
+		// Focus performance: preset, density, pi, brand, activity, metrics and its four fields precede it.
 		for (let index = 0; index < 10; index += 1) h.component.handleInput("\u001b[B");
 		h.component.handleInput(" ");
 		expect(

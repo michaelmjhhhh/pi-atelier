@@ -97,8 +97,8 @@ const MIN_SCROLL_ROWS = 10;
 const MIN_DETAIL_SCROLL_ROWS = 3;
 
 const SEGMENT_LABELS: Record<SegmentId, string> = {
-	brand: "Brand",
 	pi: "Pi",
+	brand: "Brand",
 	activity: "Activity",
 	metrics: "Tokens & cost",
 	performance: "Speed",
@@ -110,8 +110,8 @@ const SEGMENT_LABELS: Record<SegmentId, string> = {
 };
 
 const SEGMENT_DESCRIPTIONS: Record<SegmentId, string> = {
+	pi: "A single π at the start of the rail, a compact alternative to Brand.",
 	brand: "The Atelier mark at the start of the rail.",
-	pi: "A single π mark, a compact alternative to Brand.",
 	activity: "Whether Pi is working or ready.",
 	metrics: "Input and output tokens, cache hit rate, and cost.",
 	performance: "Time to first token and output speed.",

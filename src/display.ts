@@ -10,8 +10,8 @@ import type {
 } from "./types.js";
 
 export const PRODUCT_SEGMENT_ORDER = [
-	"brand",
 	"pi",
+	"brand",
 	"activity",
 	"metrics",
 	"performance",
@@ -91,9 +91,19 @@ export const normalizeSegmentLayout = (entries: readonly SegmentLayoutEntry[]): 
 		seen.add(entry.id);
 		result.push({ id: entry.id, visible: entry.visible });
 	}
-	for (const id of PRODUCT_SEGMENT_ORDER) {
-		if (!seen.has(id)) result.push({ id, visible: false });
-	}
+	// A segment the entries predate joins its neighbour in product order, hidden, so Pi lands
+	// before Brand at the start of the rail instead of after Menu. A segment with no listed
+	// neighbour is appended.
+	PRODUCT_SEGMENT_ORDER.forEach((id, rank) => {
+		if (seen.has(id)) return;
+		const indexOf = (neighbour: SegmentId | undefined): number =>
+			neighbour === undefined ? -1 : result.findIndex((entry) => entry.id === neighbour);
+		const preceding = indexOf(PRODUCT_SEGMENT_ORDER[rank - 1]);
+		const following = indexOf(PRODUCT_SEGMENT_ORDER[rank + 1]);
+		const index = preceding >= 0 ? preceding + 1 : following >= 0 ? following : result.length;
+		result.splice(index, 0, { id, visible: false });
+		seen.add(id);
+	});
 	return result;
 };
 

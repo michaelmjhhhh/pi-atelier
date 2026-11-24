@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Add a **Pi** status rail segment: a single `π` in the accent color, a compact alternative to **Brand**. It is hidden by default; turn it on in **Settings → Display**. A layout you saved earlier lists it last, hidden ([#130](https://github.com/michaelmjhhhh/pi-atelier/issues/130)).
+- Add a **Pi** status rail segment at the start of the rail, a compact alternative to **Brand**: the Nerd Font pi icon in **Nerd Font** mode, a bold `π` in Plain text, in the accent color. It is hidden by default; turn it on in **Settings → Display** ([#130](https://github.com/michaelmjhhhh/pi-atelier/issues/130)).
+- A segment that a saved `segmentLayout` predates now joins its neighbour in the default order instead of the end of the list, so Pi lands before Brand in an older layout.
 - Let every status rail segment be hidden. **Tokens & cost** and **Context** were always shown before ([#131](https://github.com/michaelmjhhhh/pi-atelier/issues/131)).
 - Add per-field toggles to the status rail. In **Settings → Display**, each shown segment lists its fields below it (input, output, cache, cost; first token, tokens per second; window size, auto-compact; model name, thinking level; folder, branch), and Enter shows or hides one. Saved as `hiddenFooterFields`, which a project or session can override and which a preset change keeps ([#131](https://github.com/michaelmjhhhh/pi-atelier/issues/131)).
 

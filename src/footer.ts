@@ -21,6 +21,7 @@ const WORKING_ANIMATION_INTERVAL_MS = 400;
 // Nerd Font glyphs, matching the icon vocabulary used by shell prompts. The Sidebar reuses
 // the ones for facts it also shows, so one fact keeps one icon.
 export const FOOTER_ICONS = {
+	pi: "\u{f03ff}", // nf-md-pi
 	brand: "\ue795", // nf-dev-terminal
 	model: "\ueb08", // nf-cod-hubot
 	thinking: "\uf0eb", // nf-fa-lightbulb
@@ -38,6 +39,7 @@ export const FOOTER_ICONS = {
 } as const;
 
 const PLAIN_SYMBOLS: Record<keyof typeof FOOTER_ICONS, string> = {
+	pi: "π",
 	brand: "",
 	model: "",
 	thinking: "think",
@@ -57,8 +59,8 @@ type FooterSymbols = typeof PLAIN_SYMBOLS;
 
 type FooterZone = "left" | "right";
 type FooterItemId =
-	| "brand"
 	| "pi"
+	| "brand"
 	| "status"
 	| "activity"
 	| "model"
@@ -90,8 +92,8 @@ const ITEM_META: Record<
 	FooterItemId,
 	{ zone: FooterZone; group: string; dropRank: number; header: boolean }
 > = {
-	brand: { zone: "left", group: "brand", dropRank: 0, header: true },
 	pi: { zone: "left", group: "pi", dropRank: 5, header: true },
+	brand: { zone: "left", group: "brand", dropRank: 0, header: true },
 	status: { zone: "left", group: "status", dropRank: 0, header: true },
 	activity: { zone: "left", group: "activity", dropRank: Number.POSITIVE_INFINITY, header: true },
 	model: { zone: "left", group: "model", dropRank: 60, header: true },
@@ -181,7 +183,7 @@ const SEGMENT_ITEMS: Record<SegmentId, (context: ItemContext) => FooterItem[]> =
 	brand: ({ palette, symbols }) => [
 		item("brand", iconFor(palette)(symbols.brand, palette.paint("muted", "ATELIER"), "accent")),
 	],
-	pi: ({ palette, theme }) => [item("pi", palette.paint("accent", theme.bold("π")))],
+	pi: ({ palette, theme, symbols }) => [item("pi", palette.paint("accent", theme.bold(symbols.pi)))],
 	activity: ({ state, palette, theme, workingDots, config }) => [
 		item(
 			"activity",

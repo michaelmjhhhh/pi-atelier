@@ -127,12 +127,25 @@ describe("configuration validation", () => {
 				null,
 			],
 		});
-		expect(result.config.segmentLayout.slice(0, 3)).toEqual([
+		expect(
+			result.config.segmentLayout.filter((entry) => ["menu", "metrics", "brand"].includes(entry.id)),
+		).toEqual([
 			{ id: "menu", visible: true },
 			{ id: "metrics", visible: false },
 			{ id: "brand", visible: false },
 		]);
-		expect(result.config.segmentLayout.map((entry) => entry.id)).toHaveLength(10);
+		expect(result.config.segmentLayout.map((entry) => entry.id)).toEqual([
+			"menu",
+			"metrics",
+			"performance",
+			"context",
+			"model",
+			"git",
+			"statuses",
+			"pi",
+			"brand",
+			"activity",
+		]);
 		expect(result.warnings.filter((warning) => warning.includes("duplicate"))).toHaveLength(1);
 		expect(result.warnings.filter((warning) => warning.includes("malformed"))).toHaveLength(1);
 	});
@@ -171,10 +184,17 @@ describe("configuration validation", () => {
 		);
 	});
 
+	it("places a segment a saved layout predates beside its product-order neighbour", () => {
+		const saved = PRODUCT_SEGMENT_ORDER.filter((id) => id !== "pi").map((id) => ({ id, visible: true }));
+		const layout = validateConfig({ segmentLayout: saved }).config.segmentLayout;
+		expect(layout[0]).toEqual({ id: "pi", visible: false });
+		expect(layout.slice(1)).toEqual(saved);
+	});
+
 	it("uses legacy fallback for non-array layouts and retains hidden omissions", () => {
 		const result = validateConfig({ segmentLayout: {}, segments: ["activity", "performance"] });
 		expect(result.warnings).toContain("segmentLayout must be an array");
-		expect(result.config.segmentLayout.map((entry) => entry.id).slice(0, 2)).toEqual([
+		expect(result.config.segmentLayout.filter((entry) => entry.visible).map((entry) => entry.id)).toEqual([
 			"activity",
 			"performance",
 		]);
@@ -307,7 +327,10 @@ describe("configuration files", () => {
 			session: { segmentLayout: [{ id: "brand", visible: true }] },
 		});
 		expect(result.config.density).toBe("compact");
-		expect(result.config.segmentLayout[0]).toEqual({ id: "brand", visible: true });
+		expect(result.config.segmentLayout.slice(0, 2)).toEqual([
+			{ id: "pi", visible: false },
+			{ id: "brand", visible: true },
+		]);
 		expect(result.displayProvenance.density).toBe("user");
 		expect(result.displayProvenance.order).toBe("session");
 		expect(result.displayProvenance.visibility.brand).toBe("session");
