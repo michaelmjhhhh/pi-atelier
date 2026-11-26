@@ -1,5 +1,10 @@
 # Changelog
 
+
+## Unreleased
+
+- Add a user-only `sidebarAnchor` setting, `"top"` (the default) or `"bottom"`. Anchored to the bottom, the whole Sidebar panel stack is pinned to the foot of the viewport: panels grow upward and stay flush above the footer, instead of rendering from the top with empty rows below. Short terminals drop the same rows in the same order as at the top ([#138](https://github.com/michaelmjhhhh/pi-atelier/issues/138)).
+
 ## 0.22.0 — 2026-11-26
 
 - Merge the Control Center **Settings** list and **Settings → Display** into one **Settings** workspace with four pages: **General** (Font, Atelier footer, Notifications), **Status rail** (preview, Preset, Density, segments), **Sidebar** (Style, Show at startup, Tool list, Prefill progress, panels), and **Session recap** (on or off, and the recap model, picked from a list on the page). Tab and Shift+Tab switch pages, and each page remembers its selection. Wide terminals list the pages on the left; narrow ones show them as tabs. A dot marks a page with unsaved changes.

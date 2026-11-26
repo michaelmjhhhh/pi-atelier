@@ -15,6 +15,8 @@ export type Density = (typeof DENSITIES)[number];
 export type BuiltinSidebarPanelId = (typeof BUILTIN_SIDEBAR_PANEL_IDS)[number];
 /** Framed panels with state-lit borders, or frameless headings for a quieter Sidebar. */
 export type SidebarStyle = "framed" | "minimal";
+/** Where the panel stack sits in the viewport. */
+export type SidebarAnchor = "top" | "bottom";
 /** Stable namespaced IDs are used by contributed panels. */
 export type ContributedSidebarPanelId = `${string}:${string}`;
 /** Configuration may retain built-ins and unavailable contributed panels. */
@@ -94,6 +96,8 @@ export interface AtelierConfig extends DisplaySettings {
 	/** Sidebar width in columns when a session starts. */
 	sidebarWidth: number;
 	sidebarStyle: SidebarStyle;
+	/** Where the panel stack sits in the viewport; user-only. */
+	sidebarAnchor: SidebarAnchor;
 	sidebarPanelLayout: SidebarPanelLayout;
 	completionNotifications: boolean;
 	showFooter: boolean;

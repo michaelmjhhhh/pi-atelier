@@ -232,6 +232,7 @@ Project settings override user settings, and session changes override both. Font
   "showSidebarOnStartup": true,
   "sidebarWidth": 44,
   "sidebarStyle": "framed",
+  "sidebarAnchor": "top",
   "showSidebarToolNames": false,
   "completionNotifications": true,
   "prefillEnabled": true,
@@ -244,6 +245,8 @@ Project settings override user settings, and session changes override both. Font
 
 `resizeShortcut` is the Sidebar resize key, `ctrl+shift+r` by default. A custom key replaces the default, so `ctrl+shift+r` stays free for other extensions. A blank value or a key that matches `f6` or `shortcut` warns and falls back to `ctrl+shift+r`. Set a key such as `"alt+r"` and run `/reload`.
 
+
+`sidebarAnchor` decides where the panel stack sits in the viewport: `"top"` (the default) renders panels from the top with empty rows below, `"bottom"` pins the whole stack to the foot of the viewport so panels grow upward and stay flush above the footer. Short terminals drop the same rows in the same order in both anchors. The setting is user-only; after a manual file edit run `/reload`.
 `toggleShortcut` binds a key that shows or hides the Sidebar directly, like `/atelier sidebar`. It is empty (no binding) by default; set a key such as `"ctrl+shift+b"` and run `/reload`. A key that matches `f6`, `shortcut`, or `resizeShortcut` is rejected with a warning.
 
 `hiddenFooterFields` hides single readings inside status rail segments and keeps them hidden when you switch presets:

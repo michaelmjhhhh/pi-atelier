@@ -31,6 +31,7 @@ import type {
 	AtelierState,
 	BuiltinSidebarPanelId,
 	NormalizedTodo,
+	SidebarAnchor,
 	SidebarStyle,
 	WorkspacePulseState,
 } from "./types.js";
@@ -176,11 +177,16 @@ function renderDock(
 	height: number,
 	palette: AtelierPalette,
 	resizing: boolean,
+	anchor: SidebarAnchor = "top",
 ): string[] {
 	const contentWidth = Math.max(0, width - 2);
 	const edge = resizing ? `${palette.paint("warning", "│")} ` : "  ";
+	// Bottom-anchored, the stack is pinned to the foot of the viewport, so a
+	// growing panel pushes the rows above it up instead of shifting the rows
+	// below it down.
+	const offset = anchor === "bottom" ? Math.max(0, height - rows.length) : 0;
 	return Array.from({ length: height }, (_, index) =>
-		truncateToWidth(`${edge}${fitToWidth(rows[index] ?? "", contentWidth)}`, width, ""),
+		truncateToWidth(`${edge}${fitToWidth(rows[index - offset] ?? "", contentWidth)}`, width, ""),
 	);
 }
 
@@ -1528,6 +1534,7 @@ export function renderSidebarLines(
 		safeHeight,
 		palette,
 		resizing,
+		config.sidebarAnchor,
 	);
 }
 
