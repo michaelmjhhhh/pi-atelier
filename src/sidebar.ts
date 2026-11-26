@@ -1,5 +1,11 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { type Component, type OverlayHandle, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+	type Component,
+	type OverlayHandle,
+	truncateToWidth,
+	visibleWidth,
+	wrapTextWithAnsi,
+} from "@earendil-works/pi-tui";
 import { DEFAULT_CONFIG } from "./config.js";
 import { contextRole, FOOTER_ICONS } from "./footer.js";
 import { type PrefillSnapshot, formatPrefillRows } from "./prefill.js";
@@ -15,6 +21,7 @@ import {
 	type ToolActivity,
 } from "./run-activity.js";
 import { isBuiltinSidebarPanelId, type SidebarPanelData } from "./sidebar-panels.js";
+import { formatAge, type SessionRecapView } from "./session-recap.js";
 import { createSplitPaneController, type SidebarMode, type SidebarStatus } from "./split-pane.js";
 import { createInertAtelierState } from "./state.js";
 import { type SubagentCostChartGraphics, subagentCostChart } from "./subagent-cost-chart.js";
@@ -40,6 +47,8 @@ export interface SidebarSnapshotInput {
 	sidebarPanels?: readonly SidebarPanelData[];
 	/** Live prefill progress for the current provider request; absent whenever nothing is prefilling. */
 	prefill?: PrefillSnapshot;
+	/** What the session is about and where it stopped. */
+	sessionRecap?: SessionRecapView;
 }
 
 export interface SidebarSnapshot extends AtelierState {
@@ -51,6 +60,7 @@ export interface SidebarSnapshot extends AtelierState {
 	todos: readonly NormalizedTodo[];
 	sidebarPanels: readonly SidebarPanelData[];
 	prefill?: PrefillSnapshot;
+	sessionRecap: SessionRecapView;
 }
 
 export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapshot {
@@ -66,6 +76,7 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
 		todos: input.todos ?? [],
 		sidebarPanels: input.sidebarPanels ?? [],
 		...(input.prefill ? { prefill: input.prefill } : {}),
+		sessionRecap: input.sessionRecap ?? {},
 	};
 }
 
@@ -86,6 +97,7 @@ const MAX_LISTED_TODOS = 8;
  * All sit in the Basic Multilingual Plane, which every Nerd Font build covers at one column.
  */
 const PANEL_ICONS: Record<BuiltinSidebarPanelId, string> = {
+	session: "\ueb4b", // nf-cod-pin
 	agent: FOOTER_ICONS.model,
 	activity: "\ueb31", // nf-cod-pulse
 	alerts: "\uea6c", // nf-cod-warning
@@ -681,6 +693,65 @@ function agentRows(
 	];
 }
 
+/** Lines a Session field may wrap to before it ends in an ellipsis. */
+const SESSION_FIELD_MAX_LINES = 2;
+const SESSION_LABEL_WIDTH = 8;
+
+/** A labeled field whose text wraps under itself, at most `SESSION_FIELD_MAX_LINES` lines. */
+function wrappedField(
+	label: string,
+	text: string,
+	width: number,
+	palette: AtelierPalette,
+	role: PaletteRole,
+): string[] {
+	// Narrow panels put the text under its label instead of beside it.
+	const beside = width - SESSION_LABEL_WIDTH >= 16;
+	const indent = beside ? SESSION_LABEL_WIDTH : 0;
+	const textWidth = Math.max(1, width - indent);
+	const wrapped = wrapTextWithAnsi(sanitizeInline(text), textWidth);
+	const lines = wrapped.slice(0, SESSION_FIELD_MAX_LINES);
+	if (wrapped.length > lines.length) {
+		const last = lines.length - 1;
+		lines[last] = truncateToWidth(`${lines[last] ?? ""} …`, textWidth, "…");
+	}
+	const painted = lines.map((line) => palette.paint(role, truncateToWidth(line, textWidth, "…")));
+	const head = palette.paint("muted", label);
+	if (!beside) return [head, ...painted];
+	return painted.map((line, index) =>
+		index === 0
+			? `${head}${" ".repeat(Math.max(1, indent - visibleWidth(label)))}${line}`
+			: `${" ".repeat(indent)}${line}`,
+	);
+}
+
+/** Session panel: the goal and the stopping point, with the age of the last run on the crown. */
+function sessionSection(
+	snapshot: SidebarSnapshot,
+	width: number,
+	palette: AtelierPalette,
+	now: number,
+): SectionContent {
+	const recap = snapshot.sessionRecap;
+	const goal = recap.goal
+		? wrappedField("Goal", recap.goal.text, width, palette, "primary")
+		: wrappedField("Goal", "Set with /atelier goal", width, palette, "dim");
+	const status = recap.status
+		? wrappedField(
+				"Status",
+				recap.status.text,
+				width,
+				palette,
+				recap.status.source === "todo" ? "working" : "primary",
+			)
+		: wrappedField("Status", PLACEHOLDER, width, palette, "dim");
+	const summary =
+		snapshot.activity !== "working" && recap.lastRunAt !== undefined
+			? palette.paint("dim", formatAge(now - recap.lastRunAt))
+			: undefined;
+	return { ...(summary ? { summary } : {}), rows: [...goal, ...status] };
+}
+
 function usageRows(
 	snapshot: SidebarSnapshot,
 	config: AtelierConfig,
@@ -770,6 +841,8 @@ const DROP_RANK = {
 	usage: 20,
 	contributed: 25,
 	agent: 28,
+	/** The whole point of switching back to a session; it outlasts the counters and lists. */
+	session: 88,
 	workspace: 30,
 	olderRecentTool: 50,
 	aggregate: 60,
@@ -810,6 +883,7 @@ interface Section {
  * so a lit frame never looks like a panel's resting color.
  */
 const PANEL_HUE: Record<BuiltinSidebarPanelId, PaletteRole> = {
+	session: "context",
 	agent: "input",
 	activity: "ready",
 	alerts: "warning",
@@ -1134,6 +1208,16 @@ export function renderSidebarLines(
 	const alerts = statusAlerts(snapshot);
 	const glyphs = config.nerdFont ? NERD_GLYPHS : PLAIN_GLYPHS;
 	const builtinPanels: Record<BuiltinSidebarPanelId, () => SidebarGroup[]> = {
+		session: () => {
+			const { summary, rows } = sessionSection(snapshot, contentWidth, palette, now);
+			const section: Section = {
+				id: "session",
+				title: "Session",
+				...(summary ? { summary } : {}),
+				summaryOptional: true,
+			};
+			return [{ name: "session", section, rows, dropRank: DROP_RANK.session }];
+		},
 		agent: () => [
 			{
 				name: "agent",

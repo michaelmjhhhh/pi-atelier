@@ -412,9 +412,9 @@ describe("extension registration", () => {
 				const rendered = workspace?.render(120).join("\n") ?? "";
 				expect(rendered).toContain("vendor:missing");
 
-				// Tab to the Sidebar; the missing panel and ten built-in panels precede the contributed one.
+				// Tab to the Sidebar; the missing panel and eleven built-in panels precede the contributed one.
 				workspace?.handleInput("\t");
-				for (let index = 0; index < 11; index += 1) workspace?.handleInput("\u001b[B");
+				for (let index = 0; index < 12; index += 1) workspace?.handleInput("\u001b[B");
 				const focusedRendered = workspace?.render(120).join("\n") ?? "";
 				expect(focusedRendered).toContain("Queue title");
 				expect(focusedRendered).toContain("unavailable");
@@ -433,6 +433,7 @@ describe("extension registration", () => {
 				);
 				expect(patch.sidebarPanelLayout?.map((entry) => entry.id)).toEqual([
 					"vendor:missing",
+					"session",
 					"agent",
 					"activity",
 					"alerts",

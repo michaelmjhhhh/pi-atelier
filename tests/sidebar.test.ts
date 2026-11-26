@@ -134,9 +134,13 @@ function contentRows(lines: string[]) {
 	});
 }
 
+/** Every panel that renders without session history; Session needs a branch to say anything. */
 const ALL_PANELS = {
 	...DEFAULT_CONFIG,
-	sidebarPanelLayout: DEFAULT_CONFIG.sidebarPanelLayout.map((entry) => ({ ...entry, visible: true })),
+	sidebarPanelLayout: DEFAULT_CONFIG.sidebarPanelLayout.map((entry) => ({
+		...entry,
+		visible: entry.id !== "session",
+	})),
 };
 
 const emptyPulse = {
@@ -897,7 +901,7 @@ describe("sidebar snapshot and layout", () => {
 			...ALL_PANELS,
 			sidebarPanelLayout: ALL_PANELS.sidebarPanelLayout.map((entry) => ({
 				...entry,
-				visible: entry.id !== "agent",
+				visible: entry.id !== "agent" && entry.id !== "session",
 			})),
 		};
 		const populated = {
