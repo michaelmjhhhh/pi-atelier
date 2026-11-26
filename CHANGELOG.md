@@ -1,5 +1,10 @@
 # Changelog
 
+
+## Unreleased
+
+- Keep the Activity panel at a constant height between turns. While nothing is running or recently finished, a dim placeholder row reserves the tool row's place, instead of the row appearing and disappearing and shifting the panels below it up and down. On a short terminal the placeholder is the first Activity row to go, like a real tool-name row ([#138](https://github.com/michaelmjhhhh/pi-atelier/issues/138)).
+
 ## 0.22.0 — 2026-11-26
 
 - Merge the Control Center **Settings** list and **Settings → Display** into one **Settings** workspace with four pages: **General** (Font, Atelier footer, Notifications), **Status rail** (preview, Preset, Density, segments), **Sidebar** (Style, Show at startup, Tool list, Prefill progress, panels), and **Session recap** (on or off, and the recap model, picked from a list on the page). Tab and Shift+Tab switch pages, and each page remembers its selection. Wide terminals list the pages on the left; narrow ones show them as tabs. A dot marks a page with unsaved changes.

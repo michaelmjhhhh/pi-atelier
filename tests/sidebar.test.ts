@@ -245,7 +245,8 @@ describe("sidebar snapshot and layout", () => {
 		expect(lines.every((line) => stripAnsi(line).startsWith("  "))).toBe(true);
 		expect(stripAnsi(lines[0] ?? "")).toMatch(/^  ╭─ ✦ Activity ─+╮$/);
 		const rows = contentRows(lines);
-		expect(rows.slice(0, 4)).toEqual(["Activity", "◆ Working", "", ""]);
+		// The Activity panel reserves its tool row while nothing runs.
+		expect(rows.slice(0, 4)).toEqual(["Activity", "◆ Working", "—", ""]);
 		expect(headingIndex(rows, "Context")).toBeGreaterThan(0);
 		expect(headingIndex(rows, "Changed files")).toBeGreaterThan(headingIndex(rows, "Context"));
 		// Model, usage, and tool counts are already in the footer.
@@ -789,7 +790,9 @@ describe("sidebar snapshot and layout", () => {
 		const fullHeight = fullRows.findLastIndex((row) => row !== "") + 3;
 		const constrained = renderRows(toolsSnapshot, {
 			config: expandedConfig,
-			height: fullHeight - 1,
+			// The Activity placeholder row drops first, so constrain one row further
+			// to reach the tool-name row this test exercises.
+			height: fullHeight - 2,
 			color: false,
 		});
 		expect(constrained[headingIndex(constrained, "Tools")]).toMatch(/^Tools\s+4 of 7$/);

@@ -1019,6 +1019,19 @@ function activityGroups(
 			rows: activity.phase === "idle" ? [] : responsePerformanceRows(activity, width, palette),
 			dropRank: DROP_RANK.performance,
 		},
+		// With no tools to show, reserve the row anyway so the panel keeps its
+		// height between turns; the placeholder sheds first on a short terminal,
+		// like a real tool-name row.
+		...(visibleActive.length === 0 && moreRunning.length === 0 && recent.length === 0
+			? [
+					{
+						name: "activityToolPlaceholder",
+						section,
+						rows: [palette.paint("dim", "—")],
+						dropRank: DROP_RANK.toolName,
+					},
+				]
+			: []),
 		...visibleActive.map((tool, index) => ({
 			name: `activityActive:${tool.id}`,
 			section,
