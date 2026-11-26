@@ -130,6 +130,8 @@ interface SidebarGlyphs {
 	todoPending: string;
 	alertError: string;
 	alertWarning: string;
+	/** Leads the Session panel's status line. */
+	statusLead: string;
 }
 
 const PLAIN_GLYPHS: SidebarGlyphs = {
@@ -144,6 +146,7 @@ const PLAIN_GLYPHS: SidebarGlyphs = {
 	todoPending: "○",
 	alertError: "✕",
 	alertWarning: "▲",
+	statusLead: "›",
 };
 
 const NERD_GLYPHS: SidebarGlyphs = {
@@ -158,6 +161,7 @@ const NERD_GLYPHS: SidebarGlyphs = {
 	todoPending: "\uebb5", // nf-cod-circle_large
 	alertError: "\uea87", // nf-cod-error
 	alertWarning: "\uea6c", // nf-cod-warning
+	statusLead: "\ueab6", // nf-cod-chevron_right
 };
 
 /** Text, or the placeholder (painted dim) when there is none. */
@@ -699,81 +703,92 @@ function agentRows(
 }
 
 /** Lines a Session field may wrap to before it ends in an ellipsis. */
-const SESSION_FIELD_MAX_LINES = 2;
-const SESSION_LABEL_WIDTH = 8;
+/** Lines the goal may wrap to before it ends in an ellipsis; it is a title, so it stays short. */
+const SESSION_GOAL_MAX_LINES = 2;
+/** Lines the status may wrap to: it is what changed since you last looked, so it gets the most room. */
+const SESSION_STATUS_MAX_LINES = 3;
 
-/** A labeled field whose text wraps under itself, at most `SESSION_FIELD_MAX_LINES` lines. */
-function wrappedField(
-	label: string,
-	text: string,
-	width: number,
-	palette: AtelierPalette,
-	role: PaletteRole,
-): string[] {
-	// Narrow panels put the text under its label instead of beside it.
-	const beside = width - SESSION_LABEL_WIDTH >= 16;
-	const indent = beside ? SESSION_LABEL_WIDTH : 0;
-	const textWidth = Math.max(1, width - indent);
-	const wrapped = wrapTextWithAnsi(sanitizeInline(text), textWidth);
-	const lines = wrapped.slice(0, SESSION_FIELD_MAX_LINES);
+/** `text` wrapped to `width`, at most `maxLines` lines, the last ending in an ellipsis when cut. */
+function wrapLines(text: string, width: number, maxLines: number): string[] {
+	const safeWidth = Math.max(1, width);
+	const wrapped = wrapTextWithAnsi(sanitizeInline(text), safeWidth);
+	const lines = wrapped.slice(0, maxLines).map((line) => truncateToWidth(line, safeWidth, "…"));
 	if (wrapped.length > lines.length) {
 		const last = lines.length - 1;
-		lines[last] = truncateToWidth(`${lines[last] ?? ""} …`, textWidth, "…");
+		lines[last] = truncateToWidth(`${lines[last] ?? ""} …`, safeWidth, "…");
 	}
-	const painted = lines.map((line) => palette.paint(role, truncateToWidth(line, textWidth, "…")));
-	const head = palette.paint("muted", label);
-	if (!beside) return [head, ...painted];
-	return painted.map((line, index) =>
-		index === 0
-			? `${head}${" ".repeat(Math.max(1, indent - visibleWidth(label)))}${line}`
-			: `${" ".repeat(indent)}${line}`,
-	);
+	return lines;
 }
 
-/** Session panel: the goal and the stopping point, with the age of the last run on the crown. */
+/**
+ * Session panel: the goal as the panel's headline, the stopping point led by a mark and hung
+ * under it, and the age of the last run on the crown. Weight and the mark tell the two apart,
+ * so neither needs a label row.
+ */
 function sessionSection(
 	snapshot: SidebarSnapshot,
 	config: AtelierConfig,
 	width: number,
 	palette: AtelierPalette,
+	theme: ThemeLike,
+	glyphs: SidebarGlyphs,
 	now: number,
 ): SectionContent {
 	const recap = snapshot.sessionRecap;
 	const goal = recap.goal
-		? wrappedField("Goal", recap.goal.text, width, palette, "primary")
-		: wrappedField(
-				"Goal",
-				config.sessionRecap ? "Written after the first reply" : "Set with /atelier goal",
-				width,
-				palette,
-				"dim",
-			);
-	const status = recap.status
-		? wrappedField(
-				"Status",
-				recap.status.text,
-				width,
-				palette,
-				recap.status.source === "todo" ? "working" : "primary",
+		? wrapLines(recap.goal.text, width, SESSION_GOAL_MAX_LINES).map((line) =>
+				// A goal the user or a recap wrote is the headline; a session name is only a stand-in.
+				recap.goal?.source === "name"
+					? palette.paint("primary", line)
+					: theme.bold(palette.paint("primary", line)),
 			)
-		: wrappedField("Status", PLACEHOLDER, width, palette, "dim");
-	const working = snapshot.activity === "working";
+		: wrapLines(
+				config.sessionRecap ? "Goal is written after the first reply" : "Set a goal with /atelier goal",
+				width,
+				SESSION_GOAL_MAX_LINES,
+			).map((line) => palette.paint("dim", line));
+	const status: string[] = [];
+	if (recap.status) {
+		const todo = recap.status.source === "todo";
+		const mark = todo
+			? palette.paint("working", glyphs.todoActive)
+			: palette.paint("muted", glyphs.statusLead);
+		const indent = visibleWidth(todo ? glyphs.todoActive : glyphs.statusLead) + 1;
+		const role: PaletteRole = todo ? "working" : "primary";
+		for (const [index, line] of wrapLines(
+			recap.status.text,
+			width - indent,
+			SESSION_STATUS_MAX_LINES,
+		).entries()) {
+			status.push(`${index === 0 ? `${mark} ` : " ".repeat(indent)}${palette.paint(role, line)}`);
+		}
+	}
 	const summary = recap.summarizing
-		? palette.paint("dim", "summarizing…")
-		: !working && recap.lastRunAt !== undefined
+		? palette.paint("dim", "updating…")
+		: snapshot.activity !== "working" && recap.lastRunAt !== undefined
 			? palette.paint("dim", formatAge(now - recap.lastRunAt))
 			: undefined;
-	return { ...(summary ? { summary } : {}), rows: [...goal, ...status] };
+	return {
+		...(summary ? { summary } : {}),
+		// A narrow frame still shows that a recap is being written.
+		...(recap.summarizing ? { compactSummary: palette.paint("dim", "…") } : {}),
+		rows: [...goal, ...status],
+	};
 }
 
-/** `Recap · claude-sonnet-5-5 · $0.0066`: who wrote the recap lines and what they cost. */
+/** `claude-haiku-4-5` from `anthropic/claude-haiku-4-5-20251001`: no provider, no date stamp. */
+function shortModelName(model: string): string {
+	return model.slice(model.indexOf("/") + 1).replace(/[-@]\d{8}$/, "");
+}
+
+/** Who wrote the recap lines and what they cost: the model on the left, the cost kept whole on the right. */
 function recapByRow(snapshot: SidebarSnapshot, width: number, palette: AtelierPalette): string[] {
 	const by = snapshot.sessionRecap.recapBy;
 	if (!by) return [];
-	const model = by.model ? by.model.slice(by.model.indexOf("/") + 1) : undefined;
-	const cost = by.cost === undefined ? undefined : `$${by.cost.toFixed(by.cost < 0.01 ? 4 : 3)}`;
-	const text = ["Recap", model, cost].filter(Boolean).join(" · ");
-	return [palette.paint("dim", truncateToWidth(sanitizeInline(text), width, "…"))];
+	const model = by.model ? sanitizeInline(shortModelName(by.model)) : "";
+	const cost = by.cost === undefined ? "" : `$${by.cost.toFixed(by.cost < 0.01 ? 4 : 3)}`;
+	if (!model && !cost) return [];
+	return [palette.paint("dim", splitRow(model, cost, width))];
 }
 
 function usageRows(
@@ -1235,11 +1250,20 @@ export function renderSidebarLines(
 	const glyphs = config.nerdFont ? NERD_GLYPHS : PLAIN_GLYPHS;
 	const builtinPanels: Record<BuiltinSidebarPanelId, () => SidebarGroup[]> = {
 		session: () => {
-			const { summary, rows } = sessionSection(snapshot, config, contentWidth, palette, now);
+			const { summary, compactSummary, rows } = sessionSection(
+				snapshot,
+				config,
+				contentWidth,
+				palette,
+				theme,
+				glyphs,
+				now,
+			);
 			const section: Section = {
 				id: "session",
 				title: "Session",
 				...(summary ? { summary } : {}),
+				...(compactSummary ? { compactSummary } : {}),
 				summaryOptional: true,
 			};
 			return [

@@ -99,16 +99,21 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 
 The **Session** panel answers "what was this for, and where did it stop?" when you switch back to
 a session. It is off by default; turn it on in **Settings → Display**. It sits at the top of the
-Sidebar, with the time since the last run on its frame.
+Sidebar, with the time since the last run on its frame, or `updating…` while a recap is written.
 
 ```text
-╭─ ✦ Session ─────────────────── 12m ago ╮
-│ Goal    Sidebar session panel          │
-│ Status  Tests pass; README and         │
-│         changelog updated, PR is next  │
-│ Recap · claude-sonnet-5-5 · $0.0066    │
-╰────────────────────────────────────────╯
+╭─ ✦ Session ──── just now ╮
+│ Python tasks CLI with    │  goal, in bold
+│ tasks.json               │
+│ › todo.py written and    │  status
+│   verified; awaiting     │
+│   your next request      │
+│ deepseek-flash   $0.0004 │  recap model and cost
+╰──────────────────────────╯
 ```
+
+The goal is the panel's headline (up to two lines); the status follows a `›` (up to three lines),
+or the TODO's own mark while a TODO is in progress.
 
 While the panel is shown, a model writes its two lines after each run that ends with a reply:
 
@@ -118,7 +123,8 @@ While the panel is shown, a model writes its two lines after each run that ends 
   `/atelier goal` alone clears it; `/atelier goal auto` has the goal written again after the next
   run, keeping the old one if it is still accurate.
 - **Status** is rewritten after every run: where the work stands or the next step.
-- A dim row names the model and the cost of the recap behind the lines shown. Pi's own usage
+- A dim row names the model (without its provider or date stamp) and the cost of the recap behind
+  the lines shown. Pi's own usage
   totals do not include recaps.
 
 | Row | Source, first match wins |
