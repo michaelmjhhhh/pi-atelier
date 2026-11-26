@@ -30,7 +30,7 @@ pi install npm:pi-atelier
 Start Pi and open the control center with `/atelier` or **F6** (**Fn+F6** on keyboards with media keys).
 
 > [!TIP]
-> Atelier starts in Plain text mode, which works with any monospace font. For icons, select a Nerd Font in your terminal and choose **Settings → Font → Nerd Font**. See [Terminal font](#terminal-font).
+> Atelier starts in Plain text mode, which works with any monospace font. For icons, select a Nerd Font in your terminal and choose **Settings → General → Font → Nerd Font**. See [Terminal font](#terminal-font).
 
 > [!NOTE]
 > Atelier uses the core packages of the running Pi host. Its npm peers are optional so installing it never pulls in a second copy of Pi; update Pi itself separately. Pi packages run with your system permissions, so review third-party source before installing.
@@ -46,7 +46,7 @@ Start Pi and open the control center with `/atelier` or **F6** (**Fn+F6** on key
 
 ### Terminal font
 
-Plain text mode is the default. It works with any monospace font and keeps colors, metrics, and the responsive layout. Nerd Font mode adds icons to the footer and the Sidebar (one per panel title, plus tool, todo, and alert marks) but needs a terminal font that covers them, such as one from [nerdfonts.com](https://www.nerdfonts.com) or a Symbols Nerd Font Mono fallback; without one, the icons render as boxes. Switch in **Settings → Font** or set `"nerdFont": true`.
+Plain text mode is the default. It works with any monospace font and keeps colors, metrics, and the responsive layout. Nerd Font mode adds icons to the footer and the Sidebar (one per panel title, plus tool, todo, and alert marks) but needs a terminal font that covers them, such as one from [nerdfonts.com](https://www.nerdfonts.com) or a Symbols Nerd Font Mono fallback; without one, the icons render as boxes. Switch in **Settings → General → Font** or set `"nerdFont": true`.
 
 ## Features
 
@@ -68,7 +68,8 @@ No telemetry. No network requests of its own, except the Session panel's recaps,
 Open `/atelier` or press **F6** to change display settings, control the sidebar, select models and tools, or view subagent usage.
 
 ```text
-/atelier display              display settings
+/atelier settings [page]      settings; page is general, rail, sidebar, or recap
+/atelier display              settings, on the Status rail page
 /atelier goal <text>          set the session goal; no text clears it
 /atelier goal auto            write the goal again after the next run
 /atelier usage                subagent cost graph
@@ -89,16 +90,16 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 - Showing or hiding is independent of the mode. A manually hidden sidebar stays hidden when the terminal grows.
 - The preferred width survives terminal resizes and mode changes.
 - A confirmed resize is saved as `sidebarWidth` and becomes the starting width for new sessions. Escape keeps the saved width.
-- Mode and visibility are session-scoped. The startup visibility preference is set in Settings.
-- The sidebar shows what the footer cannot: whether the agent is working and which tools are running or just finished, your TODOs, the context meter, and the files you changed with lines added and removed. Model, usage, and tool counts are already in the footer, so the Agent, Usage, and Tools panels start hidden; turn them on in **Settings → Display**. Activity also lists the first-token time and output speed of the latest response, which the footer shows only when its `performance` segment is on. A layout you saved earlier keeps its own choices.
+- Mode and visibility are session-scoped. The startup visibility preference is set in **Settings → Sidebar → Show at startup**.
+- The sidebar shows what the footer cannot: whether the agent is working and which tools are running or just finished, your TODOs, the context meter, and the files you changed with lines added and removed. Model, usage, and tool counts are already in the footer, so the Agent, Usage, and Tools panels start hidden; turn them on in **Settings → Sidebar**. Activity also lists the first-token time and output speed of the latest response, which the footer shows only when its `performance` segment is on. A layout you saved earlier keeps its own choices.
 - Every panel has the same neutral grey frame; its title and ✦ (in Nerd Font mode, the panel's icon) keep a color of their own. A frame lights up only when its panel needs attention: Activity while the agent works (red on an error), Context past your warning and danger thresholds, Changed files on a merge conflict. Inside the panels, color marks state only. When a run finishes, the Activity frame glows green for three seconds, then returns to grey.
-- **Settings → Sidebar style** switches between **Framed** (the default) and **Minimal**: no frames, just quiet headings that take the state color instead. The setting is saved as the user-only `sidebarStyle` (`"framed"` or `"minimal"`).
+- **Settings → Sidebar → Style** switches between **Framed** (the default) and **Minimal**: no frames, just quiet headings that take the state color instead. The setting is saved as the user-only `sidebarStyle` (`"framed"` or `"minimal"`).
 - The TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension. Atelier does not change `todo` results, so the agent keeps task ids and `list` output.
 
 ### Session panel
 
 The **Session** panel answers "what was this for, and where did it stop?" when you switch back to
-a session. It is off by default; turn it on in **Settings → Display**. It sits at the top of the
+a session. It is off by default; turn it on in **Settings → Sidebar**. It sits at the top of the
 Sidebar, with the time since the last run on its frame, or `updating…` while a recap is written.
 
 ```text
@@ -141,7 +142,7 @@ While the panel is shown, a model writes its two lines after each run that ends 
   A missing model, missing authentication, a failed reply, or a reply that calls a tool or misses
   the format warns once per session and leaves the panel on its other sources.
 
-**Which model writes it** (**Settings → Recap model**, `sessionRecapModel`, user-only):
+**Which model writes it** (**Settings → Session recap → Recap model**, `sessionRecapModel`, user-only):
 
 - **Session model** (default, `""`): the conversation is replayed as the agent sends it, plus one
   recap request, right after the run while the provider's prompt cache is warm. The prefix is read
@@ -157,7 +158,7 @@ While the panel is shown, a model writes its two lines after each run that ends 
   that model, uncached and without reasoning. A small model
   costs about $0.001 per recap. This can send the transcript to a different provider.
 
-Turn **Settings → Session recap** off (`"sessionRecap": false`, user-only) to keep the panel
+Turn **Settings → Session recap → Session recap** off (`"sessionRecap": false`, user-only) to keep the panel
 without model requests: the goal then comes from `/atelier goal` or the session name, and the
 status from the last reply.
 
@@ -205,7 +206,7 @@ reporting needs Pi 0.99 or newer.
 | **minimal** | Compact layout |
 | **classic** | Detailed telemetry |
 
-Pi supports one custom footer and one custom editor at a time. Extension load order decides which one is visible. To keep another extension's footer and use only the Atelier sidebar, choose **Settings → Atelier footer → Off** or set `"showFooter": false`. This also leaves Pi's composer unchanged. The sidebar does not show extension statuses while the Atelier footer is off.
+Pi supports one custom footer and one custom editor at a time. Extension load order decides which one is visible. To keep another extension's footer and use only the Atelier sidebar, choose **Settings → General → Atelier footer → Off** (it takes effect when Settings closes) or set `"showFooter": false`. This also leaves Pi's composer unchanged. The sidebar does not show extension statuses while the Atelier footer is off.
 
 ## Configuration
 
@@ -257,7 +258,9 @@ Project settings override user settings, and session changes override both. Font
 
 `sidebarWidth` is the sidebar width in columns when a session starts, from 28 through 72. The sidebar still narrows when the terminal leaves less than 64 columns for the main pane.
 
-Use **Settings → Display** to reorder or hide status rail segments and sidebar panels. The **Pi** segment shows a single `π` at the start of the rail and takes less room than **Brand**. Every segment can be hidden, and each shown segment lists its fields below it so you can hide single readings, such as cost or the thinking level. A live preview of the status rail stays pinned at the top. Press Enter to show or hide the selected item, Shift+↑/↓ to move it, ←/→ to change the preset or density, Tab to jump between sections, and `s` to save as your default. Status rail changes apply to the session at once; sidebar changes apply when you save. Undo (`u`) restores the latest Display or Sidebar edit, including a Display Revert. The legacy user settings `showSidebarAgent` and `showSidebarTodos` still apply when `sidebarPanelLayout` is absent. A layout you saved before Prefill existed gains that panel next to Context on the next start; one saved before Session gains it hidden.
+**Settings** (`/atelier settings`, or **Settings** in the Control Center) has four pages: **General** (font, Atelier footer, notifications), **Status rail**, **Sidebar** (style, startup, tool list, prefill progress, panels), and **Session recap**. Tab and Shift+Tab switch pages; each page keeps its selection. A wide terminal lists the pages on the left, and a narrow one shows them as tabs. A dot marks a page with unsaved changes, and a note at the top of each page says how its changes are kept.
+
+On **Status rail**, reorder or hide segments. The **Pi** segment shows a single `π` at the start of the rail and takes less room than **Brand**. Every segment can be hidden; → opens a shown segment's fields so you can hide single readings, such as cost or the thinking level, and ← closes them. A live preview of the status rail stays pinned at the top. Press Enter to show or hide the selected item, Shift+↑/↓ to move it, ←/→ to change the preset or density, and `s` to save as your default. Status rail changes apply to the session at once; sidebar panel changes apply when you save, and Escape asks once before closing without them. The other settings save as you change them. Undo (`u`) restores the latest change on the page in view, including a Revert (`r`). The legacy user settings `showSidebarAgent` and `showSidebarTodos` still apply when `sidebarPanelLayout` is absent. A layout you saved before Prefill existed gains that panel next to Context on the next start; one saved before Session gains it hidden.
 
 ### Sidebar panels from other extensions
 
@@ -308,7 +311,7 @@ fewer than four bar columns fit; label/value rendering is retained. Older hosts
 ignore `progress`. No-color mode uses plain filled/empty blocks.
 
 - Panel IDs are namespaced (`vendor:name`).
-- New panels start hidden; enable them in **Settings → Display**.
+- New panels start hidden; enable them in **Settings → Sidebar**.
 - Titles and rows are plain text. Terminal sequences are stripped and oversized payloads are rejected (see the exported `SIDEBAR_PANEL_MAX_*` limits).
 - Extensions that cannot import the helper can emit the exported `SidebarPanelEvent` types on the `pi-atelier:sidebar-panels` channel directly.
 
@@ -318,8 +321,8 @@ ignore `progress`. No-color mode uses plain filled/empty blocks.
 | --- | --- |
 | Shortcut does nothing | Use `/atelier`, change `shortcut`, then run `/reload`. The default is `f6` on macOS and Windows; media-key keyboards may need Fn+F6. Saved `alt+a` settings resolve to `f6` and Alt+A is no longer registered. Other custom shortcuts add a binding alongside F6. Other extensions or terminal key mappings can still intercept F6. |
 | Editor key stops working | Extension shortcuts take precedence over Pi's built-in keybindings. A `shortcut`, `resizeShortcut`, or `toggleShortcut` such as `ctrl+b` shadows the editor's cursor-left action. Choose a key Pi does not use, then run `/reload`. |
-| Status rail missing | Use TUI mode, check **Settings → Atelier footer**, and check for another extension's custom footer. |
-| Icons render as boxes | Choose **Settings → Font → Plain text**, or select a Nerd Font in your terminal. |
+| Status rail missing | Use TUI mode, check **Settings → General → Atelier footer**, and check for another extension's custom footer. |
+| Icons render as boxes | Choose **Settings → General → Font → Plain text**, or select a Nerd Font in your terminal. |
 | Metrics disagree | Token and cost totals cover the session; context usage covers the current model context. |
 
 ## Privacy

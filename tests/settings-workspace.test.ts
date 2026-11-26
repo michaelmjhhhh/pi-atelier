@@ -1,10 +1,10 @@
 import { plainTheme as theme } from "./helpers/render.js";
 import { settleMicrotasks } from "./helpers/async.js";
-import { requiredRow, requiredIndex } from "./helpers/render.js";
+import { requiredRow } from "./helpers/render.js";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { resolveDisplayLayers, DEFAULT_CONFIG } from "../src/config.js";
-import { createSettingsWorkspace } from "../src/settings-workspace.js";
+import { createSettingsWorkspace, type SettingsPage } from "../src/settings-workspace.js";
 import { type AtelierConfig, type DisplayLayerState, type DisplayPatch } from "../src/types.js";
 
 function harness(
@@ -23,6 +23,7 @@ function harness(
 			visible: entry.visible,
 		})),
 	viewportHeight?: () => number,
+	initialPage: SettingsPage = "rail",
 ) {
 	let layers: DisplayLayerState = structuredClone(initialLayers);
 	const render = vi.fn();
@@ -47,6 +48,20 @@ function harness(
 		},
 		getRenderConfig: () => renderConfig,
 		getSidebarPanelSettings: sidebarSettings,
+		preferences: {
+			setNerdFont: vi.fn().mockResolvedValue(undefined),
+			setShowFooter: vi.fn().mockResolvedValue(undefined),
+			setCompletionNotifications: vi.fn().mockResolvedValue(undefined),
+			setPrefillEnabled: vi.fn().mockResolvedValue(undefined),
+			setSidebarStyle: vi.fn().mockResolvedValue(undefined),
+			setShowSidebarOnStartup: vi.fn().mockResolvedValue(undefined),
+			isToolListExpanded: () => false,
+			toggleToolList: vi.fn().mockResolvedValue(undefined),
+			setSessionRecap: vi.fn().mockResolvedValue(undefined),
+			setSessionRecapModel: vi.fn().mockResolvedValue(undefined),
+			getRecapModels: () => [],
+		},
+		initialPage,
 		...(viewportHeight ? { getViewportHeight: viewportHeight } : {}),
 		theme,
 		colorEnabled: false,
@@ -69,7 +84,7 @@ function harness(
 const text = (component: ReturnType<typeof createSettingsWorkspace>, width = 120) =>
 	component.render(width).join("\n");
 
-describe("Display Settings Workspace", () => {
+describe("Settings Workspace", () => {
 	it("merges newly discovered contributed panels into draft rows and saves enabled panels", async () => {
 		let discovered = false;
 		const configuredLayout = [
@@ -77,24 +92,29 @@ describe("Display Settings Workspace", () => {
 			...DEFAULT_CONFIG.sidebarPanelLayout,
 		];
 		const renderConfig = { ...DEFAULT_CONFIG, sidebarPanelLayout: configuredLayout };
-		const h = harness({}, renderConfig, () => [
-			...configuredLayout.map((entry) => ({
-				id: entry.id,
-				title: entry.id === "vendor:missing" ? "Missing" : entry.id,
-				available: entry.id !== "vendor:missing" && entry.id !== "tools",
-				visible: entry.visible,
-			})),
-			...(discovered
-				? [{ id: "vendor:queue" as const, title: "Queue", available: true, visible: false }]
-				: []),
-		]);
+		const h = harness(
+			{},
+			renderConfig,
+			() => [
+				...configuredLayout.map((entry) => ({
+					id: entry.id,
+					title: entry.id === "vendor:missing" ? "Missing" : entry.id,
+					available: entry.id !== "vendor:missing" && entry.id !== "tools",
+					visible: entry.visible,
+				})),
+				...(discovered
+					? [{ id: "vendor:queue" as const, title: "Queue", available: true, visible: false }]
+					: []),
+			],
+			undefined,
+			"sidebar",
+		);
 		discovered = true;
 		expect(text(h.component)).toContain("Queue");
 		expect(text(h.component)).toMatch(/● Missing +unavailable/);
 
-		// Tab to the Sidebar; the configured layout precedes the discovered panel.
-		h.component.handleInput("\t");
-		for (let index = 0; index < configuredLayout.length; index += 1) h.component.handleInput("\u001b[B");
+		// Four Sidebar settings and the configured layout precede the discovered panel.
+		for (let index = 0; index < configuredLayout.length + 4; index += 1) h.component.handleInput("\u001b[B");
 		h.component.handleInput(" ");
 		h.component.handleInput("s");
 		expect(h.persist).toHaveBeenCalled();
@@ -126,15 +146,15 @@ describe("Display Settings Workspace", () => {
 
 	it("accumulates Segment edits and retains overrides on close", () => {
 		const h = harness();
-		// Focus performance: preset, density, pi, brand, activity, metrics and its four fields precede it.
-		for (let index = 0; index < 10; index += 1) h.component.handleInput("\u001b[B");
+		// Focus performance: preset, density, pi, brand, activity, and metrics precede it.
+		for (let index = 0; index < 6; index += 1) h.component.handleInput("\u001b[B");
 		h.component.handleInput(" ");
 		expect(
 			resolveDisplayLayers(h.layers).display.segmentLayout.find((entry) => entry.id === "performance")
 				?.visible,
 		).toBe(true);
-		// Back up past the four metrics fields; metrics can be hidden too.
-		for (let index = 0; index < 5; index += 1) h.component.handleInput("\u001b[A");
+		// Metrics can be hidden too.
+		h.component.handleInput("\u001b[A");
 		h.component.handleInput(" ");
 		expect(
 			resolveDisplayLayers(h.layers).display.segmentLayout.find((entry) => entry.id === "metrics")?.visible,
@@ -228,13 +248,21 @@ describe("Display Settings Workspace", () => {
 		expect(lines[previewStart + 2]).toContain("└");
 	});
 
-	it("bounds the Display Settings frame to the live viewport without clipping its border", () => {
-		const h = harness({}, DEFAULT_CONFIG, undefined, () => 39);
+	it("bounds the Settings frame to the live viewport and the tallest page without clipping its border", () => {
+		let viewport = 39;
+		const h = harness({}, DEFAULT_CONFIG, undefined, () => viewport);
+		const natural = h.component.render(126);
+		expect(natural.length).toBeLessThan(39);
+		viewport = 20;
 		const lines = h.component.render(126);
-		expect(lines).toHaveLength(39);
+		expect(lines).toHaveLength(20);
 		expect(lines[0]).toContain("╭");
 		expect(lines.at(-1)).toContain("╰");
 		expect(lines.every((line) => visibleWidth(line) <= 126)).toBe(true);
+		// Every page keeps the same height.
+		viewport = 39;
+		h.component.handleInput("\t");
+		expect(h.component.render(126)).toHaveLength(natural.length);
 	});
 
 	it.each([0, 1, 2, 3, 4])("keeps every line within a tiny viewport of %s rows", (viewport) => {
@@ -251,20 +279,18 @@ describe("Display Settings Workspace", () => {
 	});
 
 	it("keeps top, middle, and bottom scroll states structurally focused", () => {
-		const top = harness({}, DEFAULT_CONFIG, undefined, () => 20);
-		const topLines = text(top.component, 126);
+		const h = harness({}, DEFAULT_CONFIG, undefined, () => 14, "sidebar");
+		const topLines = text(h.component, 126);
 		expect(topLines).toContain("↓ more");
 		expect(topLines).not.toContain("↑ more");
 
-		// The stacked layout is tall enough to scroll in both directions from the middle.
-		const middle = harness({}, DEFAULT_CONFIG, undefined, () => 16);
-		for (let index = 0; index < 10; index += 1) middle.component.handleInput("\u001b[B");
-		const middleLines = text(middle.component, 60);
+		for (let index = 0; index < 8; index += 1) h.component.handleInput("\u001b[B");
+		const middleLines = text(h.component, 126);
 		expect(middleLines).toContain("↑ more");
 		expect(middleLines).toContain("↓ more");
 
-		for (let index = 0; index < 100; index += 1) middle.component.handleInput("\u001b[B");
-		const bottomLines = text(middle.component, 60);
+		for (let index = 0; index < 100; index += 1) h.component.handleInput("\u001b[B");
+		const bottomLines = text(h.component, 126);
 		expect(bottomLines).toContain("↑ more");
 		expect(bottomLines).not.toContain("↓ more");
 	});
@@ -281,17 +307,18 @@ describe("Display Settings Workspace", () => {
 					visible: entry.visible,
 				})),
 			() => 39,
+			"sidebar",
 		);
 		for (let index = 0; index < 100; index += 1) h.component.handleInput("\u001b[B");
 		const lines = h.component.render(126);
 		expect(lines.join("\n")).toContain("Contributed › title");
 		expect(lines.join("\n")).toContain("› ○ tools");
-		expect(lines).toHaveLength(39);
+		expect(lines.filter((line) => line.includes("›"))).toHaveLength(2);
 		expect(lines.every((line) => visibleWidth(line) <= 126)).toBe(true);
 	});
 
 	it("keeps the focused last Sidebar panel visible while scrolling", () => {
-		const h = harness({}, DEFAULT_CONFIG, undefined, () => 14);
+		const h = harness({}, DEFAULT_CONFIG, undefined, () => 14, "sidebar");
 		for (let index = 0; index < 100; index += 1) h.component.handleInput("\u001b[B");
 		const lines = h.component.render(126);
 		expect(lines.join("\n")).toContain("› ○ tools");
@@ -301,9 +328,8 @@ describe("Display Settings Workspace", () => {
 
 	it("shows deterministic scroll indicators and adapts to live viewport resizing", () => {
 		let viewport = 13;
-		const h = harness({}, DEFAULT_CONFIG, undefined, () => viewport);
+		const h = harness({}, DEFAULT_CONFIG, undefined, () => viewport, "sidebar");
 		for (let index = 0; index < 100; index += 1) h.component.handleInput("\u001b[B");
-		// Stacked, the last Sidebar panel is the last line; side by side the longer rail continues.
 		const bottom = h.component.render(60).join("\n");
 		expect(bottom).toContain("↑ more");
 		expect(bottom).not.toContain("↓ more");
@@ -316,7 +342,7 @@ describe("Display Settings Workspace", () => {
 
 		viewport = 50;
 		const larger = h.component.render(126);
-		expect(larger).toHaveLength(50);
+		expect(larger.length).toBeLessThan(50);
 		expect(larger.join("\n")).toContain("› ○ tools");
 		expect(larger.join("\n")).not.toContain("↓ more");
 		expect(larger.every((line) => visibleWidth(line) <= 126)).toBe(true);
@@ -335,14 +361,5 @@ describe("Display Settings Workspace", () => {
 			);
 			expect(beforeLine.indexOf("default")).toBe(afterLine.indexOf("default"));
 		}
-	});
-
-	it("stacks the Status rail and Sidebar sections narrowly and sets them side by side widely", () => {
-		const h = harness();
-		const narrow = h.component.render(40);
-		expect(requiredIndex(narrow, "Status rail ─")).toBeLessThan(requiredIndex(narrow, "Sidebar ─"));
-		const wide = h.component.render(120);
-		const sideBySide = wide.find((line) => line.includes("Status rail ─") && line.includes("Sidebar ─"));
-		expect(sideBySide).toBeDefined();
 	});
 });

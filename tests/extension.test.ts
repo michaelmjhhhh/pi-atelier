@@ -390,7 +390,7 @@ describe("extension registration", () => {
 		await opening;
 	});
 
-	it("passes contributed titles through the public Display seam and persists enabling them", async () => {
+	it("passes contributed titles through the public Settings seam and persists enabling them", async () => {
 		await withPersistedUserConfig(
 			{
 				sidebarPanelLayout: [{ id: "vendor:missing", visible: true }],
@@ -405,16 +405,15 @@ describe("extension registration", () => {
 					revision: 1,
 					panel: { id: "vendor:queue", title: "Queue title", rows: ["queued"] },
 				});
-				const opening = command(h, "display");
+				const opening = command(h, "settings sidebar");
 				await h.mounted(1);
 				expect(h.overlays).toHaveLength(2);
 				const workspace = h.overlays.at(-1)!.component;
 				const rendered = workspace?.render(120).join("\n") ?? "";
 				expect(rendered).toContain("vendor:missing");
 
-				// Tab to the Sidebar; the missing panel and eleven built-in panels precede the contributed one.
-				workspace?.handleInput("\t");
-				for (let index = 0; index < 12; index += 1) workspace?.handleInput("\u001b[B");
+				// Four Sidebar settings, the missing panel, and eleven built-in panels precede the contributed one.
+				for (let index = 0; index < 16; index += 1) workspace?.handleInput("\u001b[B");
 				const focusedRendered = workspace?.render(120).join("\n") ?? "";
 				expect(focusedRendered).toContain("Queue title");
 				expect(focusedRendered).toContain("unavailable");
@@ -464,7 +463,7 @@ describe("extension registration", () => {
 		}
 	});
 
-	it("opens the Display workspace directly and rejects it outside TUI mode", async () => {
+	it("opens Settings on the Status rail page for /atelier display and rejects it outside TUI mode", async () => {
 		const h = harness("tui", "linux", true);
 		await start(h);
 		const before = h.custom.mock.calls.length;
@@ -472,7 +471,7 @@ describe("extension registration", () => {
 		await h.mounted(1);
 		expect(h.overlays).toHaveLength(2);
 		expect(h.custom.mock.calls.length).toBe(before + 1);
-		expect(renderOverlayText(h, h.overlays.length - 1, 80)).toContain("Display settings");
+		expect(renderOverlayText(h, h.overlays.length - 1, 80)).toContain("Changes apply to this session now");
 		h.overlays.at(-1)?.component.handleInput("\u001b");
 		await opening;
 
