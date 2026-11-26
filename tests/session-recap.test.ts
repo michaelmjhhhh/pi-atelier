@@ -6,6 +6,7 @@ import {
 	readableSessionName,
 	recapFromSession,
 	SESSION_GOAL_ENTRY,
+	SESSION_RECAP_ENTRY,
 	statusFromReply,
 	withActiveTodo,
 } from "../src/session-recap.js";
@@ -14,7 +15,13 @@ const reply = (text: string, extra: Record<string, unknown> = {}) => ({
 	type: "message",
 	message: { role: "assistant", content: [{ type: "text", text }], timestamp: 1_000, ...extra },
 });
+const user = (text: string) => ({ type: "message", message: { role: "user", content: text } });
 const goal = (text: string | null) => ({ type: "custom", customType: SESSION_GOAL_ENTRY, data: { text } });
+const recap = (about: string, status: string) => ({
+	type: "custom",
+	customType: SESSION_RECAP_ENTRY,
+	data: { about, status },
+});
 
 describe("readableSessionName", () => {
 	it.each([
@@ -79,20 +86,25 @@ describe("goalFromBranch", () => {
 });
 
 describe("recapFromSession", () => {
-	it("prefers the set goal, then the session name", () => {
-		expect(recapFromSession([goal("Set goal")], "named").goal).toEqual({ text: "Set goal", source: "goal" });
-		expect(recapFromSession([goal("Set goal"), goal(null)], "issue-42").goal).toEqual({
-			text: "issue 42",
-			source: "name",
+	it("prefers the set goal, then the recap, then the session name", () => {
+		expect(recapFromSession([recap("Recap topic", "x"), goal("Set goal")], "named").goal).toEqual({
+			text: "Set goal",
+			source: "goal",
 		});
+		expect(recapFromSession([recap("Recap topic", "x")], "named").goal).toEqual({
+			text: "Recap topic",
+			source: "summary",
+		});
+		expect(recapFromSession([], "issue-42").goal).toEqual({ text: "issue 42", source: "name" });
 		expect(recapFromSession([], undefined).goal).toBeUndefined();
 	});
 
-	it("takes the status from the last reply", () => {
-		expect(recapFromSession([reply("Old reply."), reply("## Done\nMerged the PR.")]).status).toEqual({
-			text: "Merged the PR.",
-			source: "reply",
-		});
+	it("uses the recap status only while no reply came after it", () => {
+		const current = recapFromSession([user("go"), reply("Old reply."), recap("Topic", "Waiting on review")]);
+		expect(current.status).toEqual({ text: "Waiting on review", source: "summary" });
+		const stale = recapFromSession([reply("Old reply."), recap("Topic", "Waiting"), reply("Merged the PR.")]);
+		expect(stale.status).toEqual({ text: "Merged the PR.", source: "reply" });
+		expect(stale.goal?.text).toBe("Topic");
 	});
 
 	it("skips failed replies and reports when the last good one ended", () => {
@@ -102,6 +114,20 @@ describe("recapFromSession", () => {
 		]);
 		expect(view.status?.text).toBe("Built it.");
 		expect(view.lastRunAt).toBe(5_000);
+	});
+
+	it("names the model and cost behind recap lines it shows", () => {
+		const withUsage = {
+			type: "custom",
+			customType: SESSION_RECAP_ENTRY,
+			data: { about: "Topic", status: "Next", model: "anthropic/claude", usage: { cost: 0.0066 } },
+		};
+		expect(recapFromSession([reply("Old."), withUsage]).recapBy).toEqual({
+			model: "anthropic/claude",
+			cost: 0.0066,
+		});
+		// A goal set by the user and a newer reply leave nothing of the recap on screen.
+		expect(recapFromSession([withUsage, goal("Mine"), reply("Newer.")]).recapBy).toBeUndefined();
 	});
 
 	it("lets the todo in progress override the status", () => {

@@ -38,6 +38,7 @@ import {
 	buildSidebarSnapshot,
 	createSidebarController,
 	type SidebarController,
+	type SessionPanelState,
 	type SidebarSnapshot,
 } from "../src/sidebar.js";
 import {
@@ -50,9 +51,11 @@ import {
 	normalizeGoal,
 	recapFromSession,
 	SESSION_GOAL_ENTRY,
+	SESSION_RECAP_ENTRY,
 	type SessionRecapView,
 	withActiveTodo,
 } from "../src/session-recap.js";
+import { createRecapRunner, type RecapRunner } from "../src/session-recap-runner.js";
 import { AtelierRuntime, createInertAtelierState } from "../src/state.js";
 import { emptySubagentUsage } from "../src/subagent-usage.js";
 import { openSubagentUsage } from "../src/subagent-usage-view.js";
@@ -149,6 +152,8 @@ interface ActiveSession {
 	readonly prefill: PrefillTracker;
 	readonly prefillThrottle: PrefillThrottle;
 	readonly completionNotifier: CompletionNotifier;
+	/** Writes the opt-in model recap after a run settles. */
+	readonly recapRunner: RecapRunner;
 	readonly retiredState: AtelierState;
 	readonly retiredConfig: AtelierConfig;
 	readonly overlayCancellations: Set<() => void>;
@@ -281,6 +286,15 @@ export default function atelierExtension(
 		});
 	}
 
+	/** Pi's `blockImages` setting; unknown counts as on, which only costs the warm recap. */
+	function readBlockImages(ctx: ExtensionContext): boolean {
+		try {
+			return SettingsManager.create(ctx.isProjectTrusted() ? ctx.cwd : getAgentDir()).getBlockImages();
+		} catch {
+			return true;
+		}
+	}
+
 	function isSessionPanelVisible(targetSession: ActiveSession): boolean {
 		return targetSession.runtime
 			.getConfig()
@@ -288,7 +302,7 @@ export default function atelierExtension(
 	}
 
 	/** Branch reads happen only when the panel is shown and something changed since the last one. */
-	function currentSessionRecap(targetSession: ActiveSession): SessionRecapView {
+	function currentSessionRecap(targetSession: ActiveSession): SessionPanelState {
 		if (targetSession.sessionRecapStale) {
 			targetSession.sessionRecapStale = false;
 			const { sessionManager } = targetSession.ctx;
@@ -297,7 +311,8 @@ export default function atelierExtension(
 				sessionManager.getSessionName(),
 			);
 		}
-		return withActiveTodo(targetSession.sessionRecap, targetSession.todos);
+		const view = withActiveTodo(targetSession.sessionRecap, targetSession.todos);
+		return targetSession.recapRunner.isRunning() ? { ...view, summarizing: true } : view;
 	}
 
 	/** The branch changed in a way the Session panel shows: a run ended, the goal or name changed, or the tree moved. */
@@ -361,6 +376,7 @@ export default function atelierExtension(
 		attempt(() => session.runtime.dispose());
 		attempt(() => session.runActivity.reset());
 		attempt(() => session.completionNotifier.reset());
+		attempt(() => session.recapRunner.cancel());
 		const unsubscribe = session.unsubscribeAskUserBlocked;
 		session.unsubscribeAskUserBlocked = undefined;
 		if (unsubscribe) attempt(unsubscribe);
@@ -697,6 +713,7 @@ export default function atelierExtension(
 				current.runtime.setEnabled(false);
 				current.runActivity.resetResponse();
 				current.completionNotifier.reset();
+				current.recapRunner.cancel();
 				current.todos = [];
 				current.sidebar.hide();
 				updateExtensionStatuses(current, []);
@@ -837,6 +854,23 @@ export default function atelierExtension(
 				: { spawn: dependencies.spawnNotificationProcess }),
 		});
 		cleanup.push(() => completionNotifier.reset());
+		const recapRunner = createRecapRunner({
+			// Written only while this session is current and idle, so the entry never lands mid-run.
+			isCurrent: () => isPublished() && enabled && ctx.isIdle(),
+			save: (entry) => {
+				pi.appendEntry(SESSION_RECAP_ENTRY, entry);
+				const current = activeSession;
+				if (current?.token === token) current.sessionRecapStale = true;
+			},
+			onStateChange: () => {
+				const current = activeSession;
+				if (current?.token === token) current.sidebar.requestRender();
+			},
+			onWarning: (message) => {
+				if (isPublished()) ctx.ui.notify(message, "warning");
+			},
+		});
+		cleanup.push(() => recapRunner.cancel());
 		const sidebar = createSidebarController({
 			ctx,
 			getSnapshot: () => {
@@ -871,6 +905,7 @@ export default function atelierExtension(
 			prefill,
 			prefillThrottle,
 			completionNotifier,
+			recapRunner,
 			retiredState: createInertAtelierState(autoCompact),
 			retiredConfig: structuredClone(config),
 			overlayCancellations,
@@ -975,6 +1010,8 @@ export default function atelierExtension(
 		if (!current) return;
 		current.runActivity.startRun();
 		current.completionNotifier.runStarted();
+		// A new run makes any recap in flight describe an old stopping point.
+		current.recapRunner.cancel();
 		current.providerFailed = false;
 		current.runtime.setActivity("working");
 	});
@@ -1069,6 +1106,15 @@ export default function atelierExtension(
 		current.sessionRecapStale = true;
 		if (!enabled) return;
 		current.sidebar.requestRender();
+		const config = current.runtime.getConfig();
+		if (config.sessionRecap && isSessionPanelVisible(current)) {
+			current.recapRunner.request({
+				ctx,
+				modelSetting: config.sessionRecapModel,
+				thinkingLevel: pi.getThinkingLevel(),
+				blockImages: readBlockImages(ctx),
+			});
+		}
 		if (current.runtime.getConfig().completionNotifications) {
 			current.completionNotifier.turnSettled(completionNotification(current));
 		}

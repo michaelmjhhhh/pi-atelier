@@ -110,6 +110,8 @@ export function createMenuActions(
 				| "showFooter"
 				| "prefillEnabled"
 				| "sidebarStyle"
+				| "sessionRecap"
+				| "sessionRecapModel"
 			>
 		>,
 		messages: { saved: string; failed: string },
@@ -230,6 +232,26 @@ export function createMenuActions(
 				},
 				false,
 			),
+		setSessionRecap: (enabled: boolean): Promise<void> =>
+			persistPreference(
+				{ sessionRecap: enabled },
+				{
+					saved: enabled
+						? "Session recap on: the model writes a two-line recap after each run while the Session panel is shown"
+						: "Session recap off",
+					failed: "Session recap changed for this session but could not be saved",
+				},
+				false,
+			),
+		setSessionRecapModel: (model: string): Promise<void> =>
+			persistPreference(
+				{ sessionRecapModel: model },
+				{
+					saved: `Recap model: ${recapModelLabel(model)}`,
+					failed: "Recap model changed for this session but could not be saved",
+				},
+				false,
+			),
 		setShowFooter: (enabled: boolean): Promise<void> =>
 			persistPreference(
 				{ showFooter: enabled },
@@ -244,6 +266,7 @@ export function createMenuActions(
 }
 
 const sidebarStyleLabel = (style: SidebarStyle): string => (style === "framed" ? "Framed" : "Minimal");
+const recapModelLabel = (model: string): string => model || "Session model";
 
 async function showSelection(
 	ctx: ExtensionContext,
@@ -491,6 +514,18 @@ export async function openAtelierControlCenter(
 					onOff(config.prefillEnabled),
 					"How far a local model has read the prompt",
 				),
+				setting(
+					"session-recap",
+					"Session recap",
+					onOff(config.sessionRecap),
+					"Model-written goal and status in the Session panel; costs tokens after each run",
+				),
+				setting(
+					"session-recap-model",
+					"Recap model",
+					recapModelLabel(config.sessionRecapModel),
+					"Session model reuses its prompt cache; another model gets a transcript excerpt",
+				),
 				{ value: "back", label: "Back" },
 			]);
 			switch (choice) {
@@ -523,6 +558,22 @@ export async function openAtelierControlCenter(
 				case "prefill":
 					await actions.setPrefillEnabled(!runtime.getConfig().prefillEnabled);
 					break;
+				case "session-recap":
+					await actions.setSessionRecap(!runtime.getConfig().sessionRecap);
+					break;
+				case "session-recap-model": {
+					const models = ctx.modelRegistry.getAvailable().map((model) => `${model.provider}/${model.id}`);
+					const choice = await choose("Recap model", [
+						{
+							value: "",
+							label: "Session model",
+							description: "Reuses the conversation's prompt cache; nothing leaves the current provider",
+						},
+						...models.map((label) => ({ value: label, label })),
+					]);
+					if (choice !== undefined) await actions.setSessionRecapModel(choice);
+					break;
+				}
 				case "sidebar-tools":
 					await sidebar.toggleToolList();
 					break;

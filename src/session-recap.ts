@@ -3,6 +3,8 @@ import type { NormalizedTodo } from "./types.js";
 
 /** Custom session entry holding the goal set with `/atelier goal`; `text: null` clears it. */
 export const SESSION_GOAL_ENTRY = "pi-atelier:goal";
+/** Custom session entry holding the latest model-written recap. */
+export const SESSION_RECAP_ENTRY = "pi-atelier:recap";
 
 /** Longest goal or status kept, in characters; the panel truncates further to its width. */
 export const SESSION_TEXT_MAX_CHARS = 160;
@@ -17,13 +19,26 @@ export interface BranchEntryLike {
 	readonly message?: unknown;
 }
 
-export type GoalSource = "goal" | "name";
-export type StatusSource = "todo" | "reply";
+export interface StoredRecap {
+	/** What the session is about. */
+	about: string;
+	/** Where it stopped. */
+	status: string;
+	/** `provider/model` that wrote it. */
+	model?: string;
+	/** What writing it cost, as the provider reported it. */
+	cost?: number;
+}
+
+export type GoalSource = "goal" | "summary" | "name";
+export type StatusSource = "todo" | "summary" | "reply";
 
 /** What the Session panel shows. */
 export interface SessionRecapView {
 	goal?: { text: string; source: GoalSource };
 	status?: { text: string; source: StatusSource };
+	/** Which model wrote the recap lines shown, and what that cost, so background spending stays visible. */
+	recapBy?: { model?: string; cost?: number };
 	/** When the latest run on this branch ended, in epoch milliseconds. */
 	lastRunAt?: number;
 }
@@ -49,6 +64,34 @@ export function goalFromBranch(branch: readonly BranchEntryLike[]): string | und
 		else if (typeof text === "string") goal = normalizeGoal(text);
 	}
 	return goal;
+}
+
+/** The latest recap written on this branch, and its position in it. */
+export function recapFromBranch(
+	branch: readonly BranchEntryLike[],
+): { recap: StoredRecap; index: number } | undefined {
+	for (let index = branch.length - 1; index >= 0; index--) {
+		const entry = branch[index];
+		if (entry?.type !== "custom" || entry.customType !== SESSION_RECAP_ENTRY) continue;
+		const recap = parseRecap(entry.data);
+		if (recap) return { recap, index };
+	}
+	return undefined;
+}
+
+export function parseRecap(data: unknown): StoredRecap | undefined {
+	if (!isRecord(data) || typeof data.about !== "string" || typeof data.status !== "string") return undefined;
+	const about = clip(data.about);
+	const status = clip(data.status);
+	if (!about && !status) return undefined;
+	return {
+		about,
+		status,
+		...(typeof data.model === "string" ? { model: data.model } : {}),
+		...(isRecord(data.usage) && typeof data.usage.cost === "number" && Number.isFinite(data.usage.cost)
+			? { cost: data.usage.cost }
+			: {}),
+	};
 }
 
 /**
@@ -147,8 +190,10 @@ export function assistantText(message: unknown): string {
 		.join("\n");
 }
 
-/** The latest finished assistant reply on the branch that says something, and when it ended. */
-export function latestReply(branch: readonly BranchEntryLike[]): { text: string; at?: number } | undefined {
+/** The latest finished assistant reply on the branch that says something, when it ended, and its position. */
+export function latestReply(
+	branch: readonly BranchEntryLike[],
+): { text: string; index: number; at?: number } | undefined {
 	for (let index = branch.length - 1; index >= 0; index--) {
 		const entry = branch[index];
 		if (entry?.type !== "message" || !isAssistant(entry.message)) continue;
@@ -159,29 +204,48 @@ export function latestReply(branch: readonly BranchEntryLike[]): { text: string;
 			typeof entry.message.timestamp === "number"
 				? entry.message.timestamp
 				: Date.parse(entry.timestamp ?? "");
-		return { text, ...(Number.isFinite(at) ? { at } : {}) };
+		return { text, index, ...(Number.isFinite(at) ? { at } : {}) };
 	}
 	return undefined;
 }
 
 /**
  * The Session panel as the branch describes it.
- * Goal: the goal set by the user, else the readable session name.
- * Status: the first meaningful sentence of the last reply.
+ * Goal: the goal set by the user, else the recap's topic, else the readable session name.
+ * Status: the recap's stopping point when no reply came after it, else the first meaningful
+ * sentence of the last reply.
  */
 export function recapFromSession(branch: readonly BranchEntryLike[], sessionName?: string): SessionRecapView {
+	const stored = recapFromBranch(branch);
 	const reply = latestReply(branch);
-	const setGoal = goalFromBranch(branch);
-	const name = setGoal ? undefined : readableSessionName(sessionName);
-	const goal = setGoal
-		? { text: setGoal, source: "goal" as const }
-		: name
-			? { text: name, source: "name" as const }
+	const goalText = goalFromBranch(branch);
+	const name = readableSessionName(sessionName);
+	const goal = goalText
+		? { text: goalText, source: "goal" as const }
+		: stored?.recap.about
+			? { text: stored.recap.about, source: "summary" as const }
+			: name
+				? { text: name, source: "name" as const }
+				: undefined;
+	const recapIsCurrent = stored !== undefined && (reply === undefined || stored.index > reply.index);
+	const recapStatus = recapIsCurrent ? stored.recap.status : "";
+	const replyText = reply ? statusFromReply(reply.text) : undefined;
+	const status = recapStatus
+		? { text: recapStatus, source: "summary" as const }
+		: replyText
+			? { text: replyText, source: "reply" as const }
 			: undefined;
-	const statusText = reply ? statusFromReply(reply.text) : undefined;
 	return {
 		...(goal ? { goal } : {}),
-		...(statusText ? { status: { text: statusText, source: "reply" as const } } : {}),
+		...(status ? { status } : {}),
+		...(stored && (goal?.source === "summary" || status?.source === "summary")
+			? {
+					recapBy: {
+						...(stored.recap.model ? { model: stored.recap.model } : {}),
+						...(stored.recap.cost === undefined ? {} : { cost: stored.recap.cost }),
+					},
+				}
+			: {}),
 		...(reply?.at === undefined ? {} : { lastRunAt: reply.at }),
 	};
 }

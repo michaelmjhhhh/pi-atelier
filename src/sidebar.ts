@@ -48,7 +48,12 @@ export interface SidebarSnapshotInput {
 	/** Live prefill progress for the current provider request; absent whenever nothing is prefilling. */
 	prefill?: PrefillSnapshot;
 	/** What the session is about and where it stopped. */
-	sessionRecap?: SessionRecapView;
+	sessionRecap?: SessionPanelState;
+}
+
+/** The Session panel's content, plus whether a recap is being written. */
+export interface SessionPanelState extends SessionRecapView {
+	summarizing?: boolean;
 }
 
 export interface SidebarSnapshot extends AtelierState {
@@ -60,7 +65,7 @@ export interface SidebarSnapshot extends AtelierState {
 	todos: readonly NormalizedTodo[];
 	sidebarPanels: readonly SidebarPanelData[];
 	prefill?: PrefillSnapshot;
-	sessionRecap: SessionRecapView;
+	sessionRecap: SessionPanelState;
 }
 
 export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapshot {
@@ -745,11 +750,23 @@ function sessionSection(
 				recap.status.source === "todo" ? "working" : "primary",
 			)
 		: wrappedField("Status", PLACEHOLDER, width, palette, "dim");
-	const summary =
-		snapshot.activity !== "working" && recap.lastRunAt !== undefined
+	const working = snapshot.activity === "working";
+	const summary = recap.summarizing
+		? palette.paint("dim", "summarizing…")
+		: !working && recap.lastRunAt !== undefined
 			? palette.paint("dim", formatAge(now - recap.lastRunAt))
 			: undefined;
 	return { ...(summary ? { summary } : {}), rows: [...goal, ...status] };
+}
+
+/** `Recap · claude-sonnet-5-5 · $0.0066`: who wrote the recap lines and what they cost. */
+function recapByRow(snapshot: SidebarSnapshot, width: number, palette: AtelierPalette): string[] {
+	const by = snapshot.sessionRecap.recapBy;
+	if (!by) return [];
+	const model = by.model ? by.model.slice(by.model.indexOf("/") + 1) : undefined;
+	const cost = by.cost === undefined ? undefined : `$${by.cost.toFixed(by.cost < 0.01 ? 4 : 3)}`;
+	const text = ["Recap", model, cost].filter(Boolean).join(" · ");
+	return [palette.paint("dim", truncateToWidth(sanitizeInline(text), width, "…"))];
 }
 
 function usageRows(
@@ -843,6 +860,8 @@ const DROP_RANK = {
 	agent: 28,
 	/** The whole point of switching back to a session; it outlasts the counters and lists. */
 	session: 88,
+	/** Who wrote the recap is the first thing a short Session panel gives up. */
+	sessionRecapBy: 15,
 	workspace: 30,
 	olderRecentTool: 50,
 	aggregate: 60,
@@ -1216,7 +1235,15 @@ export function renderSidebarLines(
 				...(summary ? { summary } : {}),
 				summaryOptional: true,
 			};
-			return [{ name: "session", section, rows, dropRank: DROP_RANK.session }];
+			return [
+				{ name: "session", section, rows, dropRank: DROP_RANK.session },
+				{
+					name: "sessionRecapBy",
+					section,
+					rows: recapByRow(snapshot, contentWidth, palette),
+					dropRank: DROP_RANK.sessionRecapBy,
+				},
+			];
 		},
 		agent: () => [
 			{

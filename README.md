@@ -54,14 +54,14 @@ Plain text mode is the default. It works with any monospace font and keeps color
 | --- | --- |
 | **Session visibility** | Model, thinking level, context, token usage, and cost in a compact status rail, with optional sidebar panels for the same details. |
 | **Live activity** | Agent and tool activity, TODOs, response timing, and completion notifications on macOS and Windows. |
-| **Session panel** | An opt-in **Session** panel with the session's goal and where it stopped, so a session you switch back to says what it was for. Set the goal with `/atelier goal`. |
+| **Session panel** | An opt-in **Session** panel with the session's goal and where it stopped, so a session you switch back to says what it was for. Set the goal with `/atelier goal`, or let the model write a two-line recap after each run. |
 | **Workspace context** | The files you have changed, with lines added and removed per file, from read-only Git status. |
 | **Subagent costs** | Colored per-child cost curves from pi-subagents accounting events, with matching legends and real observation markers. `/atelier usage` opens a larger framed graph with keyboard focus and per-reply costs. Kitty-compatible terminals get native graphics; others get text strokes. |
 | **Prefill progress** | While a local model is still reading a long prompt, a temporary sidebar panel shows how far through the prompt it is, how fast it is reading, and how long until the first token. |
 | **Personalization** | Display presets, configurable segments and panels, optional Nerd Font icons, and model and tool controls. |
 | **Extensible sidebar** | Other extensions can add their own panels. See [Sidebar panels from other extensions](#sidebar-panels-from-other-extensions). |
 
-No telemetry and no external network requests. See [Privacy](#privacy).
+No telemetry. No network requests of its own, except the opt-in session recap, which goes through Pi's configured providers. See [Privacy](#privacy).
 
 ## Usage
 
@@ -106,19 +106,42 @@ Sidebar, with the time since the last run on its frame.
 │         is about and where it stands   │
 │ Status  Tests pass; README and         │
 │         changelog updated, PR is next  │
+│ Recap · claude-sonnet-5-5 · $0.0066    │
 ╰────────────────────────────────────────╯
 ```
 
 | Row | Source, first match wins |
 | --- | --- |
-| **Goal** | `/atelier goal <text>`; the session name made readable (`issue-42-43` → `issue 42 43`; generated names such as `subagent-…-<uuid>` are hidden). Otherwise a hint. |
-| **Status** | The TODO in progress; the first sentence of the last reply that says something (headings, code, and replies like "Done." are skipped). |
+| **Goal** | `/atelier goal <text>`; the latest recap; the session name made readable (`issue-42-43` → `issue 42 43`; generated names such as `subagent-…-<uuid>` are hidden). Otherwise a hint. |
+| **Status** | The TODO in progress; the latest recap, until a newer reply arrives; the first sentence of the last reply that says something (headings, code, and replies like "Done." are skipped). |
 
-- The goal is stored in the session as a custom entry, so it survives `/resume` and follows
-  `/tree` branches. It is never sent to the model. `/atelier goal` with no text clears
+- The goal and recaps are stored in the session as custom entries, so they survive `/resume` and
+  follow `/tree` branches. They are never sent to the model. `/atelier goal` with no text clears
   the goal.
 - The panel refreshes when a run ends and when a session starts, resumes, or changes branch;
   never mid-run, except that the TODO in progress shows as soon as it changes.
+
+**Session recap** (**Settings → Session recap**, `sessionRecap`, user-only, off by default) asks a
+model for two short lines after each run that ends with a reply: what the session is about and
+where it stopped. It runs in the background after the run settles, is cancelled if you start a new
+run, and runs only while the Session panel is shown.
+
+- **Session model** (default, `"sessionRecapModel": ""`): the conversation is replayed as the agent
+  sends it, plus one recap request, right after the run while the provider's prompt cache is warm.
+  The prefix is read from the cache, so a recap of a 50k-token session costs about $0.007 on
+  Claude Sonnet 5.5 or $0.012 on GPT-5.6 terra, plus any thinking tokens: the recap keeps the
+  session's thinking level, because changing it would miss the cache. The transcript goes nowhere
+  it has not already gone. Needs Pi 1.6 or newer. Codex sessions, Pi's `blockImages` setting, and
+  older Pi versions use an excerpt instead, since a replay there would not match what the agent sent.
+- **Another model** (`"sessionRecapModel": "provider/model"`, or **Settings → Recap model**): sends
+  an excerpt of up to 12,000 characters (your first request and the latest messages, without tool
+  output) to that model, uncached. A small model costs about $0.001 per recap. This can send the
+  transcript to a different provider.
+- When the panel shows recap lines, a dim row names the model and the recap's cost. Pi's own usage
+  totals do not include recaps.
+- If a session-model recap misses the cache, for example because another extension changes what the
+  agent sends, Atelier warns once with the cost. A missing model, missing authentication, or a failed
+  reply also warns once per session and leaves the panel on its other sources.
 
 ### Prefill progress
 
@@ -173,7 +196,7 @@ Pi supports one custom footer and one custom editor at a time. Extension load or
 | User | `~/.pi/agent/pi-atelier.json` |
 | Project (trusted only) | `<project>/.pi/pi-atelier.json` |
 
-Project settings override user settings, and session changes override both. Font mode, footer, sidebar startup, sidebar width, sidebar style, notification preferences, and the prefill provider allow-list are user-only.
+Project settings override user settings, and session changes override both. Font mode, footer, sidebar startup, sidebar width, sidebar style, notification preferences, the prefill provider allow-list, and the session recap settings are user-only.
 
 ```json
 {
@@ -194,7 +217,9 @@ Project settings override user settings, and session changes override both. Font
   "completionNotifications": true,
   "prefillEnabled": true,
   "prefillViews": ["percent", "tokens", "eta", "rate"],
-  "prefillProviders": ["llama.cpp"]
+  "prefillProviders": ["llama.cpp"],
+  "sessionRecap": false,
+  "sessionRecapModel": ""
 }
 ```
 
@@ -284,7 +309,8 @@ ignore `progress`. No-color mode uses plain filled/empty blocks.
 Pi Atelier:
 
 - Collects no telemetry or analytics.
-- Does not store prompts, responses, or credentials, and keeps them out of notifications. The Session panel's goal is stored in your Pi session file.
+- Does not store prompts, responses, or credentials, and keeps them out of notifications. The Session panel's goal and recaps are stored in your Pi session file, beside the conversation they describe.
+- Makes no model requests unless you turn on **Session recap**. Then it asks the session's model, or the `sessionRecapModel` you chose, through Pi's configured providers after each run.
 - Inspects Git read-only, and only after the project is trusted. Never reads untracked file contents.
 - Reads project configuration only for trusted projects.
 - For subagent usage, reads local metadata and owner-validated diagnostic event logs. It keeps only numeric cost and time projections in memory and saves only run IDs and artifact paths in the Pi session. Prompt and reply content in those logs is discarded. Active background runs refresh until they settle.

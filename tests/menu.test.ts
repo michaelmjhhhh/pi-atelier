@@ -152,6 +152,8 @@ describe("Control Center presentation", () => {
 			"Sidebar tool list   Collapsed",
 			"Notifications       On",
 			"Prefill progress    On",
+			"Session recap       Off",
+			"Recap model         Session model",
 			"Back",
 		];
 		const sidebar = sidebarControls();
