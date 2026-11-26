@@ -392,8 +392,11 @@ export async function openSettingsWorkspace(
 	const ensureActive = (): void => {
 		if (!isActive()) throw new Error("Pi Atelier is not active in this session");
 	};
-	// Preference confirmations show inside the workspace while it is open.
+	// Preference confirmations show inside the workspace while it is open, and as
+	// notifications when a save finishes after it closed.
 	let workspace: SettingsWorkspace | undefined;
+	const report = (message: string, kind: "info" | "warning" | "error"): void =>
+		workspace ? workspace.showMessage(message, kind) : ctx.ui.notify(message, kind);
 	// Pi focuses the editor it installs with the footer, which takes the keyboard from the
 	// overlay, and the overlay would later hand focus back to the replaced editor. So the
 	// footer follows the saved setting once the workspace has closed.
@@ -403,8 +406,7 @@ export async function openSettingsWorkspace(
 		syncFooter: () => {
 			footerChanged = true;
 		},
-		notify: (message, kind) =>
-			workspace ? workspace.showMessage(message, kind) : ctx.ui.notify(message, kind),
+		notify: report,
 	});
 	try {
 		await openLifecycleOverlay<void>(
@@ -438,8 +440,7 @@ export async function openSettingsWorkspace(
 						setSidebarStyle: actions.setSidebarStyle,
 						setShowSidebarOnStartup: actions.setShowSidebarOnStartup,
 						isToolListExpanded: () => sidebar.isToolListExpanded(),
-						toggleToolList: () =>
-							sidebar.toggleToolList((message, kind) => workspace?.showMessage(message, kind)),
+						toggleToolList: () => sidebar.toggleToolList(report),
 						setSessionRecap: actions.setSessionRecap,
 						setSessionRecapModel: actions.setSessionRecapModel,
 						getRecapModels: () =>

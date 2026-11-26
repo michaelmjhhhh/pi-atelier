@@ -500,6 +500,12 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 	 */
 	let savedDisplay: string | undefined;
 	let scrollOffset = 0;
+	/** Sidebar panel settings for one render or key press; built from the registry, so read once. */
+	let panelSettingsCache: readonly SidebarPanelSetting[] | undefined;
+	const panelSettings = (): readonly SidebarPanelSetting[] =>
+		(panelSettingsCache ??= options.getSidebarPanelSettings());
+	const panelSetting = (id: SidebarPanelId): SidebarPanelSetting | undefined =>
+		panelSettings().find((setting) => setting.id === id);
 
 	const recapModelIds = (): string[] => {
 		const configured = options.getRenderConfig().sessionRecapModel;
@@ -536,8 +542,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 		focusByPage[page] = Math.max(0, rowIndex(target, rows()));
 	};
 	const selectedRow = (): Row | undefined => rows()[focusByPage[page]];
-	const panelTitle = (id: SidebarPanelId): string =>
-		options.getSidebarPanelSettings().find((setting) => setting.id === id)?.title || id;
+	const panelTitle = (id: SidebarPanelId): string => panelSetting(id)?.title || id;
 	const rowLabel = (row: Row): string => {
 		switch (row.kind) {
 			case "preference":
@@ -587,7 +592,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 	/** Append newly registered panels to the draft (hidden) while keeping focus on the same row. */
 	const absorbNewSidebarPanels = (): void => {
 		const configuredIds = new Set(sidebarDraft.map((entry) => entry.id));
-		const added = options.getSidebarPanelSettings().filter((setting) => !configuredIds.has(setting.id));
+		const added = panelSettings().filter((setting) => !configuredIds.has(setting.id));
 		if (added.length === 0) return;
 		const focusedRow = rows("sidebar")[focusByPage.sidebar];
 		sidebarDraft.push(...added.map((setting) => ({ id: setting.id, visible: false })));
@@ -705,10 +710,18 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 			request(true);
 		}
 	};
+	/**
+	 * Save is offered on the pages it saves, and anywhere while something is unsaved.
+	 * Elsewhere it would quietly write the effective rail layout as the saved default.
+	 */
+	const saveOffered = (): boolean =>
+		page === "rail" || page === "sidebar" || pageUnsaved("rail") || pageUnsaved("sidebar");
 	/** Actions that belong to one page do nothing elsewhere, so a stray key cannot change an unseen page. */
 	const runAction = (id: ActionId): void => {
-		if (id === "save") void save();
-		else if (id === "undo") undoOnce();
+		if (id === "save") {
+			if (saveOffered()) void save();
+			else warn("Nothing to save; the settings on this page save as you change them");
+		} else if (id === "undo") undoOnce();
 		else if (id === "revert" && page === "rail") revert();
 		else if (id === "sidebar-default" && page === "sidebar") restoreSidebarDefault();
 	};
@@ -934,7 +947,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 					.filter(Boolean)
 					.join(" ");
 			case "sidebarPanel":
-				if (options.getSidebarPanelSettings().find((setting) => setting.id === row.id)?.available === false)
+				if (panelSetting(row.id)?.available === false)
 					return "Not available in this session. It keeps its place for later.";
 				// Showing Session starts model requests, so the cost is stated where it is turned on.
 				return row.id === "session"
@@ -955,12 +968,15 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 				text: "The Atelier footer is off, so the rail is hidden. Turn it on in General.",
 				warning: true,
 			};
-		const sessionPanel = options.getSidebarPanelSettings().find((setting) => setting.id === "session");
-		if (page === "recap" && config.sessionRecap && sessionPanel?.visible === false)
+		if (page === "recap" && config.sessionRecap && panelSetting("session")?.visible === false) {
+			const drafted = sidebarDraft.some((entry) => entry.id === "session" && entry.visible);
 			return {
-				text: "Recaps are written only while the Session panel is shown. Show it on the Sidebar page.",
+				text: drafted
+					? "Recaps start once the Session panel is saved on the Sidebar page."
+					: "Recaps are written only while the Session panel is shown. Show it on the Sidebar page.",
 				warning: true,
 			};
+		}
 		return { text: PAGE_NOTES[page], warning: false };
 	};
 
@@ -978,7 +994,6 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 		const { theme } = options;
 		const provenance = options.getDisplayProvenance();
 		const selected = selectedRow();
-		const sidebarSettings = new Map(options.getSidebarPanelSettings().map((entry) => [entry.id, entry]));
 		const isFocused = (row: Row): boolean => selected !== undefined && sameRow(row, selected);
 		const marker = (focused: boolean): string => (focused ? theme.fg("accent", "›") : " ");
 		const name = (text: string, focused: boolean, quiet = false): string =>
@@ -1044,7 +1059,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 							{ kind: "sidebarPanel", id: entry.id },
 							entry.visible,
 							0,
-							sidebarSettings.get(entry.id)?.available === false ? "unavailable" : "",
+							panelSetting(entry.id)?.available === false ? "unavailable" : "",
 						),
 					),
 				];
@@ -1096,7 +1111,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 		const pageHints: KeyHint[] = [
 			{ key: "↑↓", label: "select", priority: 3 },
 			{ key: "tab", label: "next page", priority: 11 },
-			...(page === "rail" || page === "sidebar" || pageUnsaved("rail") || pageUnsaved("sidebar")
+			...(saveOffered()
 				? [
 						{
 							key: actionKey("save"),
@@ -1250,10 +1265,12 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 	return {
 		invalidate() {},
 		showMessage(message, kind) {
+			panelSettingsCache = undefined;
 			tell(message, kind);
 			request();
 		},
 		handleInput(data: string) {
+			panelSettingsCache = undefined;
 			absorbNewSidebarPanels();
 			const escape = matchesKey(data, "escape");
 			if (!escape) discardArmed = false;
@@ -1279,6 +1296,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 		},
 		render(width: number): string[] {
 			if (width <= 0) return [];
+			panelSettingsCache = undefined;
 			// Panels registered while the workspace is open appear without waiting for input.
 			absorbNewSidebarPanels();
 			const { theme } = options;

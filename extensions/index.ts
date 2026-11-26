@@ -187,8 +187,6 @@ interface LifecycleToken {
 const NOT_ACTIVE = "Pi Atelier is not active in this session";
 
 const userConfigPath = (): string => join(getAgentDir(), "pi-atelier.json");
-/** `/atelier settings <page>` names: each page's id, and `recap` for Session recap. */
-const SETTINGS_PAGE_ARGS = new Map<string, SettingsPage>(SETTINGS_PAGES.map((page) => [page, page]));
 
 /** Run every cleanup step even when one throws; teardown must not mask the original failure. */
 function attempt(action: () => void): void {
@@ -700,7 +698,7 @@ export default function atelierExtension(
 				else await openUsage(ctx);
 			},
 			settings: async (ctx, args) => {
-				const page = SETTINGS_PAGE_ARGS.get(args[0] ?? "general");
+				const page = SETTINGS_PAGES.find((name) => name === (args[0] ?? "general"));
 				if (args.length > 1 || !page) usage(ctx, "settings [general|rail|sidebar|recap]");
 				else await openSettings(ctx, page);
 			},
