@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { SESSION_RECAP_ENTRY } from "../src/session-recap.js";
-import { createRecapRunner, needsRecap, type StoredRecapEntry } from "../src/session-recap-runner.js";
+import {
+	createRecapRunner,
+	needsRecap,
+	readableError,
+	type StoredRecapEntry,
+} from "../src/session-recap-runner.js";
 import { SESSION_GOAL_ENTRY } from "../src/session-recap.js";
 import { goalRequestFor } from "../src/session-recap-runner.js";
 import { parseRecapReply, recapRequest, recapTranscript } from "../src/session-summarizer.js";
@@ -237,7 +242,7 @@ describe("createRecapRunner", () => {
 		instance.request({ ctx: failing.ctx, modelSetting: "", thinkingLevel: "off", blockImages: false });
 		await settleMicrotasks();
 		expect(saved).toEqual([]);
-		expect(warnings).toEqual(["Session recap failed: overloaded"]);
+		expect(warnings).toEqual(["Session recap failed (anthropic/claude): overloaded"]);
 	});
 
 	it.each([
@@ -387,5 +392,25 @@ describe("createRecapRunner warnings and billing", () => {
 		instance.request({ ctx, modelSetting: "", thinkingLevel: "off", blockImages: false });
 		await settleMicrotasks();
 		expect(saved[0]).toMatchObject({ subscription: true });
+	});
+});
+
+describe("readableError", () => {
+	it("pulls the message and code out of nested provider JSON", () => {
+		const raw = JSON.stringify({
+			error: {
+				message: JSON.stringify({
+					error: { code: 401, message: "API key not valid.", status: "UNAUTHENTICATED" },
+				}),
+				code: 401,
+				status: "Unauthorized",
+			},
+		});
+		expect(readableError(raw)).toBe("API key not valid. (401)");
+	});
+
+	it("keeps a plain message and bounds a long one", () => {
+		expect(readableError("overloaded")).toBe("overloaded");
+		expect(readableError("x".repeat(400))).toHaveLength(160);
 	});
 });

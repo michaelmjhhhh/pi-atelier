@@ -158,6 +158,40 @@ function usageOf(reply: AssistantReply): RecapUsage | undefined {
 	};
 }
 
+/** Longest provider error kept in a warning; the rest is in Pi's own logs. */
+const ERROR_MAX_CHARS = 160;
+
+/** The innermost `message` of a provider error, which often nests JSON inside JSON strings, and its code. */
+function innermostError(value: unknown, depth = 0): { message?: string; code?: number } {
+	if (depth > 6) return {};
+	if (typeof value === "string") {
+		const trimmed = value.trim();
+		if (trimmed.startsWith("{")) {
+			try {
+				return innermostError(JSON.parse(trimmed), depth + 1);
+			} catch {
+				// Not JSON after all: the string is the message.
+			}
+		}
+		return trimmed ? { message: trimmed } : {};
+	}
+	if (!isRecord(value)) return {};
+	const nested = innermostError(value.error ?? value.message, depth + 1);
+	const code = typeof value.code === "number" ? value.code : undefined;
+	return { ...nested, ...(nested.code === undefined && code !== undefined ? { code } : {}) };
+}
+
+/**
+ * A provider error as one readable line: the innermost message and its status code, not the raw
+ * JSON body some providers return.
+ */
+export function readableError(raw: string): string {
+	const { message, code } = innermostError(raw);
+	const line = (message ?? raw).replace(/\s+/g, " ").trim();
+	const clipped = line.length <= ERROR_MAX_CHARS ? line : `${line.slice(0, ERROR_MAX_CHARS - 1)}…`;
+	return code === undefined || clipped.includes(String(code)) ? clipped : `${clipped} (${code})`;
+}
+
 /** Whether the model bills a subscription plan, where a dollar figure is an estimate, not a charge. */
 function isUsingSubscription(ctx: ExtensionContext, model: Model): boolean {
 	try {
@@ -257,7 +291,7 @@ export function createRecapRunner(options: RecapRunnerOptions): RecapRunner {
 		if (reply.stopReason === "error" || reply.stopReason === "aborted") {
 			warnOnce(
 				`reply:${modelLabel(model)}`,
-				`Session recap failed: ${reply.errorMessage ?? reply.stopReason}`,
+				`Session recap failed (${modelLabel(model)}): ${readableError(reply.errorMessage ?? String(reply.stopReason))}`,
 			);
 			return undefined;
 		}
@@ -305,7 +339,10 @@ export function createRecapRunner(options: RecapRunnerOptions): RecapRunner {
 				})
 				.catch((error: unknown) => {
 					if (!current.signal.aborted)
-						warnOnce(`error:${errorMessage(error)}`, `Session recap failed: ${errorMessage(error)}`);
+						warnOnce(
+							`error:${errorMessage(error)}`,
+							`Session recap failed: ${readableError(errorMessage(error))}`,
+						);
 				})
 				.finally(() => {
 					if (controller !== current) return;
