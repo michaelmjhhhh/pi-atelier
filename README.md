@@ -106,14 +106,15 @@ Sidebar, with the time since the last run on its frame, or `updating…` while a
 │ Python tasks CLI with tasks.json       │  goal: bright, bold
 │ › todo.py verified; awaiting commit    │  status: secondary grey
 │   decision                             │
+│                                        │
 │ deepseek-flash                 $0.0002 │  recap model and cost: dim
 ╰────────────────────────────────────────╯
 ```
 
 The goal is the panel's headline (up to two lines); the status follows a `›` in the panel's color
 (up to three lines), or the TODO's own mark while a TODO is in progress. On a narrow Sidebar the
-model name gives way to `recap` so the cost stays readable; on a short terminal the recap row goes
-first, then the status.
+model name gives way to `recap` so the cost stays readable; on a short terminal the recap row and the
+blank line above it go first, then the status.
 
 While the panel is shown, a model writes its two lines after each run that ends with a reply:
 

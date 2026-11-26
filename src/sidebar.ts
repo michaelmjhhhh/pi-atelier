@@ -900,7 +900,7 @@ const DROP_RANK = {
 	session: 88,
 	/** Without the goal a status cannot say which session it belongs to, so it goes first. */
 	sessionStatus: 87,
-	/** Who wrote the recap is the first thing a short Session panel gives up. */
+	/** Who wrote the recap, and the space above it, is the first thing a short Session panel gives up. */
 	sessionRecapBy: 15,
 	workspace: 30,
 	olderRecentTool: 50,
@@ -963,6 +963,8 @@ interface SidebarGroup {
 	dropRank: number;
 	/** Shown only once one of these groups has been dropped; a summary of rows still visible adds nothing. */
 	summarizes?: readonly string[];
+	/** Shown only while every one of these groups is; a footnote is dropped with the lines it annotates. */
+	requires?: readonly string[];
 }
 
 function activityGroups(
@@ -1119,7 +1121,11 @@ function placeSummaries(
 
 function withoutRedundantSummaries(groups: readonly SidebarGroup[]): SidebarGroup[] {
 	const names = new Set(groups.map((group) => group.name));
-	return groups.filter((group) => !group.summarizes || group.summarizes.some((name) => !names.has(name)));
+	return groups.filter(
+		(group) =>
+			(!group.summarizes || group.summarizes.some((name) => !names.has(name))) &&
+			(!group.requires || group.requires.every((name) => names.has(name))),
+	);
 }
 
 function composeGroups(groups: readonly SidebarGroup[], height: number, style: SidebarStyle): SidebarGroup[] {
@@ -1277,6 +1283,7 @@ export function renderSidebarLines(
 				glyphs,
 				now,
 			);
+			const recapBy = recapByRow(snapshot, contentWidth, palette);
 			const section: Section = {
 				id: "session",
 				title: "Session",
@@ -1287,11 +1294,14 @@ export function renderSidebarLines(
 			return [
 				{ name: "sessionGoal", section, rows: goal, dropRank: DROP_RANK.session },
 				{ name: "sessionStatus", section, rows: status, dropRank: DROP_RANK.sessionStatus },
+				// The recap row is a footnote to the lines above: a blank line sets it apart, and the two
+				// come and go together so a short panel never keeps the space without the row.
 				{
 					name: "sessionRecapBy",
 					section,
-					rows: recapByRow(snapshot, contentWidth, palette),
+					rows: recapBy.length > 0 ? ["", ...recapBy] : [],
 					dropRank: DROP_RANK.sessionRecapBy,
+					requires: ["sessionStatus"],
 				},
 			];
 		},
