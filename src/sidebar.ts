@@ -899,8 +899,7 @@ const DROP_RANK = {
 	session: 88,
 	/** Without the goal a status cannot say which session it belongs to, so it goes first. */
 	sessionStatus: 87,
-	/** A short Session panel gives up its spacing first, then who wrote the recap. */
-	sessionGap: 12,
+	/** Who wrote the recap is the first thing a short Session panel gives up. */
 	sessionRecapBy: 15,
 	workspace: 30,
 	olderRecentTool: 50,
@@ -1286,13 +1285,6 @@ export function renderSidebarLines(
 			};
 			return [
 				{ name: "sessionGoal", section, rows: goal, dropRank: DROP_RANK.session },
-				// Breathing room between the headline and the status; the first thing a short panel gives up.
-				{
-					name: "sessionGap",
-					section,
-					rows: status.length > 0 ? [""] : [],
-					dropRank: DROP_RANK.sessionGap,
-				},
 				{ name: "sessionStatus", section, rows: status, dropRank: DROP_RANK.sessionStatus },
 				{
 					name: "sessionRecapBy",
