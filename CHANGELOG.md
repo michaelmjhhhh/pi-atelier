@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.22.0 — 2026-11-26
 
 - Merge the Control Center **Settings** list and **Settings → Display** into one **Settings** workspace with four pages: **General** (Font, Atelier footer, Notifications), **Status rail** (preview, Preset, Density, segments), **Sidebar** (Style, Show at startup, Tool list, Prefill progress, panels), and **Session recap** (on or off, and the recap model, picked from a list on the page). Tab and Shift+Tab switch pages, and each page remembers its selection. Wide terminals list the pages on the left; narrow ones show them as tabs. A dot marks a page with unsaved changes.
 - Each page states how its changes are kept: General and Session recap save as you change them, Status rail applies to the session until you press `s`, and Sidebar panels apply when you press `s`. Escape with unsaved panel changes asks once before closing without them. Undo and Revert act only on the page in view, and `s` on General or Session recap with nothing unsaved says so instead of writing the status rail layout as your default. The page notes when another setting cancels it out, such as a hidden Atelier footer or a hidden Session panel.
