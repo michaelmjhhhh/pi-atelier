@@ -1119,7 +1119,8 @@ function placeSummaries(
 	});
 }
 
-function withoutRedundantSummaries(groups: readonly SidebarGroup[]): SidebarGroup[] {
+/** Groups whose conditions hold: summaries of rows still shown and footnotes whose lines are gone drop out. */
+function withConditionsMet(groups: readonly SidebarGroup[]): SidebarGroup[] {
 	const names = new Set(groups.map((group) => group.name));
 	return groups.filter(
 		(group) =>
@@ -1132,15 +1133,12 @@ function composeGroups(groups: readonly SidebarGroup[], height: number, style: S
 	const available = groups.filter((group) => group.rows.length > 0);
 	const kept = new Set(available.map((group) => group.name));
 	const fits = () =>
-		measureGroups(withoutRedundantSummaries(available.filter((group) => kept.has(group.name))), style) <=
-		height;
+		measureGroups(withConditionsMet(available.filter((group) => kept.has(group.name))), style) <= height;
 	// Drop the lowest-ranked group until the rest fit, recounting so newly adjacent groups share a panel.
 	const dropped: SidebarGroup[] = [];
 	while (!fits()) {
 		let drop: SidebarGroup | undefined;
-		for (const group of withoutRedundantSummaries(
-			available.filter((candidate) => kept.has(candidate.name)),
-		)) {
+		for (const group of withConditionsMet(available.filter((candidate) => kept.has(candidate.name)))) {
 			if (group.dropRank < (drop?.dropRank ?? DROP_RANK.required)) drop = group;
 		}
 		// Only required rows remain; the dock clips whatever still does not fit.
@@ -1153,7 +1151,7 @@ function composeGroups(groups: readonly SidebarGroup[], height: number, style: S
 		kept.add(group.name);
 		if (!fits()) kept.delete(group.name);
 	}
-	return withoutRedundantSummaries(available.filter((group) => kept.has(group.name)));
+	return withConditionsMet(available.filter((group) => kept.has(group.name)));
 }
 
 /** Paint a frame piece: neutral grey at rest, the state's own color when lit. */

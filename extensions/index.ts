@@ -666,7 +666,7 @@ export default function atelierExtension(
 			ctx.ui.notify(
 				recapOn
 					? `Goal will be written again after the next run${hint}`
-					: "Goal cleared · turn on Session recap in /atelier settings to have it written",
+					: "Goal cleared · turn on Session recap in /atelier → Settings to have it written",
 				"info",
 			);
 			return;
