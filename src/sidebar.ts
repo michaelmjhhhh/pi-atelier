@@ -743,7 +743,7 @@ function sessionSection(
 					: theme.bold(palette.paint("primary", line)),
 			)
 		: wrapLines(
-				config.sessionRecap ? "Goal is written after the first reply" : "Set a goal with /atelier goal",
+				config.sessionRecap ? "Goal is written once the task is clear" : "Set a goal with /atelier goal",
 				width,
 				SESSION_GOAL_MAX_LINES,
 			).map((line) => palette.paint("dim", line));
