@@ -19,7 +19,12 @@ import { planShortcuts } from "../src/shortcuts.js";
 import { AtelierEditor } from "../src/editor.js";
 import { type AtelierFooterComponent, createFooterComponent } from "../src/footer.js";
 import { createImageCompositorBinding } from "../src/image-compositor.js";
-import { openAtelierControlCenter, openDisplaySettingsWorkspace, sidebarStatusLabel } from "../src/menu.js";
+import {
+	openAtelierControlCenter,
+	openSettingsWorkspace,
+	type SidebarControls,
+	sidebarStatusLabel,
+} from "../src/menu.js";
 import type { OverlayLifetime } from "../src/overlay-lifecycle.js";
 import {
 	createPrefillThrottle,
@@ -33,7 +38,7 @@ import {
 	isCompletionGlowing,
 	type RunActivityTracker,
 } from "../src/run-activity.js";
-import type { SidebarPanelSetting } from "../src/settings-workspace.js";
+import { SETTINGS_PAGES, type SettingsPage, type SidebarPanelSetting } from "../src/settings-workspace.js";
 import {
 	buildSidebarSnapshot,
 	createSidebarController,
@@ -393,6 +398,8 @@ export default function atelierExtension(
 		ctx: ExtensionContext,
 		visible: boolean | undefined,
 		targetSession: ActiveSession,
+		notify: (message: string, kind: "info" | "warning") => void = (message, kind) =>
+			ctx.ui.notify(message, kind),
 	): Promise<void> {
 		const { runtime } = targetSession;
 		const next = visible ?? !runtime.getConfig().showSidebarToolNames;
@@ -402,10 +409,10 @@ export default function atelierExtension(
 		try {
 			await lifecycleGuardedSavePatch(targetSession)(userConfigPath(), { showSidebarToolNames: next });
 			if (activeSession !== targetSession) return;
-			ctx.ui.notify(`Sidebar tool list ${next ? "expanded" : "collapsed"}`, "info");
+			notify(`Sidebar tool list ${next ? "expanded" : "collapsed"}`, "info");
 		} catch (error) {
 			if (activeSession !== targetSession) return;
-			ctx.ui.notify(
+			notify(
 				`Sidebar tool list changed for this session but could not be saved: ${errorMessage(error)}`,
 				"warning",
 			);
@@ -491,30 +498,34 @@ export default function atelierExtension(
 		);
 	}
 
+	function sidebarControls(ctx: ExtensionContext, current: ActiveSession): SidebarControls {
+		const { runtime, sidebar } = current;
+		const isCurrent = (): boolean => activeSession === current;
+		return {
+			getStatus: () => sidebar.getStatus(),
+			setMode: (mode) => {
+				if (enabled && isCurrent()) sidebar.setMode(mode);
+			},
+			toggle: () => {
+				if (enabled && isCurrent()) sidebar.toggle();
+			},
+			isToolListExpanded: () => isCurrent() && runtime.getConfig().showSidebarToolNames,
+			toggleToolList: async (notify) => {
+				if (isCurrent()) await setSidebarToolNames(ctx, undefined, current, notify);
+			},
+			getSidebarPanelSettings: () => (isCurrent() ? getSidebarPanelSettings(current) : []),
+		};
+	}
+
 	async function openMenu(ctx: ExtensionContext): Promise<void> {
 		const current = requireActiveSession(ctx);
 		if (!current) return;
-		const { runtime, sidebar } = current;
-		const isCurrent = (): boolean => activeSession === current;
 		await openAtelierControlCenter(
 			pi,
 			ctx,
-			runtime,
+			current.runtime,
 			userConfigPath(),
-			{
-				getStatus: () => sidebar.getStatus(),
-				setMode: (mode) => {
-					if (enabled && isCurrent()) sidebar.setMode(mode);
-				},
-				toggle: () => {
-					if (enabled && isCurrent()) sidebar.toggle();
-				},
-				isToolListExpanded: () => isCurrent() && runtime.getConfig().showSidebarToolNames,
-				toggleToolList: async () => {
-					if (isCurrent()) await setSidebarToolNames(ctx, undefined, current);
-				},
-				getSidebarPanelSettings: () => (isCurrent() ? getSidebarPanelSettings(current) : []),
-			},
+			sidebarControls(ctx, current),
 			() => requestAllRenders(current),
 			lifecycleGuardedSavePatch(current),
 			{
@@ -525,21 +536,22 @@ export default function atelierExtension(
 		);
 	}
 
-	async function openDisplay(ctx: ExtensionContext): Promise<void> {
+	async function openSettings(ctx: ExtensionContext, page?: SettingsPage): Promise<void> {
 		if (ctx.mode !== "tui") {
-			ctx.ui.notify("Pi Atelier Display settings require TUI mode", "warning");
+			ctx.ui.notify("Pi Atelier Settings require TUI mode", "warning");
 			return;
 		}
 		const current = requireActiveSession(ctx);
 		if (!current) return;
-		await openDisplaySettingsWorkspace(
+		await openSettingsWorkspace(
+			pi,
 			ctx,
 			current.runtime,
-			() => getSidebarPanelSettings(current),
 			userConfigPath(),
+			sidebarControls(ctx, current),
 			() => requestAllRenders(current),
 			lifecycleGuardedSavePatch(current),
-			{ lifetime: current.overlayLifetime },
+			{ lifetime: current.overlayLifetime, syncFooter: () => syncFooter(current), ...(page ? { page } : {}) },
 		);
 	}
 
@@ -658,7 +670,9 @@ export default function atelierExtension(
 	function setGoal(ctx: ExtensionContext, rawText: string): void {
 		const current = requireActiveSession(ctx);
 		if (!current) return;
-		const hint = isSessionPanelVisible(current) ? "" : " · turn on the Session panel in /atelier display";
+		const hint = isSessionPanelVisible(current)
+			? ""
+			: " · turn on the Session panel in /atelier settings sidebar";
 		if (rawText.trim().toLowerCase() === "auto") {
 			pi.appendEntry(SESSION_GOAL_ENTRY, { text: null, regenerate: true });
 			invalidateSessionRecap(current);
@@ -666,7 +680,7 @@ export default function atelierExtension(
 			ctx.ui.notify(
 				recapOn
 					? `Goal will be written again after the next run${hint}`
-					: "Goal cleared · turn on Session recap in /atelier → Settings to have it written",
+					: "Goal cleared · turn on Session recap in /atelier settings recap to have it written",
 				"info",
 			);
 			return;
@@ -683,9 +697,14 @@ export default function atelierExtension(
 				if (args.length > 0) usage(ctx, "usage");
 				else await openUsage(ctx);
 			},
+			settings: async (ctx, args) => {
+				const page = SETTINGS_PAGES.find((name) => name === (args[0] ?? "general"));
+				if (args.length > 1 || !page) usage(ctx, "settings [general|rail|sidebar|recap]");
+				else await openSettings(ctx, page);
+			},
 			display: async (ctx, args) => {
 				if (args.length > 0) usage(ctx, "display");
-				else await openDisplay(ctx);
+				else await openSettings(ctx, "rail");
 			},
 			sidebar: async (ctx, [sidebarAction, ...extra]) => {
 				if (ctx.mode !== "tui") {

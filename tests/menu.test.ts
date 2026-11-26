@@ -19,10 +19,10 @@ vi.mock("@earendil-works/pi-tui", async (importOriginal) => {
 import {
 	createMenuActions,
 	openAtelierControlCenter,
-	openDisplaySettingsWorkspace,
+	openSettingsWorkspace,
 	type SidebarControls,
 } from "../src/menu.js";
-import { getDisplaySettingsViewportHeight } from "../src/settings-workspace.js";
+import { getSettingsViewportHeight } from "../src/settings-workspace.js";
 
 function harness() {
 	let config = {
@@ -141,33 +141,24 @@ describe("Control Center presentation", () => {
 		);
 	});
 
-	it("routes the settings root category to its destination", async () => {
-		const category = "settings";
-		const expectedLabels = [
-			"Display             editorial",
-			"Font                Plain text",
-			"Atelier footer      On",
-			"Sidebar style       Framed",
-			"Sidebar at startup  On",
-			"Sidebar tool list   Collapsed",
-			"Notifications       On",
-			"Prefill progress    On",
-			"Session recap       On",
-			"Recap model         Session model",
-			"Back",
-		];
-		const sidebar = sidebarControls();
+	it("opens the Settings workspace from the Control Center root", async () => {
+		const ctx = contextWithSelections(["settings", undefined as never, "close"]);
 		await openAtelierControlCenter(
 			{} as never,
-			contextWithSelections([category, "back", "close"]) as never,
+			ctx as never,
 			harness().runtime as never,
 			"/tmp/user.json",
-			sidebar,
+			sidebarControls(),
 		);
-		expect(rootMenuItems[1]?.map((item) => item.label)).toEqual(expectedLabels);
+		expect(rootMenuItems).toHaveLength(2);
+		expect(ctx.ui.custom).toHaveBeenCalledTimes(3);
+		expect(ctx.ui.custom.mock.calls[1]?.[1]).toMatchObject({
+			overlay: true,
+			overlayOptions: expect.objectContaining({ width: "90%" }),
+		});
 	});
 
-	it("releases a normally closed Display workspace from its lifetime", async () => {
+	it("releases a normally closed Settings workspace from its lifetime", async () => {
 		const registrations = new Set<() => void>();
 		const callbacks: Array<() => void> = [];
 		const components: any[] = [];
@@ -194,11 +185,12 @@ describe("Control Center presentation", () => {
 				return () => registrations.delete(cancel);
 			},
 		};
-		const opening = openDisplaySettingsWorkspace(
+		const opening = openSettingsWorkspace(
+			h.pi as never,
 			h.ctx as never,
 			h.runtime as never,
-			h.runtime.getSidebarPanelSettings,
 			"/tmp/user.json",
+			sidebarControls(),
 			() => undefined,
 			h.savePatch,
 			{ lifetime },
@@ -215,18 +207,20 @@ describe("Control Center presentation", () => {
 		expect(getDisplaySettings).not.toHaveBeenCalled();
 	});
 
-	it("persists Display workspace changes through the active callbacks", async () => {
+	it("persists status rail changes through the active callbacks", async () => {
 		const h = harness();
 		const components: any[] = [];
 		const ctx = contextWithSelections([], { columns: 140, rows: 42 }, components);
 		const requestAllRenders = vi.fn();
-		await openDisplaySettingsWorkspace(
+		await openSettingsWorkspace(
+			h.pi as never,
 			ctx as never,
 			h.runtime as never,
-			h.runtime.getSidebarPanelSettings,
 			"/tmp/user.json",
+			sidebarControls(),
 			requestAllRenders,
 			h.savePatch,
+			{ page: "rail" },
 		);
 
 		const workspace = components[0] as { handleInput(data: string): void };
@@ -244,11 +238,8 @@ describe("Control Center presentation", () => {
 		const h = harness();
 		const components: any[] = [];
 		const ctx = contextWithSelections(
-			["settings", "display", "workspace-close", "back", "close"],
-			{
-				columns: 140,
-				rows: 42,
-			},
+			["settings", undefined as never, "close"],
+			{ columns: 140, rows: 42 },
 			components,
 		);
 		const requestAllRenders = vi.fn();
@@ -262,56 +253,38 @@ describe("Control Center presentation", () => {
 			requestAllRenders,
 			h.savePatch,
 		);
-		const workspace = components[2] as { handleInput(data: string): void };
-		workspace.handleInput(" ");
-		workspace.handleInput("s");
-		expect(h.savePatch).toHaveBeenCalledOnce();
+		// General opens first; Enter on Font applies and saves it at once.
+		const workspace = components[1] as { handleInput(data: string): void };
+		workspace.handleInput("\r");
+		expect(h.savePatch).toHaveBeenCalledWith("/tmp/user.json", { nerdFont: true });
 		expect(requestAllRenders).toHaveBeenCalled();
 	});
 
 	it("toggles and persists Sidebar startup from Settings", async () => {
 		const h = harness();
-		const sidebar = sidebarControls();
-
-		await openAtelierControlCenter(
+		const components: any[] = [];
+		await openSettingsWorkspace(
 			h.pi as never,
-			contextWithSelections(["settings", "sidebar-startup", "back", "close"]) as never,
+			contextWithSelections([], { columns: 140, rows: 42 }, components) as never,
 			h.runtime as never,
 			"/tmp/user.json",
-			sidebar,
+			sidebarControls(),
 			undefined,
 			h.savePatch,
+			{ page: "sidebar" },
 		);
+		const workspace = components[0] as { handleInput(data: string): void };
+		workspace.handleInput("\u001b[B");
+		workspace.handleInput("\r");
 
 		expect(h.runtime.getConfig().showSidebarOnStartup).toBe(false);
 		expect(h.savePatch).toHaveBeenCalledWith("/tmp/user.json", { showSidebarOnStartup: false });
 	});
 
-	it("routes Control Center Settings → Display to the workspace", async () => {
-		const ctx = contextWithSelections(["settings", "display", "workspace-close", "back", "close"]);
-		const sidebar = sidebarControls();
-		await openAtelierControlCenter(
-			{} as never,
-			ctx as never,
-			harness().runtime as never,
-			"/tmp/user.json",
-			sidebar,
-		);
-		expect(ctx.ui.custom).toHaveBeenCalledTimes(5);
-		expect(ctx.ui.custom.mock.calls[2]?.[1]).toMatchObject({
-			overlay: true,
-			overlayOptions: expect.objectContaining({ width: "90%" }),
-		});
-	});
-
 	it("derives the workspace viewport from live terminal rows and Pi overlay rounding", async () => {
 		const terminal = { columns: 140, rows: 42 };
 		const customComponents: unknown[] = [];
-		const ctx = contextWithSelections(
-			["settings", "display", "workspace-close", "back", "close"],
-			terminal,
-			customComponents,
-		);
+		const ctx = contextWithSelections(["settings", undefined as never, "close"], terminal, customComponents);
 		const sidebar = sidebarControls();
 		await openAtelierControlCenter(
 			{} as never,
@@ -320,19 +293,18 @@ describe("Control Center presentation", () => {
 			"/tmp/user.json",
 			sidebar,
 		);
-		const workspace = customComponents[2] as { render(width: number): string[] };
-		expect(ctx.ui.custom.mock.calls[2]?.[1]).toMatchObject({
+		const workspace = customComponents[1] as { render(width: number): string[] };
+		expect(ctx.ui.custom.mock.calls[1]?.[1]).toMatchObject({
 			overlay: true,
 			overlayOptions: expect.objectContaining({ maxHeight: "95%", margin: 1 }),
 		});
-		expect(getDisplaySettingsViewportHeight(42)).toBe(39);
-		expect(getDisplaySettingsViewportHeight(30)).toBe(28);
-		expect(getDisplaySettingsViewportHeight(50)).toBe(47);
-		expect(workspace.render(126)).toHaveLength(39);
-		terminal.rows = 30;
-		expect(workspace.render(126)).toHaveLength(28);
-		terminal.rows = 50;
-		expect(workspace.render(126)).toHaveLength(47);
+		expect(getSettingsViewportHeight(42)).toBe(39);
+		expect(getSettingsViewportHeight(20)).toBe(18);
+		expect(getSettingsViewportHeight(16)).toBe(14);
+		terminal.rows = 20;
+		expect(workspace.render(126)).toHaveLength(18);
+		terminal.rows = 16;
+		expect(workspace.render(126)).toHaveLength(14);
 	});
 
 	it("toggles Sidebar visibility from Controls", async () => {

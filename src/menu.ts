@@ -17,9 +17,11 @@ import { isLifetimeActive, openLifecycleOverlay, type OverlayLifetime } from "./
 import type { ThemeLike } from "./palette.js";
 import {
 	createSettingsWorkspace,
-	DISPLAY_SETTINGS_OVERLAY_MARGIN,
-	DISPLAY_SETTINGS_OVERLAY_MAX_HEIGHT,
-	getDisplaySettingsViewportHeight,
+	getSettingsViewportHeight,
+	SETTINGS_OVERLAY_MARGIN,
+	SETTINGS_OVERLAY_MAX_HEIGHT,
+	type SettingsPage,
+	type SettingsWorkspace,
 	type SidebarPanelSetting,
 } from "./settings-workspace.js";
 import type { SidebarMode, SidebarStatus } from "./split-pane.js";
@@ -42,6 +44,8 @@ interface MenuOptions {
 	lifetime?: OverlayLifetime;
 	/** Install or remove the Atelier footer to match the current `showFooter` preference. */
 	syncFooter?(): void;
+	/** Where action messages go; Pi notifications by default. */
+	notify?(message: string, kind: "info" | "warning" | "error"): void;
 }
 
 interface ControlCenterOptions extends MenuOptions {
@@ -55,7 +59,8 @@ export interface SidebarControls {
 	setMode(mode: SidebarMode): void;
 	toggle(): void;
 	isToolListExpanded(): boolean;
-	toggleToolList(): Promise<void>;
+	/** `notify` receives the confirmation; Pi notifications by default. */
+	toggleToolList(notify?: (message: string, kind: "info" | "warning") => void): Promise<void>;
 	getSidebarPanelSettings(): readonly SidebarPanelSetting[];
 }
 
@@ -80,7 +85,9 @@ export function createMenuActions(
 ) {
 	const isActive = (): boolean => isLifetimeActive(options.lifetime);
 	const notify = (message: string, kind: "info" | "warning" | "error"): void => {
-		if (isActive()) ctx.ui.notify(message, kind);
+		if (!isActive()) return;
+		if (options.notify) options.notify(message, kind);
+		else ctx.ui.notify(message, kind);
 	};
 	/** Report a failed change, and say so when restoring the previous value also failed. */
 	const reportFailure = (what: string, error: unknown, restored: boolean): void =>
@@ -256,7 +263,9 @@ export function createMenuActions(
 			persistPreference(
 				{ showFooter: enabled },
 				{
-					saved: `Atelier footer ${enabled ? "enabled" : "disabled; Pi's footer restored"}`,
+					saved: enabled
+						? "Atelier footer on; it returns when Settings closes"
+						: "Atelier footer off; Pi's footer returns when Settings closes",
 					failed: "Atelier footer changed for this session but could not be saved",
 				},
 				false,
@@ -267,8 +276,6 @@ export function createMenuActions(
 
 const sidebarStyleLabel = (style: SidebarStyle): string => (style === "framed" ? "Framed" : "Minimal");
 const recapModelLabel = (model: string): string => model || "Session model";
-/** Menu value for the session's own model; `sessionRecapModel` stores it as empty. */
-const SESSION_MODEL_CHOICE = "@session";
 
 async function showSelection(
 	ctx: ExtensionContext,
@@ -352,9 +359,11 @@ async function showToolSettings(
 	);
 }
 
-export type DisplaySettingsRuntime = Pick<
+export type SettingsRuntime = Pick<
 	AtelierRuntime,
 	| "getConfig"
+	| "setConfig"
+	| "refreshUsage"
 	| "getDisplaySettings"
 	| "getDisplayProvenance"
 	| "getSessionDisplayOverride"
@@ -363,82 +372,111 @@ export type DisplaySettingsRuntime = Pick<
 	| "applySavedUserDisplayPatch"
 >;
 
-export async function openDisplaySettingsWorkspace(
+/** Open the Settings workspace, on General unless another page is named. */
+export async function openSettingsWorkspace(
+	pi: ExtensionAPI,
 	ctx: ExtensionContext,
-	runtime: DisplaySettingsRuntime,
-	getSidebarPanelSettings: () => readonly SidebarPanelSetting[],
+	runtime: SettingsRuntime,
 	userConfigPath: string,
+	sidebar: Pick<SidebarControls, "isToolListExpanded" | "toggleToolList" | "getSidebarPanelSettings">,
 	requestAllRenders: () => void = () => undefined,
 	savePatch: SaveConfigPatch = saveUserConfigPatch,
-	{ lifetime }: MenuOptions = {},
+	options: MenuOptions & { page?: SettingsPage } = {},
 ): Promise<void> {
+	const { lifetime, page } = options;
 	if (ctx.mode !== "tui") {
-		ctx.ui.notify("Pi Atelier Display settings require TUI mode", "warning");
+		ctx.ui.notify("Pi Atelier Settings require TUI mode", "warning");
 		return;
 	}
 	const isActive = (): boolean => isLifetimeActive(lifetime);
 	const ensureActive = (): void => {
 		if (!isActive()) throw new Error("Pi Atelier is not active in this session");
 	};
-	await openLifecycleOverlay<void>(
-		ctx,
-		(tui, theme, finish) =>
-			createSettingsWorkspace({
-				getDisplaySettings: () => runtime.getDisplaySettings(),
-				getSidebarPanelSettings,
-				getDisplayProvenance: () => runtime.getDisplayProvenance(),
-				getSessionDisplayOverride: () => runtime.getSessionDisplayOverride(),
-				replaceSessionDisplayOverride: (value) => {
-					if (isActive()) runtime.replaceSessionDisplayOverride(value);
-				},
-				clearSessionDisplayOverride: () => {
-					if (isActive()) runtime.clearSessionDisplayOverride();
-				},
-				persistUserDisplayPatch: async (patch) => {
-					ensureActive();
-					await savePatch(userConfigPath, patch);
-					ensureActive();
-				},
-				applySavedUserDisplayPatch: (patch) => {
-					if (isActive()) runtime.applySavedUserDisplayPatch(patch);
-				},
-				getRenderConfig: () => runtime.getConfig(),
-				getViewportHeight: () => getDisplaySettingsViewportHeight(tui.terminal.rows),
-				theme,
-				colorEnabled: isColorEnabled(),
-				requestWorkspaceRender: () => {
-					if (isActive()) tui.requestRender();
-				},
-				requestLiveRender: () => {
-					if (isActive()) requestAllRenders();
-				},
-				close: finish,
-				report: (message, kind) => {
-					if (kind === "error" && isActive()) ctx.ui.notify(message, "error");
-				},
-			}),
-		lifetime,
-		{
-			anchor: "center",
-			width: "90%",
-			minWidth: 36,
-			maxHeight: DISPLAY_SETTINGS_OVERLAY_MAX_HEIGHT,
-			margin: DISPLAY_SETTINGS_OVERLAY_MARGIN,
+	// Preference confirmations show inside the workspace while it is open, and as
+	// notifications when a save finishes after it closed.
+	let workspace: SettingsWorkspace | undefined;
+	const report = (message: string, kind: "info" | "warning" | "error"): void =>
+		workspace ? workspace.showMessage(message, kind) : ctx.ui.notify(message, kind);
+	// Pi focuses the editor it installs with the footer, which takes the keyboard from the
+	// overlay, and the overlay would later hand focus back to the replaced editor. So the
+	// footer follows the saved setting once the workspace has closed.
+	let footerChanged = false;
+	const actions = createMenuActions(pi, ctx, runtime, userConfigPath, savePatch, {
+		...options,
+		syncFooter: () => {
+			footerChanged = true;
 		},
-	);
+		notify: report,
+	});
+	try {
+		await openLifecycleOverlay<void>(
+			ctx,
+			(tui, theme, finish) => {
+				workspace = createSettingsWorkspace({
+					getDisplaySettings: () => runtime.getDisplaySettings(),
+					getSidebarPanelSettings: () => sidebar.getSidebarPanelSettings(),
+					getDisplayProvenance: () => runtime.getDisplayProvenance(),
+					getSessionDisplayOverride: () => runtime.getSessionDisplayOverride(),
+					replaceSessionDisplayOverride: (value) => {
+						if (isActive()) runtime.replaceSessionDisplayOverride(value);
+					},
+					clearSessionDisplayOverride: () => {
+						if (isActive()) runtime.clearSessionDisplayOverride();
+					},
+					persistUserDisplayPatch: async (patch) => {
+						ensureActive();
+						await savePatch(userConfigPath, patch);
+						ensureActive();
+					},
+					applySavedUserDisplayPatch: (patch) => {
+						if (isActive()) runtime.applySavedUserDisplayPatch(patch);
+					},
+					getRenderConfig: () => runtime.getConfig(),
+					preferences: {
+						setNerdFont: actions.setNerdFont,
+						setShowFooter: actions.setShowFooter,
+						setCompletionNotifications: actions.setCompletionNotifications,
+						setPrefillEnabled: actions.setPrefillEnabled,
+						setSidebarStyle: actions.setSidebarStyle,
+						setShowSidebarOnStartup: actions.setShowSidebarOnStartup,
+						isToolListExpanded: () => sidebar.isToolListExpanded(),
+						toggleToolList: () => sidebar.toggleToolList(report),
+						setSessionRecap: actions.setSessionRecap,
+						setSessionRecapModel: actions.setSessionRecapModel,
+						getRecapModels: () =>
+							ctx.modelRegistry.getAvailable().map((model) => `${model.provider}/${model.id}`),
+					},
+					...(page ? { initialPage: page } : {}),
+					getViewportHeight: () => getSettingsViewportHeight(tui.terminal.rows),
+					theme,
+					colorEnabled: isColorEnabled(),
+					requestWorkspaceRender: () => {
+						if (isActive()) tui.requestRender();
+					},
+					requestLiveRender: () => {
+						if (isActive()) requestAllRenders();
+					},
+					close: finish,
+					report: (message, kind) => {
+						if (kind === "error" && isActive()) ctx.ui.notify(message, "error");
+					},
+				});
+				return workspace;
+			},
+			lifetime,
+			{
+				anchor: "center",
+				width: "90%",
+				minWidth: 36,
+				maxHeight: SETTINGS_OVERLAY_MAX_HEIGHT,
+				margin: SETTINGS_OVERLAY_MARGIN,
+			},
+		);
+	} finally {
+		workspace = undefined;
+		if (footerChanged && isActive()) options.syncFooter?.();
+	}
 }
-
-const onOff = (value: boolean): string => (value ? "On" : "Off");
-
-/** Width of the setting-name column, so every current value starts in the same column. */
-const SETTING_NAME_WIDTH = 20;
-
-/** A Settings row: name and current value as aligned columns, then a plain description. */
-const setting = (value: string, name: string, current: string, description: string): SelectItem => ({
-	value,
-	label: `${name.padEnd(SETTING_NAME_WIDTH)}${current}`,
-	description,
-});
 
 export async function openAtelierControlCenter(
 	pi: ExtensionAPI,
@@ -462,133 +500,6 @@ export async function openAtelierControlCenter(
 		if (!isActive()) return undefined;
 		const choice = await showSelection(ctx, title, items, lifetime);
 		return isActive() ? choice : undefined;
-	};
-
-	const settingsMenu = async (): Promise<void> => {
-		for (;;) {
-			const config = runtime.getConfig();
-			const choice = await choose("Settings", [
-				setting(
-					"display",
-					"Display",
-					runtime.getDisplaySettings().preset,
-					"Status rail segments, density, and sidebar panels",
-				),
-				setting(
-					"font-mode",
-					"Font",
-					config.nerdFont ? "Nerd Font" : "Plain text",
-					"Plain text needs no Nerd Font installed",
-				),
-				setting(
-					"footer",
-					"Atelier footer",
-					onOff(config.showFooter),
-					"Off restores Pi's own footer and composer",
-				),
-				setting(
-					"sidebar-style",
-					"Sidebar style",
-					sidebarStyleLabel(config.sidebarStyle),
-					"Framed panels with lit borders, or quiet headings",
-				),
-				setting(
-					"sidebar-startup",
-					"Sidebar at startup",
-					onOff(config.showSidebarOnStartup),
-					"Show the sidebar when Pi starts",
-				),
-				setting(
-					"sidebar-tools",
-					"Sidebar tool list",
-					sidebar.isToolListExpanded() ? "Expanded" : "Collapsed",
-					"List tool names in the sidebar",
-				),
-				setting(
-					"notifications",
-					"Notifications",
-					onOff(config.completionNotifications),
-					"Notify when a run finishes",
-				),
-				setting(
-					"prefill",
-					"Prefill progress",
-					onOff(config.prefillEnabled),
-					"How far a local model has read the prompt",
-				),
-				setting(
-					"session-recap",
-					"Session recap",
-					onOff(config.sessionRecap),
-					"A model writes the Session panel's goal and status; costs tokens after each run",
-				),
-				setting(
-					"session-recap-model",
-					"Recap model",
-					recapModelLabel(config.sessionRecapModel),
-					"Session model reuses its prompt cache; another model gets a transcript excerpt",
-				),
-				{ value: "back", label: "Back" },
-			]);
-			switch (choice) {
-				case "display":
-					await openDisplaySettingsWorkspace(
-						ctx,
-						runtime,
-						sidebar.getSidebarPanelSettings,
-						userConfigPath,
-						requestAllRenders,
-						savePatch,
-						options,
-					);
-					break;
-				case "font-mode":
-					await actions.setNerdFont(!runtime.getConfig().nerdFont);
-					break;
-				case "footer":
-					await actions.setShowFooter(!runtime.getConfig().showFooter);
-					break;
-				case "sidebar-style":
-					await actions.setSidebarStyle(runtime.getConfig().sidebarStyle === "framed" ? "minimal" : "framed");
-					break;
-				case "sidebar-startup":
-					await actions.setShowSidebarOnStartup(!runtime.getConfig().showSidebarOnStartup);
-					break;
-				case "notifications":
-					await actions.setCompletionNotifications(!runtime.getConfig().completionNotifications);
-					break;
-				case "prefill":
-					await actions.setPrefillEnabled(!runtime.getConfig().prefillEnabled);
-					break;
-				case "session-recap":
-					await actions.setSessionRecap(!runtime.getConfig().sessionRecap);
-					break;
-				case "session-recap-model": {
-					const configured = runtime.getConfig().sessionRecapModel;
-					const models = ctx.modelRegistry.getAvailable().map((model) => `${model.provider}/${model.id}`);
-					const choice = await choose("Recap model", [
-						{
-							value: SESSION_MODEL_CHOICE,
-							label: "Session model",
-							description: `Reuses the conversation's prompt cache; nothing leaves the current provider${configured ? "" : " · current"}`,
-						},
-						...models.map((label) => ({
-							value: label,
-							label,
-							...(label === configured ? { description: "current" } : {}),
-						})),
-					]);
-					if (choice !== undefined)
-						await actions.setSessionRecapModel(choice === SESSION_MODEL_CHOICE ? "" : choice);
-					break;
-				}
-				case "sidebar-tools":
-					await sidebar.toggleToolList();
-					break;
-				default:
-					return;
-			}
-		}
 	};
 
 	const modelMenu = async (): Promise<void> => {
@@ -674,7 +585,11 @@ export async function openAtelierControlCenter(
 
 	for (;;) {
 		const category = await choose("◆ Atelier Control Center", [
-			{ value: "settings", label: "Settings", description: "Display, footer, sidebar, and notifications" },
+			{
+				value: "settings",
+				label: "Settings",
+				description: "Font, status rail, sidebar panels, and session recap",
+			},
 			{
 				value: "controls",
 				label: "Controls",
@@ -686,7 +601,17 @@ export async function openAtelierControlCenter(
 			{ value: "close", label: "Close" },
 		]);
 		if (category === "usage") await openUsage?.();
-		else if (category === "settings") await settingsMenu();
+		else if (category === "settings")
+			await openSettingsWorkspace(
+				pi,
+				ctx,
+				runtime,
+				userConfigPath,
+				sidebar,
+				requestAllRenders,
+				savePatch,
+				options,
+			);
 		else if (category === "controls") await controlsMenu();
 		else return;
 		if (!isActive()) return;
