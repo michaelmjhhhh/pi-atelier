@@ -22,7 +22,7 @@ const GOAL_RULES = [
 ];
 
 const STATUS_RULE =
-	"Stopped: where the work stands now or the next step, at most 14 words. Say what is blocked or waiting on the user when something is.";
+	"Stopped: where the work stands now or the next step, at most 10 words. Say what is blocked or waiting on the user when something is.";
 
 const COMMON_RULES = [
 	"Keep file names, issue numbers, and identifiers verbatim.",

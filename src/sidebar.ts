@@ -722,8 +722,8 @@ function wrapLines(text: string, width: number, maxLines: number): string[] {
 
 /**
  * Session panel: the goal as the panel's headline, the stopping point led by a mark and hung
- * under it, and the age of the last run on the crown. Weight and the mark tell the two apart,
- * so neither needs a label row.
+ * under it, and the age of the last run on the crown. Three tones keep them apart without label
+ * rows: the goal bright and bold, the status in the secondary grey, the recap's model and cost dim.
  */
 function sessionSection(
 	snapshot: SidebarSnapshot,
@@ -733,7 +733,7 @@ function sessionSection(
 	theme: ThemeLike,
 	glyphs: SidebarGlyphs,
 	now: number,
-): SectionContent {
+): SectionContent & { goal: string[]; status: string[] } {
 	const recap = snapshot.sessionRecap;
 	const goal = recap.goal
 		? wrapLines(recap.goal.text, width, SESSION_GOAL_MAX_LINES).map((line) =>
@@ -750,11 +750,12 @@ function sessionSection(
 	const status: string[] = [];
 	if (recap.status) {
 		const todo = recap.status.source === "todo";
+		// The mark wears the panel's own color, so the status reads as part of this panel at a glance.
 		const mark = todo
 			? palette.paint("working", glyphs.todoActive)
-			: palette.paint("muted", glyphs.statusLead);
+			: palette.paint(PANEL_HUE.session, glyphs.statusLead);
 		const indent = visibleWidth(todo ? glyphs.todoActive : glyphs.statusLead) + 1;
-		const role: PaletteRole = todo ? "working" : "primary";
+		const role: PaletteRole = todo ? "working" : "muted";
 		for (const [index, line] of wrapLines(
 			recap.status.text,
 			width - indent,
@@ -772,6 +773,8 @@ function sessionSection(
 		...(summary ? { summary } : {}),
 		// A narrow frame still shows that a recap is being written.
 		...(recap.summarizing ? { compactSummary: palette.paint("dim", "…") } : {}),
+		goal,
+		status,
 		rows: [...goal, ...status],
 	};
 }
@@ -781,14 +784,26 @@ function shortModelName(model: string): string {
 	return model.slice(model.indexOf("/") + 1).replace(/[-@]\d{8}$/, "");
 }
 
-/** Who wrote the recap lines and what they cost: the model on the left, the cost kept whole on the right. */
+/** Columns kept between the recap's model and its cost, so the two never read as one string. */
+const RECAP_ROW_GAP = 2;
+
+/**
+ * Who wrote the recap lines and what they cost: the model on the left, the cost kept whole on the
+ * right. When both do not fit with a clear gap, the model gives way to the word `recap`.
+ */
 function recapByRow(snapshot: SidebarSnapshot, width: number, palette: AtelierPalette): string[] {
 	const by = snapshot.sessionRecap.recapBy;
 	if (!by) return [];
-	const model = by.model ? sanitizeInline(shortModelName(by.model)) : "";
 	const cost = by.cost === undefined ? "" : `$${by.cost.toFixed(by.cost < 0.01 ? 4 : 3)}`;
-	if (!model && !cost) return [];
-	return [palette.paint("dim", splitRow(model, cost, width))];
+	const model = by.model ? sanitizeInline(shortModelName(by.model)) : "";
+	const left =
+		model && visibleWidth(model) + RECAP_ROW_GAP + visibleWidth(cost) <= width
+			? model
+			: cost
+				? "recap"
+				: model;
+	if (!left && !cost) return [];
+	return [palette.paint("dim", splitRow(left, cost, width))];
 }
 
 function usageRows(
@@ -882,7 +897,10 @@ const DROP_RANK = {
 	agent: 28,
 	/** The whole point of switching back to a session; it outlasts the counters and lists. */
 	session: 88,
-	/** Who wrote the recap is the first thing a short Session panel gives up. */
+	/** Without the goal a status cannot say which session it belongs to, so it goes first. */
+	sessionStatus: 87,
+	/** A short Session panel gives up its spacing first, then who wrote the recap. */
+	sessionGap: 12,
 	sessionRecapBy: 15,
 	workspace: 30,
 	olderRecentTool: 50,
@@ -1250,7 +1268,7 @@ export function renderSidebarLines(
 	const glyphs = config.nerdFont ? NERD_GLYPHS : PLAIN_GLYPHS;
 	const builtinPanels: Record<BuiltinSidebarPanelId, () => SidebarGroup[]> = {
 		session: () => {
-			const { summary, compactSummary, rows } = sessionSection(
+			const { summary, compactSummary, goal, status } = sessionSection(
 				snapshot,
 				config,
 				contentWidth,
@@ -1267,7 +1285,15 @@ export function renderSidebarLines(
 				summaryOptional: true,
 			};
 			return [
-				{ name: "session", section, rows, dropRank: DROP_RANK.session },
+				{ name: "sessionGoal", section, rows: goal, dropRank: DROP_RANK.session },
+				// Breathing room between the headline and the status; the first thing a short panel gives up.
+				{
+					name: "sessionGap",
+					section,
+					rows: status.length > 0 ? [""] : [],
+					dropRank: DROP_RANK.sessionGap,
+				},
+				{ name: "sessionStatus", section, rows: status, dropRank: DROP_RANK.sessionStatus },
 				{
 					name: "sessionRecapBy",
 					section,
