@@ -54,13 +54,14 @@ Plain text mode is the default. It works with any monospace font and keeps color
 | --- | --- |
 | **Session visibility** | Model, thinking level, context, token usage, and cost in a compact status rail, with optional sidebar panels for the same details. |
 | **Live activity** | Agent and tool activity, TODOs, response timing, and completion notifications on macOS and Windows. |
+| **Session panel** | An opt-in **Session** panel with the session's goal and where it stopped, written by a model after each run, so a session you switch back to says what it was for. |
 | **Workspace context** | The files you have changed, with lines added and removed per file, from read-only Git status. |
 | **Subagent costs** | Colored per-child cost curves from pi-subagents accounting events, with matching legends and real observation markers. `/atelier usage` opens a larger framed graph with keyboard focus and per-reply costs. Kitty-compatible terminals get native graphics; others get text strokes. |
 | **Prefill progress** | While a local model is still reading a long prompt, a temporary sidebar panel shows how far through the prompt it is, how fast it is reading, and how long until the first token. |
 | **Personalization** | Display presets, configurable segments and panels, optional Nerd Font icons, and model and tool controls. |
 | **Extensible sidebar** | Other extensions can add their own panels. See [Sidebar panels from other extensions](#sidebar-panels-from-other-extensions). |
 
-No telemetry and no external network requests. See [Privacy](#privacy).
+No telemetry. No network requests of its own, except the Session panel's recaps, which go through Pi's configured providers. See [Privacy](#privacy).
 
 ## Usage
 
@@ -68,6 +69,8 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 
 ```text
 /atelier display              display settings
+/atelier goal <text>          set the session goal; no text clears it
+/atelier goal auto            write the goal again after the next run
 /atelier usage                subagent cost graph
 /atelier sidebar              toggle sidebar visibility
 /atelier sidebar auto|manual  choose sidebar mode
@@ -91,6 +94,72 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 - Every panel has the same neutral grey frame; its title and ✦ (in Nerd Font mode, the panel's icon) keep a color of their own. A frame lights up only when its panel needs attention: Activity while the agent works (red on an error), Context past your warning and danger thresholds, Changed files on a merge conflict. Inside the panels, color marks state only. When a run finishes, the Activity frame glows green for three seconds, then returns to grey.
 - **Settings → Sidebar style** switches between **Framed** (the default) and **Minimal**: no frames, just quiet headings that take the state color instead. The setting is saved as the user-only `sidebarStyle` (`"framed"` or `"minimal"`).
 - The TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension. Atelier does not change `todo` results, so the agent keeps task ids and `list` output.
+
+### Session panel
+
+The **Session** panel answers "what was this for, and where did it stop?" when you switch back to
+a session. It is off by default; turn it on in **Settings → Display**. It sits at the top of the
+Sidebar, with the time since the last run on its frame, or `updating…` while a recap is written.
+
+```text
+╭─ ✦ Session ──────────────────── 6m ago ╮
+│ Python tasks CLI with tasks.json       │  goal: bright, bold
+│ › todo.py verified; awaiting commit    │  status: secondary grey
+│   decision                             │
+│                                        │
+│ deepseek-flash                 $0.0002 │  recap model and cost: dim
+╰────────────────────────────────────────╯
+```
+
+The goal is the panel's headline (up to two lines); the status follows a `›` in the panel's color
+(up to three lines), or the TODO's own mark while a TODO is in progress. On a narrow Sidebar the
+model name gives way to `recap` so the cost stays readable; on a short terminal the recap row and the
+blank line above it go first, then the status.
+
+While the panel is shown, a model writes its two lines after each run that ends with a reply:
+
+- **Goal** is written once: a 3-8 word title of the subject and outcome, following the rules T3
+  Code uses for thread titles. If the subject is still unknown after a run (a greeting, "fix
+  this", a pasted path), the goal waits for the next run. `/atelier goal <text>` sets your own;
+  `/atelier goal` alone clears it; `/atelier goal auto` has the goal written again after the next
+  run, keeping the old one if it is still accurate.
+- **Status** is rewritten after every run: where the work stands or the next step.
+- A dim row names the model (without its provider or date stamp) and the cost of the recap behind
+  the lines shown, marked `(sub)` like the footer when a subscription pays for it. Pi's own usage
+  totals do not include recaps.
+
+| Row | Source, first match wins |
+| --- | --- |
+| **Goal** | `/atelier goal <text>`; the generated goal; the session name made readable (`issue-42-43` → `issue 42 43`; generated names such as `subagent-…-<uuid>` are hidden). Otherwise a hint. |
+| **Status** | The TODO in progress; the latest recap, until a newer reply arrives; the first sentence of the last reply that says something (headings, code, and replies like "Done." are skipped). |
+
+- The goal and recaps are stored in the session as custom entries, so they survive `/resume` and
+  follow `/tree` branches. They are never sent to the model.
+- The panel refreshes when a run ends and when a session starts, resumes, or changes branch;
+  never mid-run, except that the TODO in progress shows as soon as it changes.
+- A recap runs in the background after the run settles and is cancelled if you start a new run.
+  A missing model, missing authentication, a failed reply, or a reply that calls a tool or misses
+  the format warns once per session and leaves the panel on its other sources.
+
+**Which model writes it** (**Settings → Recap model**, `sessionRecapModel`, user-only):
+
+- **Session model** (default, `""`): the conversation is replayed as the agent sends it, plus one
+  recap request, right after the run while the provider's prompt cache is warm. The prefix is read
+  from the cache, so a recap of a 50k-token session costs about $0.007 on Claude Sonnet 5.5 or
+  $0.012 on GPT-5.6 terra, plus any thinking tokens: the recap keeps the session's thinking level,
+  because changing it would miss the cache. The transcript goes nowhere it has not already gone.
+  Needs Pi 1.6 or newer. Codex sessions, Pi's `blockImages` setting, and older Pi versions use an
+  excerpt instead, since a replay there would not match what the agent sent. If a replay misses
+  the cache, for example because another extension changes what the agent sends, Atelier warns
+  once with the cost.
+- **Another model** (`"provider/model"`): sends an excerpt of up to 12,000 characters (your first
+  request and the latest messages, without tool output; long messages keep their start and end) to
+  that model, uncached and without reasoning. A small model
+  costs about $0.001 per recap. This can send the transcript to a different provider.
+
+Turn **Settings → Session recap** off (`"sessionRecap": false`, user-only) to keep the panel
+without model requests: the goal then comes from `/atelier goal` or the session name, and the
+status from the last reply.
 
 ### Prefill progress
 
@@ -145,7 +214,7 @@ Pi supports one custom footer and one custom editor at a time. Extension load or
 | User | `~/.pi/agent/pi-atelier.json` |
 | Project (trusted only) | `<project>/.pi/pi-atelier.json` |
 
-Project settings override user settings, and session changes override both. Font mode, footer, sidebar startup, sidebar width, sidebar style, notification preferences, and the prefill provider allow-list are user-only.
+Project settings override user settings, and session changes override both. Font mode, footer, sidebar startup, sidebar width, sidebar style, notification preferences, the prefill provider allow-list, and the session recap settings are user-only.
 
 ```json
 {
@@ -166,7 +235,9 @@ Project settings override user settings, and session changes override both. Font
   "completionNotifications": true,
   "prefillEnabled": true,
   "prefillViews": ["percent", "tokens", "eta", "rate"],
-  "prefillProviders": ["llama.cpp"]
+  "prefillProviders": ["llama.cpp"],
+  "sessionRecap": true,
+  "sessionRecapModel": ""
 }
 ```
 
@@ -186,7 +257,7 @@ Project settings override user settings, and session changes override both. Font
 
 `sidebarWidth` is the sidebar width in columns when a session starts, from 28 through 72. The sidebar still narrows when the terminal leaves less than 64 columns for the main pane.
 
-Use **Settings → Display** to reorder or hide status rail segments and sidebar panels. The **Pi** segment shows a single `π` at the start of the rail and takes less room than **Brand**. Every segment can be hidden, and each shown segment lists its fields below it so you can hide single readings, such as cost or the thinking level. A live preview of the status rail stays pinned at the top. Press Enter to show or hide the selected item, Shift+↑/↓ to move it, ←/→ to change the preset or density, Tab to jump between sections, and `s` to save as your default. Status rail changes apply to the session at once; sidebar changes apply when you save. Undo (`u`) restores the latest Display or Sidebar edit, including a Display Revert. The legacy user settings `showSidebarAgent` and `showSidebarTodos` still apply when `sidebarPanelLayout` is absent. A layout you saved before Prefill existed gains that panel next to Context on the next start.
+Use **Settings → Display** to reorder or hide status rail segments and sidebar panels. The **Pi** segment shows a single `π` at the start of the rail and takes less room than **Brand**. Every segment can be hidden, and each shown segment lists its fields below it so you can hide single readings, such as cost or the thinking level. A live preview of the status rail stays pinned at the top. Press Enter to show or hide the selected item, Shift+↑/↓ to move it, ←/→ to change the preset or density, Tab to jump between sections, and `s` to save as your default. Status rail changes apply to the session at once; sidebar changes apply when you save. Undo (`u`) restores the latest Display or Sidebar edit, including a Display Revert. The legacy user settings `showSidebarAgent` and `showSidebarTodos` still apply when `sidebarPanelLayout` is absent. A layout you saved before Prefill existed gains that panel next to Context on the next start; one saved before Session gains it hidden.
 
 ### Sidebar panels from other extensions
 
@@ -256,7 +327,8 @@ ignore `progress`. No-color mode uses plain filled/empty blocks.
 Pi Atelier:
 
 - Collects no telemetry or analytics.
-- Does not store prompts, responses, or credentials, and keeps them out of notifications.
+- Does not store prompts, responses, or credentials, and keeps them out of notifications. The Session panel's goal and recaps are stored in your Pi session file, beside the conversation they describe.
+- Makes model requests only while the **Session** panel is shown and **Session recap** is on. Then it asks the session's model, or the `sessionRecapModel` you chose, through Pi's configured providers after each run.
 - Inspects Git read-only, and only after the project is trusted. Never reads untracked file contents.
 - Reads project configuration only for trusted projects.
 - For subagent usage, reads local metadata and owner-validated diagnostic event logs. It keeps only numeric cost and time projections in memory and saves only run IDs and artifact paths in the Pi session. Prompt and reply content in those logs is discarded. Active background runs refresh until they settle.

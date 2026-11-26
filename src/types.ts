@@ -102,6 +102,10 @@ export interface AtelierConfig extends DisplaySettings {
 	prefillViews: readonly PrefillView[];
 	/** Providers allowed to have `return_progress` injected into their request body. */
 	prefillProviders: readonly string[];
+	/** While the Session panel is shown, a model writes its goal (once) and status (after each run). */
+	sessionRecap: boolean;
+	/** `provider/model` that writes the recap; empty uses the session's own model and its warm cache. */
+	sessionRecapModel: string;
 }
 
 export interface AtelierMetrics {

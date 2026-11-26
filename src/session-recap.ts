@@ -1,0 +1,317 @@
+import { isRecord, sanitizeInline } from "./text.js";
+import type { NormalizedTodo } from "./types.js";
+
+/**
+ * Custom session entry holding the goal set with `/atelier goal`; `text: null` clears it, and
+ * `regenerate: true` also discards the generated goal so the next recap writes a new one.
+ */
+export const SESSION_GOAL_ENTRY = "pi-atelier:goal";
+/** Custom session entry holding a model-written recap: always a status, and the goal until one is written. */
+export const SESSION_RECAP_ENTRY = "pi-atelier:recap";
+
+/** Longest goal or status kept, in characters; the panel truncates further to its width. */
+const SESSION_TEXT_MAX_CHARS = 160;
+
+/** The minimal entry shape read from `sessionManager.getBranch()`. */
+export interface BranchEntryLike {
+	readonly type: string;
+	readonly id?: string;
+	readonly customType?: string;
+	readonly data?: unknown;
+	readonly timestamp?: string;
+	readonly message?: unknown;
+}
+
+export interface StoredRecap {
+	/** What the session is about. */
+	about: string;
+	/** Where it stopped. */
+	status: string;
+	/** `provider/model` that wrote it. */
+	model?: string;
+	/** What writing it cost, as the provider reported it. */
+	cost?: number;
+	/** Billed to a subscription plan rather than metered, as the footer marks with `(sub)`. */
+	subscription?: boolean;
+}
+
+export type GoalSource = "goal" | "summary" | "name";
+export type StatusSource = "todo" | "summary" | "reply";
+
+/** What the Session panel shows. */
+export interface SessionRecapView {
+	goal?: { text: string; source: GoalSource };
+	status?: { text: string; source: StatusSource };
+	/** Which model wrote the recap lines shown, and what that cost, so background spending stays visible. */
+	recapBy?: { model?: string; cost?: number; subscription?: boolean };
+	/** When the latest run on this branch ended, in epoch milliseconds. */
+	lastRunAt?: number;
+}
+
+const clip = (text: string): string => {
+	const line = sanitizeInline(text);
+	const chars = [...line];
+	return chars.length <= SESSION_TEXT_MAX_CHARS
+		? line
+		: `${chars.slice(0, SESSION_TEXT_MAX_CHARS - 1).join("")}…`;
+};
+
+/** A goal argument, cleaned to one bounded line; empty clears the goal. */
+export const normalizeGoal = (text: string): string | undefined => clip(text) || undefined;
+
+/** The goals a branch holds: the one the user set, and the one a recap wrote. */
+export interface GoalState {
+	/** Set with `/atelier goal <text>`; it wins over the generated goal. */
+	manual?: string;
+	/** The first goal a recap wrote since the last regenerate request; it is written once. */
+	generated?: { text: string; index: number };
+	/** The generated goal a regenerate request discarded, offered to the model to keep or replace. */
+	discarded?: string;
+}
+
+export function goalStateFromBranch(branch: readonly BranchEntryLike[]): GoalState {
+	let manual: string | undefined;
+	let generated: { text: string; index: number } | undefined;
+	let discarded: string | undefined;
+	for (const [index, entry] of branch.entries()) {
+		if (entry.type !== "custom" || !isRecord(entry.data)) continue;
+		if (entry.customType === SESSION_GOAL_ENTRY) {
+			const { text, regenerate } = entry.data;
+			if (typeof text === "string") manual = normalizeGoal(text);
+			else if (text === null) manual = undefined;
+			if (regenerate === true) {
+				discarded = generated?.text ?? discarded;
+				generated = undefined;
+			}
+		} else if (entry.customType === SESSION_RECAP_ENTRY && !generated) {
+			const about = parseRecap(entry.data)?.about;
+			if (about) generated = { text: about, index };
+		}
+	}
+	return {
+		...(manual ? { manual } : {}),
+		...(generated ? { generated } : {}),
+		...(discarded ? { discarded } : {}),
+	};
+}
+
+/** The latest recap written on this branch, and its position in it. */
+export function recapFromBranch(
+	branch: readonly BranchEntryLike[],
+): { recap: StoredRecap; index: number } | undefined {
+	for (let index = branch.length - 1; index >= 0; index--) {
+		const entry = branch[index];
+		if (entry?.type !== "custom" || entry.customType !== SESSION_RECAP_ENTRY) continue;
+		const recap = parseRecap(entry.data);
+		if (recap) return { recap, index };
+	}
+	return undefined;
+}
+
+function parseRecap(data: unknown): StoredRecap | undefined {
+	if (!isRecord(data) || typeof data.status !== "string") return undefined;
+	const about = typeof data.about === "string" ? clip(data.about) : "";
+	const status = clip(data.status);
+	if (!about && !status) return undefined;
+	return {
+		about,
+		status,
+		...(typeof data.model === "string" ? { model: data.model } : {}),
+		...(isRecord(data.usage) && typeof data.usage.cost === "number" && Number.isFinite(data.usage.cost)
+			? { cost: data.usage.cost }
+			: {}),
+		...(data.subscription === true ? { subscription: true } : {}),
+	};
+}
+
+/** A recap's cost as the footer would show it: four decimals below a cent, three above. */
+export const formatRecapCost = (cost: number): string => `$${cost.toFixed(cost < 0.01 ? 4 : 3)}`;
+
+/**
+ * Names Pi or another tool generated rather than a person: anything carrying a UUID or a long
+ * hex or numeric id, and `subagent-…` names.
+ */
+const GENERATED_NAME =
+	/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\b[0-9a-f]{16,}\b|\d{10,}|^subagent[-_\s]/i;
+
+/** A session name made readable (`issue-42-43` → `issue 42 43`), or undefined for a generated one. */
+export function readableSessionName(name: string | undefined): string | undefined {
+	if (!name) return undefined;
+	const line = sanitizeInline(name);
+	if (!line || GENERATED_NAME.test(line)) return undefined;
+	// Only slug-like names are rewritten; a name with spaces is shown as written.
+	const readable = line.includes(" ") ? line : line.replace(/[-_]+/g, " ").trim();
+	return readable ? clip(readable) : undefined;
+}
+
+/** Replies that say nothing about where the session stands. */
+const ACKNOWLEDGEMENT =
+	/^(?:ok(?:ay)?|sure|done|got it|great|thanks?|thank you|perfect|understood|alright|yes|no|right|noted|will do|on it|sounds good)[.!]*$/i;
+
+/** One Markdown line reduced to its prose, or empty when it carries none. */
+function proseOf(line: string): string {
+	const trimmed = line.trim();
+	// Headings, rules, tables, and quoted or fenced blocks are structure, not a status.
+	if (/^(?:#{1,6}\s|[-*_]{3,}$|\||>|```|~~~)/.test(trimmed)) return "";
+	return trimmed
+		.replace(/^(?:[-*+]|\d+[.)])\s+/, "")
+		.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+		.replace(/(\*\*|__|\*|_|`)(.+?)\1/g, "$2")
+		.trim();
+}
+
+/** Words whose trailing period does not end a sentence. */
+const ABBREVIATION = /(?:^|\s)(?:e\.g|i\.e|etc|vs|cf|approx|incl|resp|[A-Za-z])\.$/i;
+
+/** The first sentence of `text`, keeping abbreviations like `e.g.` and versions like `0.21.0` intact. */
+function firstSentence(text: string): string {
+	const end = /[.!?。！？](?=\s|$)/gu;
+	for (let match = end.exec(text); match; match = end.exec(text)) {
+		const sentence = text.slice(0, match.index + match[0].length);
+		if (match[0] === "." && ABBREVIATION.test(sentence)) continue;
+		return sentence.trim();
+	}
+	return text.trim();
+}
+
+/**
+ * The first meaningful sentence of an assistant reply: code, headings, and one-word
+ * acknowledgements are skipped, and a lead-in that only introduces a list (`Changes:`) is
+ * passed over for the line after it.
+ */
+export function statusFromReply(text: string): string | undefined {
+	let fenced = false;
+	for (const raw of text.split(/\r?\n/)) {
+		if (/^\s*(?:```|~~~)/.test(raw)) {
+			fenced = !fenced;
+			continue;
+		}
+		if (fenced) continue;
+		const prose = proseOf(raw);
+		if (!prose || ACKNOWLEDGEMENT.test(prose)) continue;
+		const sentence = firstSentence(prose);
+		if (ACKNOWLEDGEMENT.test(sentence)) {
+			const rest = prose.slice(sentence.length).trim();
+			if (!rest) continue;
+			return clip(firstSentence(rest));
+		}
+		if (/:$/.test(sentence) && [...sentence].length < 40) continue;
+		return clip(sentence);
+	}
+	return undefined;
+}
+
+interface AssistantLike {
+	role: "assistant";
+	content: unknown;
+	stopReason?: unknown;
+	timestamp?: unknown;
+}
+
+const isAssistant = (message: unknown): message is AssistantLike =>
+	isRecord(message) && message.role === "assistant";
+
+/** Text blocks of an assistant message joined; thinking and tool calls are left out. */
+export function assistantText(message: unknown): string {
+	if (!isAssistant(message) || !Array.isArray(message.content)) return "";
+	return message.content
+		.filter(
+			(block): block is { type: "text"; text: string } =>
+				isRecord(block) && block.type === "text" && typeof block.text === "string",
+		)
+		.map((block) => block.text)
+		.join("\n");
+}
+
+/** When the latest run on the branch ended: its last assistant message, even one that failed or was stopped. */
+function lastRunEnd(branch: readonly BranchEntryLike[]): number | undefined {
+	for (let index = branch.length - 1; index >= 0; index--) {
+		const entry = branch[index];
+		if (entry?.type !== "message" || !isAssistant(entry.message)) continue;
+		const at =
+			typeof entry.message.timestamp === "number"
+				? entry.message.timestamp
+				: Date.parse(entry.timestamp ?? "");
+		return Number.isFinite(at) ? at : undefined;
+	}
+	return undefined;
+}
+
+/** The latest finished assistant reply on the branch that says something, and its position. */
+export function latestReply(branch: readonly BranchEntryLike[]): { text: string; index: number } | undefined {
+	for (let index = branch.length - 1; index >= 0; index--) {
+		const entry = branch[index];
+		if (entry?.type !== "message" || !isAssistant(entry.message)) continue;
+		if (entry.message.stopReason === "error" || entry.message.stopReason === "aborted") continue;
+		const text = assistantText(entry.message);
+		if (text.trim()) return { text, index };
+	}
+	return undefined;
+}
+
+/**
+ * The Session panel as the branch describes it.
+ * Goal: the goal set by the user, else the goal a recap wrote once, else the readable session name.
+ * Status: the latest recap's stopping point when no reply came after it, else the first meaningful
+ * sentence of the last reply.
+ */
+export function recapFromSession(branch: readonly BranchEntryLike[], sessionName?: string): SessionRecapView {
+	const stored = recapFromBranch(branch);
+	const reply = latestReply(branch);
+	const goals = goalStateFromBranch(branch);
+	const name = goals.manual || goals.generated ? undefined : readableSessionName(sessionName);
+	const goal = goals.manual
+		? { text: goals.manual, source: "goal" as const }
+		: goals.generated
+			? { text: goals.generated.text, source: "summary" as const }
+			: name
+				? { text: name, source: "name" as const }
+				: undefined;
+	const recapIsCurrent = stored !== undefined && (reply === undefined || stored.index > reply.index);
+	const recapStatus = recapIsCurrent ? stored.recap.status : "";
+	const replyText = reply ? statusFromReply(reply.text) : undefined;
+	const status = recapStatus
+		? { text: recapStatus, source: "summary" as const }
+		: replyText
+			? { text: replyText, source: "reply" as const }
+			: undefined;
+	// The latest recap wrote the status; the goal may come from an earlier one.
+	const lastRunAt = lastRunEnd(branch);
+	const writer =
+		status?.source === "summary"
+			? stored?.recap
+			: goal?.source === "summary" && goals.generated
+				? parseRecap(branch[goals.generated.index]?.data)
+				: undefined;
+	return {
+		...(goal ? { goal } : {}),
+		...(status ? { status } : {}),
+		...(writer
+			? {
+					recapBy: {
+						...(writer.model ? { model: writer.model } : {}),
+						...(writer.cost === undefined ? {} : { cost: writer.cost }),
+						...(writer.subscription ? { subscription: true } : {}),
+					},
+				}
+			: {}),
+		...(lastRunAt === undefined ? {} : { lastRunAt }),
+	};
+}
+
+/** The todo in progress, when there is one, is the most current status of all. */
+export function withActiveTodo(view: SessionRecapView, todos: readonly NormalizedTodo[]): SessionRecapView {
+	const active = todos.find((todo) => todo.status === "in_progress");
+	const text = active ? clip(active.text) : "";
+	return text ? { ...view, status: { text, source: "todo" } } : view;
+}
+
+/** How long ago something happened, in the largest whole unit: `just now`, `12m ago`, `3h ago`, `2d ago`. */
+export function formatAge(elapsedMs: number): string {
+	const minutes = Math.floor(Math.max(0, Number.isFinite(elapsedMs) ? elapsedMs : 0) / 60_000);
+	if (minutes < 1) return "just now";
+	if (minutes < 60) return `${minutes}m ago`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours}h ago`;
+	return `${Math.floor(hours / 24)}d ago`;
+}

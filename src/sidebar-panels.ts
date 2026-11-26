@@ -40,6 +40,7 @@ export const SIDEBAR_PANEL_MAX_TRACKED_SOURCES = SIDEBAR_PANEL_MAX_PANELS;
 
 /** Built-in panels remain available even when their optional content is empty. */
 export const BUILTIN_SIDEBAR_PANEL_IDS = [
+	"session",
 	"agent",
 	"activity",
 	"alerts",
@@ -52,8 +53,10 @@ export const BUILTIN_SIDEBAR_PANEL_IDS = [
 	"tools",
 ] as const;
 
-/** Shown again in the footer, so the sidebar leaves them off until the user turns them on. */
-const HIDDEN_BY_DEFAULT: ReadonlySet<string> = new Set(["agent", "usage", "tools"]);
+/** Agent, Usage, and Tools repeat the footer; Session is opt-in. All stay off until turned on. */
+const HIDDEN_BY_DEFAULT: ReadonlySet<string> = new Set(["session", "agent", "usage", "tools"]);
+/** Opt-in built-ins that join a saved layout predating them switched off. */
+const JOINS_HIDDEN: ReadonlySet<string> = new Set(["session"]);
 
 export const DEFAULT_SIDEBAR_PANEL_LAYOUT: SidebarPanelLayout = BUILTIN_SIDEBAR_PANEL_IDS.map((id) => ({
 	id,
@@ -258,12 +261,13 @@ export function normalizeSidebarPanelLayout(
 		const after = BUILTIN_PANEL_ORDER[rank + 1];
 		const precedingIndex = before === undefined ? -1 : normalized.findIndex((entry) => entry.id === before);
 		const followingIndex = after === undefined ? -1 : normalized.findIndex((entry) => entry.id === after);
+		const visible = !JOINS_HIDDEN.has(id);
 		if (precedingIndex >= 0) {
-			normalized.splice(precedingIndex + 1, 0, { id, visible: true });
+			normalized.splice(precedingIndex + 1, 0, { id, visible });
 		} else if (followingIndex >= 0) {
-			normalized.splice(followingIndex, 0, { id, visible: true });
+			normalized.splice(followingIndex, 0, { id, visible });
 		} else {
-			normalized.push({ id, visible: true });
+			normalized.push({ id, visible });
 		}
 		seen.add(id);
 	}

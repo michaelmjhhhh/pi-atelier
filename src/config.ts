@@ -52,6 +52,8 @@ export const DEFAULT_CONFIG: AtelierConfig = {
 	prefillEnabled: true,
 	prefillViews: SIDEBAR_PREFILL_VIEWS,
 	prefillProviders: ["llama.cpp"],
+	sessionRecap: true,
+	sessionRecapModel: "",
 };
 
 export interface ConfigLoadResult {
@@ -80,6 +82,9 @@ const USER_ONLY_KEYS: ReadonlySet<string> = new Set([
 	"completionNotifications",
 	"nerdFont",
 	"showFooter",
+	// Recaps spend tokens and can send the transcript to another model: only the user decides.
+	"sessionRecap",
+	"sessionRecapModel",
 ]);
 
 const isEnoent = (error: unknown): boolean => (error as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
@@ -399,6 +404,7 @@ function applyNonDisplay(
 		"completionNotifications",
 		"nerdFont",
 		"showFooter",
+		"sessionRecap",
 	] as const) {
 		const value = input[key];
 		if (typeof value === "boolean") {
@@ -408,6 +414,12 @@ function applyNonDisplay(
 	for (const key of ["showSidebarAgent", "showSidebarTodos"] as const) {
 		if (key in input && typeof input[key] !== "boolean") warnings.push(`${key} must be boolean`);
 	}
+	if (typeof input.sessionRecapModel === "string") {
+		const model = input.sessionRecapModel.trim();
+		if (model && !/^[^/\s]+\/\S+$/.test(model))
+			warnings.push("sessionRecapModel must be provider/model or empty");
+		else if (userLayer) config.sessionRecapModel = model;
+	} else if ("sessionRecapModel" in input) warnings.push("sessionRecapModel must be a string");
 	applyPrefill(input, config, warnings, userLayer);
 }
 

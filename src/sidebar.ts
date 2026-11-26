@@ -1,5 +1,11 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { type Component, type OverlayHandle, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+	type Component,
+	type OverlayHandle,
+	truncateToWidth,
+	visibleWidth,
+	wrapTextWithAnsi,
+} from "@earendil-works/pi-tui";
 import { DEFAULT_CONFIG } from "./config.js";
 import { contextRole, FOOTER_ICONS } from "./footer.js";
 import { type PrefillSnapshot, formatPrefillRows } from "./prefill.js";
@@ -15,6 +21,7 @@ import {
 	type ToolActivity,
 } from "./run-activity.js";
 import { isBuiltinSidebarPanelId, type SidebarPanelData } from "./sidebar-panels.js";
+import { formatAge, formatRecapCost, type SessionRecapView } from "./session-recap.js";
 import { createSplitPaneController, type SidebarMode, type SidebarStatus } from "./split-pane.js";
 import { createInertAtelierState } from "./state.js";
 import { type SubagentCostChartGraphics, subagentCostChart } from "./subagent-cost-chart.js";
@@ -40,6 +47,13 @@ export interface SidebarSnapshotInput {
 	sidebarPanels?: readonly SidebarPanelData[];
 	/** Live prefill progress for the current provider request; absent whenever nothing is prefilling. */
 	prefill?: PrefillSnapshot;
+	/** What the session is about and where it stopped. */
+	sessionRecap?: SessionPanelState;
+}
+
+/** The Session panel's content, plus whether a recap is being written. */
+export interface SessionPanelState extends SessionRecapView {
+	summarizing?: boolean;
 }
 
 export interface SidebarSnapshot extends AtelierState {
@@ -51,6 +65,7 @@ export interface SidebarSnapshot extends AtelierState {
 	todos: readonly NormalizedTodo[];
 	sidebarPanels: readonly SidebarPanelData[];
 	prefill?: PrefillSnapshot;
+	sessionRecap: SessionPanelState;
 }
 
 export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapshot {
@@ -66,6 +81,7 @@ export function buildSidebarSnapshot(input: SidebarSnapshotInput): SidebarSnapsh
 		todos: input.todos ?? [],
 		sidebarPanels: input.sidebarPanels ?? [],
 		...(input.prefill ? { prefill: input.prefill } : {}),
+		sessionRecap: input.sessionRecap ?? {},
 	};
 }
 
@@ -86,6 +102,7 @@ const MAX_LISTED_TODOS = 8;
  * All sit in the Basic Multilingual Plane, which every Nerd Font build covers at one column.
  */
 const PANEL_ICONS: Record<BuiltinSidebarPanelId, string> = {
+	session: "\ueb4b", // nf-cod-pin
 	agent: FOOTER_ICONS.model,
 	activity: "\ueb31", // nf-cod-pulse
 	alerts: "\uea6c", // nf-cod-warning
@@ -113,6 +130,8 @@ interface SidebarGlyphs {
 	todoPending: string;
 	alertError: string;
 	alertWarning: string;
+	/** Leads the Session panel's status line. */
+	statusLead: string;
 }
 
 const PLAIN_GLYPHS: SidebarGlyphs = {
@@ -127,6 +146,7 @@ const PLAIN_GLYPHS: SidebarGlyphs = {
 	todoPending: "○",
 	alertError: "✕",
 	alertWarning: "▲",
+	statusLead: "›",
 };
 
 const NERD_GLYPHS: SidebarGlyphs = {
@@ -141,6 +161,7 @@ const NERD_GLYPHS: SidebarGlyphs = {
 	todoPending: "\uebb5", // nf-cod-circle_large
 	alertError: "\uea87", // nf-cod-error
 	alertWarning: "\uea6c", // nf-cod-warning
+	statusLead: "\ueab6", // nf-cod-chevron_right
 };
 
 /** Text, or the placeholder (painted dim) when there is none. */
@@ -681,6 +702,111 @@ function agentRows(
 	];
 }
 
+/** Lines a Session field may wrap to before it ends in an ellipsis. */
+/** Lines the goal may wrap to before it ends in an ellipsis; it is a title, so it stays short. */
+const SESSION_GOAL_MAX_LINES = 2;
+/** Lines the status may wrap to: it is what changed since you last looked, so it gets the most room. */
+const SESSION_STATUS_MAX_LINES = 3;
+
+/** `text` wrapped to `width`, at most `maxLines` lines, the last ending in an ellipsis when cut. */
+function wrapLines(text: string, width: number, maxLines: number): string[] {
+	const safeWidth = Math.max(1, width);
+	const wrapped = wrapTextWithAnsi(sanitizeInline(text), safeWidth);
+	const lines = wrapped.slice(0, maxLines).map((line) => truncateToWidth(line, safeWidth, "…"));
+	if (wrapped.length > lines.length) {
+		const last = lines.length - 1;
+		lines[last] = truncateToWidth(`${lines[last] ?? ""} …`, safeWidth, "…");
+	}
+	return lines;
+}
+
+/**
+ * Session panel: the goal as the panel's headline, the stopping point led by a mark and hung
+ * under it, and the age of the last run on the crown. Three tones keep them apart without label
+ * rows: the goal bright and bold, the status in the secondary grey, the recap's model and cost dim.
+ */
+function sessionSection(
+	snapshot: SidebarSnapshot,
+	config: AtelierConfig,
+	width: number,
+	palette: AtelierPalette,
+	theme: ThemeLike,
+	glyphs: SidebarGlyphs,
+	now: number,
+): SectionContent & { goal: string[]; status: string[] } {
+	const recap = snapshot.sessionRecap;
+	const goal = recap.goal
+		? wrapLines(recap.goal.text, width, SESSION_GOAL_MAX_LINES).map((line) =>
+				// A goal the user or a recap wrote is the headline; a session name is only a stand-in.
+				recap.goal?.source === "name"
+					? palette.paint("primary", line)
+					: theme.bold(palette.paint("primary", line)),
+			)
+		: wrapLines(
+				config.sessionRecap ? "Goal is written once the task is clear" : "Set a goal with /atelier goal",
+				width,
+				SESSION_GOAL_MAX_LINES,
+			).map((line) => palette.paint("dim", line));
+	const status: string[] = [];
+	if (recap.status) {
+		const todo = recap.status.source === "todo";
+		// The mark wears the panel's own color, so the status reads as part of this panel at a glance.
+		const mark = todo
+			? palette.paint("working", glyphs.todoActive)
+			: palette.paint(PANEL_HUE.session, glyphs.statusLead);
+		const indent = visibleWidth(todo ? glyphs.todoActive : glyphs.statusLead) + 1;
+		const role: PaletteRole = todo ? "working" : "muted";
+		for (const [index, line] of wrapLines(
+			recap.status.text,
+			width - indent,
+			SESSION_STATUS_MAX_LINES,
+		).entries()) {
+			status.push(`${index === 0 ? `${mark} ` : " ".repeat(indent)}${palette.paint(role, line)}`);
+		}
+	}
+	const summary = recap.summarizing
+		? palette.paint("dim", "updating…")
+		: snapshot.activity !== "working" && recap.lastRunAt !== undefined
+			? palette.paint("dim", formatAge(now - recap.lastRunAt))
+			: undefined;
+	return {
+		...(summary ? { summary } : {}),
+		// A narrow frame still shows that a recap is being written.
+		...(recap.summarizing ? { compactSummary: palette.paint("dim", "…") } : {}),
+		goal,
+		status,
+		rows: [...goal, ...status],
+	};
+}
+
+/** `claude-haiku-4-5` from `anthropic/claude-haiku-4-5-20251001`: no provider, no date stamp. */
+function shortModelName(model: string): string {
+	return model.slice(model.indexOf("/") + 1).replace(/[-@]\d{8}$/, "");
+}
+
+/** Columns kept between the recap's model and its cost, so the two never read as one string. */
+const RECAP_ROW_GAP = 2;
+
+/**
+ * Who wrote the recap lines and what they cost: the model on the left, the cost kept whole on the
+ * right. When both do not fit with a clear gap, the model gives way to the word `recap`.
+ */
+function recapByRow(snapshot: SidebarSnapshot, width: number, palette: AtelierPalette): string[] {
+	const by = snapshot.sessionRecap.recapBy;
+	if (!by) return [];
+	// A subscription bills plan usage; the footer marks such costs the same way.
+	const cost = by.cost === undefined ? "" : `${formatRecapCost(by.cost)}${by.subscription ? " (sub)" : ""}`;
+	const model = by.model ? sanitizeInline(shortModelName(by.model)) : "";
+	const left =
+		model && visibleWidth(model) + RECAP_ROW_GAP + visibleWidth(cost) <= width
+			? model
+			: cost
+				? "recap"
+				: model;
+	if (!left && !cost) return [];
+	return [palette.paint("dim", splitRow(left, cost, width))];
+}
+
 function usageRows(
 	snapshot: SidebarSnapshot,
 	config: AtelierConfig,
@@ -770,6 +896,12 @@ const DROP_RANK = {
 	usage: 20,
 	contributed: 25,
 	agent: 28,
+	/** The whole point of switching back to a session; it outlasts the counters and lists. */
+	session: 88,
+	/** Without the goal a status cannot say which session it belongs to, so it goes first. */
+	sessionStatus: 87,
+	/** Who wrote the recap, and the space above it, is the first thing a short Session panel gives up. */
+	sessionRecapBy: 15,
 	workspace: 30,
 	olderRecentTool: 50,
 	aggregate: 60,
@@ -810,6 +942,7 @@ interface Section {
  * so a lit frame never looks like a panel's resting color.
  */
 const PANEL_HUE: Record<BuiltinSidebarPanelId, PaletteRole> = {
+	session: "context",
 	agent: "input",
 	activity: "ready",
 	alerts: "warning",
@@ -830,6 +963,8 @@ interface SidebarGroup {
 	dropRank: number;
 	/** Shown only once one of these groups has been dropped; a summary of rows still visible adds nothing. */
 	summarizes?: readonly string[];
+	/** Shown only while every one of these groups is; a footnote is dropped with the lines it annotates. */
+	requires?: readonly string[];
 }
 
 function activityGroups(
@@ -984,24 +1119,26 @@ function placeSummaries(
 	});
 }
 
-function withoutRedundantSummaries(groups: readonly SidebarGroup[]): SidebarGroup[] {
+/** Groups whose conditions hold: summaries of rows still shown and footnotes whose lines are gone drop out. */
+function withConditionsMet(groups: readonly SidebarGroup[]): SidebarGroup[] {
 	const names = new Set(groups.map((group) => group.name));
-	return groups.filter((group) => !group.summarizes || group.summarizes.some((name) => !names.has(name)));
+	return groups.filter(
+		(group) =>
+			(!group.summarizes || group.summarizes.some((name) => !names.has(name))) &&
+			(!group.requires || group.requires.every((name) => names.has(name))),
+	);
 }
 
 function composeGroups(groups: readonly SidebarGroup[], height: number, style: SidebarStyle): SidebarGroup[] {
 	const available = groups.filter((group) => group.rows.length > 0);
 	const kept = new Set(available.map((group) => group.name));
 	const fits = () =>
-		measureGroups(withoutRedundantSummaries(available.filter((group) => kept.has(group.name))), style) <=
-		height;
+		measureGroups(withConditionsMet(available.filter((group) => kept.has(group.name))), style) <= height;
 	// Drop the lowest-ranked group until the rest fit, recounting so newly adjacent groups share a panel.
 	const dropped: SidebarGroup[] = [];
 	while (!fits()) {
 		let drop: SidebarGroup | undefined;
-		for (const group of withoutRedundantSummaries(
-			available.filter((candidate) => kept.has(candidate.name)),
-		)) {
+		for (const group of withConditionsMet(available.filter((candidate) => kept.has(candidate.name)))) {
 			if (group.dropRank < (drop?.dropRank ?? DROP_RANK.required)) drop = group;
 		}
 		// Only required rows remain; the dock clips whatever still does not fit.
@@ -1014,7 +1151,7 @@ function composeGroups(groups: readonly SidebarGroup[], height: number, style: S
 		kept.add(group.name);
 		if (!fits()) kept.delete(group.name);
 	}
-	return withoutRedundantSummaries(available.filter((group) => kept.has(group.name)));
+	return withConditionsMet(available.filter((group) => kept.has(group.name)));
 }
 
 /** Paint a frame piece: neutral grey at rest, the state's own color when lit. */
@@ -1134,6 +1271,38 @@ export function renderSidebarLines(
 	const alerts = statusAlerts(snapshot);
 	const glyphs = config.nerdFont ? NERD_GLYPHS : PLAIN_GLYPHS;
 	const builtinPanels: Record<BuiltinSidebarPanelId, () => SidebarGroup[]> = {
+		session: () => {
+			const { summary, compactSummary, goal, status } = sessionSection(
+				snapshot,
+				config,
+				contentWidth,
+				palette,
+				theme,
+				glyphs,
+				now,
+			);
+			const recapBy = recapByRow(snapshot, contentWidth, palette);
+			const section: Section = {
+				id: "session",
+				title: "Session",
+				...(summary ? { summary } : {}),
+				...(compactSummary ? { compactSummary } : {}),
+				summaryOptional: true,
+			};
+			return [
+				{ name: "sessionGoal", section, rows: goal, dropRank: DROP_RANK.session },
+				{ name: "sessionStatus", section, rows: status, dropRank: DROP_RANK.sessionStatus },
+				// The recap row is a footnote to the lines above: a blank line sets it apart, and the two
+				// come and go together so a short panel never keeps the space without the row.
+				{
+					name: "sessionRecapBy",
+					section,
+					rows: recapBy.length > 0 ? ["", ...recapBy] : [],
+					dropRank: DROP_RANK.sessionRecapBy,
+					requires: ["sessionStatus"],
+				},
+			];
+		},
 		agent: () => [
 			{
 				name: "agent",

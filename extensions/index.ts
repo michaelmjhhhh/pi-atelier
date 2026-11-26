@@ -38,6 +38,7 @@ import {
 	buildSidebarSnapshot,
 	createSidebarController,
 	type SidebarController,
+	type SessionPanelState,
 	type SidebarSnapshot,
 } from "../src/sidebar.js";
 import {
@@ -46,6 +47,15 @@ import {
 	type SidebarPanelData,
 	type SidebarPanelRegistry,
 } from "../src/sidebar-panels.js";
+import {
+	normalizeGoal,
+	recapFromSession,
+	SESSION_GOAL_ENTRY,
+	SESSION_RECAP_ENTRY,
+	type SessionRecapView,
+	withActiveTodo,
+} from "../src/session-recap.js";
+import { createRecapRunner, type RecapRunner } from "../src/session-recap-runner.js";
 import { AtelierRuntime, createInertAtelierState } from "../src/state.js";
 import { emptySubagentUsage } from "../src/subagent-usage.js";
 import { openSubagentUsage } from "../src/subagent-usage-view.js";
@@ -142,6 +152,8 @@ interface ActiveSession {
 	readonly prefill: PrefillTracker;
 	readonly prefillThrottle: PrefillThrottle;
 	readonly completionNotifier: CompletionNotifier;
+	/** Writes the opt-in model recap after a run settles. */
+	readonly recapRunner: RecapRunner;
 	readonly retiredState: AtelierState;
 	readonly retiredConfig: AtelierConfig;
 	readonly overlayCancellations: Set<() => void>;
@@ -154,6 +166,9 @@ interface ActiveSession {
 	askUserBlocked: boolean;
 	inputRequestSequence: number;
 	todos: NormalizedTodo[];
+	/** The Session panel as the branch last described it; rebuilt lazily once marked stale. */
+	sessionRecap: SessionRecapView;
+	sessionRecapStale: boolean;
 	/** Whether the latest Turn ended in a provider error that the user did not abort. */
 	providerFailed: boolean;
 	requestFooterRender: () => void;
@@ -254,6 +269,9 @@ export default function atelierExtension(
 		const sessionName = ctx.sessionManager.getSessionName();
 		const activeTools = pi.getActiveTools();
 		const prefillProgress = prefill.getSnapshot();
+		const sessionRecap = isSessionPanelVisible(targetSession)
+			? currentSessionRecap(targetSession)
+			: undefined;
 		return buildSidebarSnapshot({
 			state: { ...runtime.getState(), extensionStatuses: targetSession.extensionStatuses },
 			...(sessionName ? { sessionName } : {}),
@@ -264,7 +282,43 @@ export default function atelierExtension(
 			todos: targetSession.todos,
 			sidebarPanels: panelRegistry.getAvailable(),
 			...(prefillProgress ? { prefill: prefillProgress } : {}),
+			...(sessionRecap ? { sessionRecap } : {}),
 		});
+	}
+
+	/** Pi's `blockImages` setting; unknown counts as on, which only costs the warm recap. */
+	function readBlockImages(ctx: ExtensionContext): boolean {
+		try {
+			return SettingsManager.create(ctx.isProjectTrusted() ? ctx.cwd : getAgentDir()).getBlockImages();
+		} catch {
+			return true;
+		}
+	}
+
+	function isSessionPanelVisible(targetSession: ActiveSession): boolean {
+		return targetSession.runtime
+			.getConfig()
+			.sidebarPanelLayout.some((entry) => entry.id === "session" && entry.visible);
+	}
+
+	/** Branch reads happen only when the panel is shown and something changed since the last one. */
+	function currentSessionRecap(targetSession: ActiveSession): SessionPanelState {
+		if (targetSession.sessionRecapStale) {
+			targetSession.sessionRecapStale = false;
+			const { sessionManager } = targetSession.ctx;
+			targetSession.sessionRecap = recapFromSession(
+				sessionManager.getBranch(),
+				sessionManager.getSessionName(),
+			);
+		}
+		const view = withActiveTodo(targetSession.sessionRecap, targetSession.todos);
+		return targetSession.recapRunner.isRunning() ? { ...view, summarizing: true } : view;
+	}
+
+	/** The branch changed in a way the Session panel shows: a run ended, the goal or name changed, or the tree moved. */
+	function invalidateSessionRecap(targetSession: ActiveSession): void {
+		targetSession.sessionRecapStale = true;
+		targetSession.sidebar.requestRender();
 	}
 
 	function contextUsesSessionManager(
@@ -322,6 +376,7 @@ export default function atelierExtension(
 		attempt(() => session.runtime.dispose());
 		attempt(() => session.runActivity.reset());
 		attempt(() => session.completionNotifier.reset());
+		attempt(() => session.recapRunner.cancel());
 		const unsubscribe = session.unsubscribeAskUserBlocked;
 		session.unsubscribeAskUserBlocked = undefined;
 		if (unsubscribe) attempt(unsubscribe);
@@ -595,6 +650,33 @@ export default function atelierExtension(
 	const isOnOff = (value: string | undefined): boolean =>
 		value === undefined || value === "on" || value === "off";
 
+	/**
+	 * `/atelier goal <text>` sets the goal and `/atelier goal` alone clears it, falling back to the
+	 * generated one; `/atelier goal auto` discards the generated goal so the next recap writes a new
+	 * one. Stored in the session, so it survives `/resume`.
+	 */
+	function setGoal(ctx: ExtensionContext, rawText: string): void {
+		const current = requireActiveSession(ctx);
+		if (!current) return;
+		const hint = isSessionPanelVisible(current) ? "" : " · turn on the Session panel in /atelier display";
+		if (rawText.trim().toLowerCase() === "auto") {
+			pi.appendEntry(SESSION_GOAL_ENTRY, { text: null, regenerate: true });
+			invalidateSessionRecap(current);
+			const recapOn = current.runtime.getConfig().sessionRecap;
+			ctx.ui.notify(
+				recapOn
+					? `Goal will be written again after the next run${hint}`
+					: "Goal cleared · turn on Session recap in /atelier → Settings to have it written",
+				"info",
+			);
+			return;
+		}
+		const goal = normalizeGoal(rawText);
+		pi.appendEntry(SESSION_GOAL_ENTRY, { text: goal ?? null });
+		invalidateSessionRecap(current);
+		ctx.ui.notify(goal ? `Goal: ${goal}${hint}` : "Goal cleared", "info");
+	}
+
 	const commands = new Map<string, CommandHandler>(
 		Object.entries({
 			usage: async (ctx, args) => {
@@ -647,6 +729,7 @@ export default function atelierExtension(
 				current.runtime.setEnabled(false);
 				current.runActivity.resetResponse();
 				current.completionNotifier.reset();
+				current.recapRunner.cancel();
 				current.todos = [];
 				current.sidebar.hide();
 				updateExtensionStatuses(current, []);
@@ -670,6 +753,12 @@ export default function atelierExtension(
 	pi.registerCommand("atelier", {
 		description: "Open or control the Pi Atelier status menu",
 		handler: async (args, ctx) => {
+			// The goal keeps its case and spacing, so it is split off before the rest is normalized.
+			const goal = /^\s*goal(?:\s+([\s\S]*))?$/i.exec(args);
+			if (goal) {
+				setGoal(ctx, goal[1] ?? "");
+				return;
+			}
 			const [action, ...rest] = args.trim().toLowerCase().split(/\s+/).filter(Boolean);
 			const command = action === undefined ? undefined : commands.get(action);
 			if (command) await command(ctx, rest);
@@ -781,6 +870,33 @@ export default function atelierExtension(
 				: { spawn: dependencies.spawnNotificationProcess }),
 		});
 		cleanup.push(() => completionNotifier.reset());
+		const recapRunner = createRecapRunner({
+			// Written only while this session is current and idle, so the entry never lands mid-run, and
+			// only while the user still wants recaps: turning them off or hiding the panel discards one in flight.
+			isCurrent: () => {
+				const current = activeSession;
+				return (
+					current?.token === token &&
+					enabled &&
+					ctx.isIdle() &&
+					current.runtime.getConfig().sessionRecap &&
+					isSessionPanelVisible(current)
+				);
+			},
+			save: (entry) => {
+				pi.appendEntry(SESSION_RECAP_ENTRY, entry);
+				const current = activeSession;
+				if (current?.token === token) current.sessionRecapStale = true;
+			},
+			onStateChange: () => {
+				const current = activeSession;
+				if (current?.token === token) current.sidebar.requestRender();
+			},
+			onWarning: (message) => {
+				if (isPublished()) ctx.ui.notify(message, "warning");
+			},
+		});
+		cleanup.push(() => recapRunner.cancel());
 		const sidebar = createSidebarController({
 			ctx,
 			getSnapshot: () => {
@@ -815,6 +931,7 @@ export default function atelierExtension(
 			prefill,
 			prefillThrottle,
 			completionNotifier,
+			recapRunner,
 			retiredState: createInertAtelierState(autoCompact),
 			retiredConfig: structuredClone(config),
 			overlayCancellations,
@@ -826,6 +943,8 @@ export default function atelierExtension(
 			askUserBlocked: false,
 			inputRequestSequence: 0,
 			todos: enabled ? reconstructTodos(ctx) : [],
+			sessionRecap: {},
+			sessionRecapStale: true,
 			providerFailed: false,
 			requestFooterRender: noopRender,
 			extensionStatuses: [],
@@ -908,6 +1027,7 @@ export default function atelierExtension(
 		const current = getActiveSession(ctx);
 		if (!enabled || !current) return;
 		current.todos = reconstructTodos(ctx);
+		current.sessionRecapStale = true;
 		void current.runtime.refreshSubagentUsage();
 		requestAllRenders(current);
 	});
@@ -916,6 +1036,8 @@ export default function atelierExtension(
 		if (!current) return;
 		current.runActivity.startRun();
 		current.completionNotifier.runStarted();
+		// A new run makes any recap in flight describe an old stopping point.
+		current.recapRunner.cancel();
 		current.providerFailed = false;
 		current.runtime.setActivity("working");
 	});
@@ -1007,8 +1129,18 @@ export default function atelierExtension(
 		current.prefill.clear();
 		current.prefillThrottle.cancel();
 		current.runtime.setActivity(current.providerFailed ? "error" : "ready");
+		current.sessionRecapStale = true;
 		if (!enabled) return;
 		current.sidebar.requestRender();
+		const config = current.runtime.getConfig();
+		if (config.sessionRecap && isSessionPanelVisible(current)) {
+			current.recapRunner.request({
+				ctx,
+				modelSetting: config.sessionRecapModel,
+				thinkingLevel: pi.getThinkingLevel(),
+				blockImages: readBlockImages(ctx),
+			});
+		}
 		if (current.runtime.getConfig().completionNotifications) {
 			current.completionNotifier.turnSettled(completionNotification(current));
 		}
@@ -1027,7 +1159,12 @@ export default function atelierExtension(
 	pi.on("model_select", refreshUsage);
 	pi.on("thinking_level_select", refreshUsage);
 	pi.on("session_compact", refreshUsage);
-	pi.on("session_info_changed", refreshUsage);
+	pi.on("session_info_changed", (_event, ctx) => {
+		const current = getActiveSession(ctx);
+		if (!current) return;
+		current.runtime.refreshUsage();
+		invalidateSessionRecap(current);
+	});
 	pi.on("session_shutdown", (_event, ctx) => {
 		const current = getActiveSession(ctx);
 		const initializing = initializingSessionManager;
