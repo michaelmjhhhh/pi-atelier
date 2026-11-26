@@ -18,6 +18,7 @@ const GOAL_RULES = [
 	"- Name the umbrella goal when several steps or symptoms are listed, and the product change rather than the plan, branch, or PR used to make it.",
 	"- Leave out models, tools, output formats, and the project name unless they are the topic.",
 	"- Do not claim the work is complete and do not copy the user's message. No quotes, labels, or trailing punctuation.",
+	'- Name the subject, not what happened to it, and start with a capital letter unless it is an identifier: "Sonnet about reading code", not "sonnet composed about reading code".',
 	`- If the subject is still unknown, such as a greeting, "fix this", or an unexplained path or link, write: About: ${UNKNOWN_GOAL}`,
 ];
 
