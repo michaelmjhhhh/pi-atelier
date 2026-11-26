@@ -66,6 +66,16 @@ describe("recapTranscript", () => {
 		expect(transcript).not.toContain("SECRET");
 	});
 
+	it("cuts a long message in the middle, keeping how it ends", () => {
+		const transcript = recapTranscript([
+			{ role: "user", content: "Start" },
+			assistant(`Opening line. ${"filler ".repeat(600)}Final verdict: tests pass.`),
+		]);
+		expect(transcript).toContain("Opening line.");
+		expect(transcript).toContain(" […] ");
+		expect(transcript).toContain("Final verdict: tests pass.");
+	});
+
 	it("keeps the tail within the budget and marks the gap", () => {
 		const messages = [
 			{ role: "user", content: "Opening goal" },
@@ -176,14 +186,20 @@ describe("createRecapRunner", () => {
 		const { instance, saved } = runner();
 		instance.request({ ctx, modelSetting: "openai/mini", thinkingLevel: "high", blockImages: false });
 		await settleMicrotasks();
-		expect(streamSimple).not.toHaveBeenCalled();
-		const [, context, options] = complete.mock.calls[0] as unknown as [
-			unknown,
+		expect(complete).not.toHaveBeenCalled();
+		const [model, context, options] = streamSimple.mock.calls[0] as unknown as [
+			{ id: string },
 			{ systemPrompt: string; messages: { content: string }[] },
 			Record<string, unknown>,
 		];
-		expect(context.messages[0]?.content).toContain("Assistant: Did it.");
-		expect(options).toMatchObject({ cacheRetention: "none" });
+		expect(model.id).toBe("mini");
+		expect(context.messages[0]?.content).toMatch(
+			/^<transcript>\n[\s\S]*Assistant: Did it\.[\s\S]*<\/transcript>$/,
+		);
+		// Labelling needs no reasoning, and a budget large enough that reasoning cannot crowd out the answer.
+		expect(options).toMatchObject({ cacheRetention: "none", maxTokens: 1_024 });
+		expect(options).not.toHaveProperty("reasoning");
+		expect(options).not.toHaveProperty("sessionId");
 		expect(saved[0]).toMatchObject({ model: "openai/mini", mode: "transcript" });
 	});
 
@@ -236,8 +252,15 @@ describe("createRecapRunner", () => {
 		const { instance, saved } = runner();
 		instance.request({ ctx, modelSetting: "", thinkingLevel: "high", blockImages });
 		await settleMicrotasks();
-		expect(streamSimple).not.toHaveBeenCalled();
-		expect(complete).toHaveBeenCalledOnce();
+		expect(complete).not.toHaveBeenCalled();
+		const [, context, options] = streamSimple.mock.calls[0] as unknown as [
+			unknown,
+			{ systemPrompt?: string },
+			Record<string, unknown>,
+		];
+		// An excerpt, not a replay: its own system prompt, and no session id to replace Codex's continuation.
+		expect(context.systemPrompt).toBeDefined();
+		expect(options).not.toHaveProperty("sessionId");
 		expect(saved[0]?.mode).toBe("transcript");
 	});
 
@@ -339,5 +362,30 @@ describe("recapRequest", () => {
 		expect(recapRequest({ kind: "regenerate", previous: "Old goal" })).toContain(
 			'The previous About was "Old goal"',
 		);
+	});
+});
+
+describe("createRecapRunner warnings and billing", () => {
+	it("warns once when the reply calls a tool or misses the format", async () => {
+		const toolCall = fakeContext({
+			warm: true,
+			reply: modelReply("", { stopReason: "toolUse", content: [{ type: "toolCall", name: "read" }] }),
+		});
+		const { instance, saved, warnings } = runner();
+		instance.request({ ctx: toolCall.ctx, modelSetting: "", thinkingLevel: "off", blockImages: false });
+		await settleMicrotasks();
+		instance.request({ ctx: toolCall.ctx, modelSetting: "", thinkingLevel: "off", blockImages: false });
+		await settleMicrotasks();
+		expect(saved).toEqual([]);
+		expect(warnings).toEqual(["Session recap: anthropic/claude called a tool instead of answering"]);
+	});
+
+	it("marks a recap billed to a subscription", async () => {
+		const { ctx } = fakeContext({ warm: true });
+		(ctx as { modelRegistry: { isUsingOAuth?: () => boolean } }).modelRegistry.isUsingOAuth = () => true;
+		const { instance, saved } = runner();
+		instance.request({ ctx, modelSetting: "", thinkingLevel: "off", blockImages: false });
+		await settleMicrotasks();
+		expect(saved[0]).toMatchObject({ subscription: true });
 	});
 });

@@ -267,6 +267,8 @@ export function createMenuActions(
 
 const sidebarStyleLabel = (style: SidebarStyle): string => (style === "framed" ? "Framed" : "Minimal");
 const recapModelLabel = (model: string): string => model || "Session model";
+/** Menu value for the session's own model; `sessionRecapModel` stores it as empty. */
+const SESSION_MODEL_CHOICE = "@session";
 
 async function showSelection(
 	ctx: ExtensionContext,
@@ -562,16 +564,22 @@ export async function openAtelierControlCenter(
 					await actions.setSessionRecap(!runtime.getConfig().sessionRecap);
 					break;
 				case "session-recap-model": {
+					const configured = runtime.getConfig().sessionRecapModel;
 					const models = ctx.modelRegistry.getAvailable().map((model) => `${model.provider}/${model.id}`);
 					const choice = await choose("Recap model", [
 						{
-							value: "",
+							value: SESSION_MODEL_CHOICE,
 							label: "Session model",
-							description: "Reuses the conversation's prompt cache; nothing leaves the current provider",
+							description: `Reuses the conversation's prompt cache; nothing leaves the current provider${configured ? "" : " · current"}`,
 						},
-						...models.map((label) => ({ value: label, label })),
+						...models.map((label) => ({
+							value: label,
+							label,
+							...(label === configured ? { description: "current" } : {}),
+						})),
 					]);
-					if (choice !== undefined) await actions.setSessionRecapModel(choice);
+					if (choice !== undefined)
+						await actions.setSessionRecapModel(choice === SESSION_MODEL_CHOICE ? "" : choice);
 					break;
 				}
 				case "sidebar-tools":

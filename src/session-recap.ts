@@ -10,7 +10,7 @@ export const SESSION_GOAL_ENTRY = "pi-atelier:goal";
 export const SESSION_RECAP_ENTRY = "pi-atelier:recap";
 
 /** Longest goal or status kept, in characters; the panel truncates further to its width. */
-export const SESSION_TEXT_MAX_CHARS = 160;
+const SESSION_TEXT_MAX_CHARS = 160;
 
 /** The minimal entry shape read from `sessionManager.getBranch()`. */
 export interface BranchEntryLike {
@@ -31,6 +31,8 @@ export interface StoredRecap {
 	model?: string;
 	/** What writing it cost, as the provider reported it. */
 	cost?: number;
+	/** Billed to a subscription plan rather than metered, as the footer marks with `(sub)`. */
+	subscription?: boolean;
 }
 
 export type GoalSource = "goal" | "summary" | "name";
@@ -41,7 +43,7 @@ export interface SessionRecapView {
 	goal?: { text: string; source: GoalSource };
 	status?: { text: string; source: StatusSource };
 	/** Which model wrote the recap lines shown, and what that cost, so background spending stays visible. */
-	recapBy?: { model?: string; cost?: number };
+	recapBy?: { model?: string; cost?: number; subscription?: boolean };
 	/** When the latest run on this branch ended, in epoch milliseconds. */
 	lastRunAt?: number;
 }
@@ -93,10 +95,6 @@ export function goalStateFromBranch(branch: readonly BranchEntryLike[]): GoalSta
 	};
 }
 
-/** The goal set by the user on this branch, or undefined when none is set or the last one was cleared. */
-export const goalFromBranch = (branch: readonly BranchEntryLike[]): string | undefined =>
-	goalStateFromBranch(branch).manual;
-
 /** The latest recap written on this branch, and its position in it. */
 export function recapFromBranch(
 	branch: readonly BranchEntryLike[],
@@ -110,7 +108,7 @@ export function recapFromBranch(
 	return undefined;
 }
 
-export function parseRecap(data: unknown): StoredRecap | undefined {
+function parseRecap(data: unknown): StoredRecap | undefined {
 	if (!isRecord(data) || typeof data.status !== "string") return undefined;
 	const about = typeof data.about === "string" ? clip(data.about) : "";
 	const status = clip(data.status);
@@ -122,8 +120,12 @@ export function parseRecap(data: unknown): StoredRecap | undefined {
 		...(isRecord(data.usage) && typeof data.usage.cost === "number" && Number.isFinite(data.usage.cost)
 			? { cost: data.usage.cost }
 			: {}),
+		...(data.subscription === true ? { subscription: true } : {}),
 	};
 }
+
+/** A recap's cost as the footer would show it: four decimals below a cent, three above. */
+export const formatRecapCost = (cost: number): string => `$${cost.toFixed(cost < 0.01 ? 4 : 3)}`;
 
 /**
  * Names Pi or another tool generated rather than a person: anything carrying a UUID or a long
@@ -221,21 +223,28 @@ export function assistantText(message: unknown): string {
 		.join("\n");
 }
 
-/** The latest finished assistant reply on the branch that says something, when it ended, and its position. */
-export function latestReply(
-	branch: readonly BranchEntryLike[],
-): { text: string; index: number; at?: number } | undefined {
+/** When the latest run on the branch ended: its last assistant message, even one that failed or was stopped. */
+function lastRunEnd(branch: readonly BranchEntryLike[]): number | undefined {
+	for (let index = branch.length - 1; index >= 0; index--) {
+		const entry = branch[index];
+		if (entry?.type !== "message" || !isAssistant(entry.message)) continue;
+		const at =
+			typeof entry.message.timestamp === "number"
+				? entry.message.timestamp
+				: Date.parse(entry.timestamp ?? "");
+		return Number.isFinite(at) ? at : undefined;
+	}
+	return undefined;
+}
+
+/** The latest finished assistant reply on the branch that says something, and its position. */
+export function latestReply(branch: readonly BranchEntryLike[]): { text: string; index: number } | undefined {
 	for (let index = branch.length - 1; index >= 0; index--) {
 		const entry = branch[index];
 		if (entry?.type !== "message" || !isAssistant(entry.message)) continue;
 		if (entry.message.stopReason === "error" || entry.message.stopReason === "aborted") continue;
 		const text = assistantText(entry.message);
-		if (!text.trim()) continue;
-		const at =
-			typeof entry.message.timestamp === "number"
-				? entry.message.timestamp
-				: Date.parse(entry.timestamp ?? "");
-		return { text, index, ...(Number.isFinite(at) ? { at } : {}) };
+		if (text.trim()) return { text, index };
 	}
 	return undefined;
 }
@@ -267,6 +276,7 @@ export function recapFromSession(branch: readonly BranchEntryLike[], sessionName
 			? { text: replyText, source: "reply" as const }
 			: undefined;
 	// The latest recap wrote the status; the goal may come from an earlier one.
+	const lastRunAt = lastRunEnd(branch);
 	const writer =
 		status?.source === "summary"
 			? stored?.recap
@@ -281,10 +291,11 @@ export function recapFromSession(branch: readonly BranchEntryLike[], sessionName
 					recapBy: {
 						...(writer.model ? { model: writer.model } : {}),
 						...(writer.cost === undefined ? {} : { cost: writer.cost }),
+						...(writer.subscription ? { subscription: true } : {}),
 					},
 				}
 			: {}),
-		...(reply?.at === undefined ? {} : { lastRunAt: reply.at }),
+		...(lastRunAt === undefined ? {} : { lastRunAt }),
 	};
 }
 

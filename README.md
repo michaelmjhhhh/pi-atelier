@@ -124,7 +124,7 @@ While the panel is shown, a model writes its two lines after each run that ends 
   run, keeping the old one if it is still accurate.
 - **Status** is rewritten after every run: where the work stands or the next step.
 - A dim row names the model (without its provider or date stamp) and the cost of the recap behind
-  the lines shown. Pi's own usage
+  the lines shown, marked `(sub)` like the footer when a subscription pays for it. Pi's own usage
   totals do not include recaps.
 
 | Row | Source, first match wins |
@@ -137,8 +137,8 @@ While the panel is shown, a model writes its two lines after each run that ends 
 - The panel refreshes when a run ends and when a session starts, resumes, or changes branch;
   never mid-run, except that the TODO in progress shows as soon as it changes.
 - A recap runs in the background after the run settles and is cancelled if you start a new run.
-  A missing model, missing authentication, or failed reply warns once per session and leaves the
-  panel on its other sources.
+  A missing model, missing authentication, a failed reply, or a reply that calls a tool or misses
+  the format warns once per session and leaves the panel on its other sources.
 
 **Which model writes it** (**Settings → Recap model**, `sessionRecapModel`, user-only):
 
@@ -152,7 +152,8 @@ While the panel is shown, a model writes its two lines after each run that ends 
   the cache, for example because another extension changes what the agent sends, Atelier warns
   once with the cost.
 - **Another model** (`"provider/model"`): sends an excerpt of up to 12,000 characters (your first
-  request and the latest messages, without tool output) to that model, uncached. A small model
+  request and the latest messages, without tool output; long messages keep their start and end) to
+  that model, uncached and without reasoning. A small model
   costs about $0.001 per recap. This can send the transcript to a different provider.
 
 Turn **Settings → Session recap** off (`"sessionRecap": false`, user-only) to keep the panel

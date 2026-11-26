@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	formatAge,
-	goalFromBranch,
+	goalStateFromBranch,
 	readableSessionName,
 	recapFromSession,
 	SESSION_GOAL_ENTRY,
@@ -78,10 +78,10 @@ describe("statusFromReply", () => {
 	});
 });
 
-describe("goalFromBranch", () => {
+describe("goalStateFromBranch", () => {
 	it("keeps the latest goal and honours a clear", () => {
-		expect(goalFromBranch([goal("First"), goal("  Second  goal ")])).toBe("Second goal");
-		expect(goalFromBranch([goal("First"), goal(null)])).toBeUndefined();
+		expect(goalStateFromBranch([goal("First"), goal("  Second  goal ")]).manual).toBe("Second goal");
+		expect(goalStateFromBranch([goal("First"), goal(null)]).manual).toBeUndefined();
 	});
 });
 
@@ -107,13 +107,13 @@ describe("recapFromSession", () => {
 		expect(stale.goal?.text).toBe("Topic");
 	});
 
-	it("skips failed replies and reports when the last good one ended", () => {
+	it("takes the status from the last good reply and the age from the last run, stopped or not", () => {
 		const view = recapFromSession([
 			reply("Built it.", { timestamp: 5_000 }),
-			reply("partial", { stopReason: "aborted" }),
+			reply("partial", { stopReason: "aborted", timestamp: 9_000 }),
 		]);
 		expect(view.status?.text).toBe("Built it.");
-		expect(view.lastRunAt).toBe(5_000);
+		expect(view.lastRunAt).toBe(9_000);
 	});
 
 	it("names the model and cost behind recap lines it shows", () => {

@@ -21,7 +21,7 @@ import {
 	type ToolActivity,
 } from "./run-activity.js";
 import { isBuiltinSidebarPanelId, type SidebarPanelData } from "./sidebar-panels.js";
-import { formatAge, type SessionRecapView } from "./session-recap.js";
+import { formatAge, formatRecapCost, type SessionRecapView } from "./session-recap.js";
 import { createSplitPaneController, type SidebarMode, type SidebarStatus } from "./split-pane.js";
 import { createInertAtelierState } from "./state.js";
 import { type SubagentCostChartGraphics, subagentCostChart } from "./subagent-cost-chart.js";
@@ -794,7 +794,8 @@ const RECAP_ROW_GAP = 2;
 function recapByRow(snapshot: SidebarSnapshot, width: number, palette: AtelierPalette): string[] {
 	const by = snapshot.sessionRecap.recapBy;
 	if (!by) return [];
-	const cost = by.cost === undefined ? "" : `$${by.cost.toFixed(by.cost < 0.01 ? 4 : 3)}`;
+	// A subscription bills plan usage; the footer marks such costs the same way.
+	const cost = by.cost === undefined ? "" : `${formatRecapCost(by.cost)}${by.subscription ? " (sub)" : ""}`;
 	const model = by.model ? sanitizeInline(shortModelName(by.model)) : "";
 	const left =
 		model && visibleWidth(model) + RECAP_ROW_GAP + visibleWidth(cost) <= width

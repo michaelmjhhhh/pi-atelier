@@ -871,8 +871,18 @@ export default function atelierExtension(
 		});
 		cleanup.push(() => completionNotifier.reset());
 		const recapRunner = createRecapRunner({
-			// Written only while this session is current and idle, so the entry never lands mid-run.
-			isCurrent: () => isPublished() && enabled && ctx.isIdle(),
+			// Written only while this session is current and idle, so the entry never lands mid-run, and
+			// only while the user still wants recaps: turning them off or hiding the panel discards one in flight.
+			isCurrent: () => {
+				const current = activeSession;
+				return (
+					current?.token === token &&
+					enabled &&
+					ctx.isIdle() &&
+					current.runtime.getConfig().sessionRecap &&
+					isSessionPanelVisible(current)
+				);
+			},
 			save: (entry) => {
 				pi.appendEntry(SESSION_RECAP_ENTRY, entry);
 				const current = activeSession;
