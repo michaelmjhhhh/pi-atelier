@@ -1,9 +1,12 @@
 import { isRecord, sanitizeInline } from "./text.js";
 import type { NormalizedTodo } from "./types.js";
 
-/** Custom session entry holding the goal set with `/atelier goal`; `text: null` clears it. */
+/**
+ * Custom session entry holding the goal set with `/atelier goal`; `text: null` clears it, and
+ * `regenerate: true` also discards the generated goal so the next recap writes a new one.
+ */
 export const SESSION_GOAL_ENTRY = "pi-atelier:goal";
-/** Custom session entry holding the latest model-written recap. */
+/** Custom session entry holding a model-written recap: always a status, and the goal until one is written. */
 export const SESSION_RECAP_ENTRY = "pi-atelier:recap";
 
 /** Longest goal or status kept, in characters; the panel truncates further to its width. */
@@ -54,17 +57,45 @@ const clip = (text: string): string => {
 /** A goal argument, cleaned to one bounded line; empty clears the goal. */
 export const normalizeGoal = (text: string): string | undefined => clip(text) || undefined;
 
-/** The goal set on this branch, or undefined when none is set or the last one was cleared. */
-export function goalFromBranch(branch: readonly BranchEntryLike[]): string | undefined {
-	let goal: string | undefined;
-	for (const entry of branch) {
-		if (entry.type !== "custom" || entry.customType !== SESSION_GOAL_ENTRY || !isRecord(entry.data)) continue;
-		const { text } = entry.data;
-		if (text === null) goal = undefined;
-		else if (typeof text === "string") goal = normalizeGoal(text);
-	}
-	return goal;
+/** The goals a branch holds: the one the user set, and the one a recap wrote. */
+export interface GoalState {
+	/** Set with `/atelier goal <text>`; it wins over the generated goal. */
+	manual?: string;
+	/** The first goal a recap wrote since the last regenerate request; it is written once. */
+	generated?: { text: string; index: number };
+	/** The generated goal a regenerate request discarded, offered to the model to keep or replace. */
+	discarded?: string;
 }
+
+export function goalStateFromBranch(branch: readonly BranchEntryLike[]): GoalState {
+	let manual: string | undefined;
+	let generated: { text: string; index: number } | undefined;
+	let discarded: string | undefined;
+	for (const [index, entry] of branch.entries()) {
+		if (entry.type !== "custom" || !isRecord(entry.data)) continue;
+		if (entry.customType === SESSION_GOAL_ENTRY) {
+			const { text, regenerate } = entry.data;
+			if (typeof text === "string") manual = normalizeGoal(text);
+			else if (text === null) manual = undefined;
+			if (regenerate === true) {
+				discarded = generated?.text ?? discarded;
+				generated = undefined;
+			}
+		} else if (entry.customType === SESSION_RECAP_ENTRY && !generated) {
+			const about = parseRecap(entry.data)?.about;
+			if (about) generated = { text: about, index };
+		}
+	}
+	return {
+		...(manual ? { manual } : {}),
+		...(generated ? { generated } : {}),
+		...(discarded ? { discarded } : {}),
+	};
+}
+
+/** The goal set by the user on this branch, or undefined when none is set or the last one was cleared. */
+export const goalFromBranch = (branch: readonly BranchEntryLike[]): string | undefined =>
+	goalStateFromBranch(branch).manual;
 
 /** The latest recap written on this branch, and its position in it. */
 export function recapFromBranch(
@@ -80,8 +111,8 @@ export function recapFromBranch(
 }
 
 export function parseRecap(data: unknown): StoredRecap | undefined {
-	if (!isRecord(data) || typeof data.about !== "string" || typeof data.status !== "string") return undefined;
-	const about = clip(data.about);
+	if (!isRecord(data) || typeof data.status !== "string") return undefined;
+	const about = typeof data.about === "string" ? clip(data.about) : "";
 	const status = clip(data.status);
 	if (!about && !status) return undefined;
 	return {
@@ -211,19 +242,19 @@ export function latestReply(
 
 /**
  * The Session panel as the branch describes it.
- * Goal: the goal set by the user, else the recap's topic, else the readable session name.
- * Status: the recap's stopping point when no reply came after it, else the first meaningful
+ * Goal: the goal set by the user, else the goal a recap wrote once, else the readable session name.
+ * Status: the latest recap's stopping point when no reply came after it, else the first meaningful
  * sentence of the last reply.
  */
 export function recapFromSession(branch: readonly BranchEntryLike[], sessionName?: string): SessionRecapView {
 	const stored = recapFromBranch(branch);
 	const reply = latestReply(branch);
-	const goalText = goalFromBranch(branch);
-	const name = readableSessionName(sessionName);
-	const goal = goalText
-		? { text: goalText, source: "goal" as const }
-		: stored?.recap.about
-			? { text: stored.recap.about, source: "summary" as const }
+	const goals = goalStateFromBranch(branch);
+	const name = goals.manual || goals.generated ? undefined : readableSessionName(sessionName);
+	const goal = goals.manual
+		? { text: goals.manual, source: "goal" as const }
+		: goals.generated
+			? { text: goals.generated.text, source: "summary" as const }
 			: name
 				? { text: name, source: "name" as const }
 				: undefined;
@@ -235,14 +266,21 @@ export function recapFromSession(branch: readonly BranchEntryLike[], sessionName
 		: replyText
 			? { text: replyText, source: "reply" as const }
 			: undefined;
+	// The latest recap wrote the status; the goal may come from an earlier one.
+	const writer =
+		status?.source === "summary"
+			? stored?.recap
+			: goal?.source === "summary" && goals.generated
+				? parseRecap(branch[goals.generated.index]?.data)
+				: undefined;
 	return {
 		...(goal ? { goal } : {}),
 		...(status ? { status } : {}),
-		...(stored && (goal?.source === "summary" || status?.source === "summary")
+		...(writer
 			? {
 					recapBy: {
-						...(stored.recap.model ? { model: stored.recap.model } : {}),
-						...(stored.recap.cost === undefined ? {} : { cost: stored.recap.cost }),
+						...(writer.model ? { model: writer.model } : {}),
+						...(writer.cost === undefined ? {} : { cost: writer.cost }),
 					},
 				}
 			: {}),

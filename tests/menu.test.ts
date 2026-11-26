@@ -152,7 +152,7 @@ describe("Control Center presentation", () => {
 			"Sidebar tool list   Collapsed",
 			"Notifications       On",
 			"Prefill progress    On",
-			"Session recap       Off",
+			"Session recap       On",
 			"Recap model         Session model",
 			"Back",
 		];

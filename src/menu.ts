@@ -237,8 +237,8 @@ export function createMenuActions(
 				{ sessionRecap: enabled },
 				{
 					saved: enabled
-						? "Session recap on: the model writes a two-line recap after each run while the Session panel is shown"
-						: "Session recap off",
+						? "Session recap on: while the Session panel is shown, a model writes its goal once and its status after each run"
+						: "Session recap off: the Session panel uses /atelier goal, the session name, and the last reply",
 					failed: "Session recap changed for this session but could not be saved",
 				},
 				false,
@@ -518,7 +518,7 @@ export async function openAtelierControlCenter(
 					"session-recap",
 					"Session recap",
 					onOff(config.sessionRecap),
-					"Model-written goal and status in the Session panel; costs tokens after each run",
+					"A model writes the Session panel's goal and status; costs tokens after each run",
 				),
 				setting(
 					"session-recap-model",

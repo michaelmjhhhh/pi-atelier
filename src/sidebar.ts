@@ -733,6 +733,7 @@ function wrappedField(
 /** Session panel: the goal and the stopping point, with the age of the last run on the crown. */
 function sessionSection(
 	snapshot: SidebarSnapshot,
+	config: AtelierConfig,
 	width: number,
 	palette: AtelierPalette,
 	now: number,
@@ -740,7 +741,13 @@ function sessionSection(
 	const recap = snapshot.sessionRecap;
 	const goal = recap.goal
 		? wrappedField("Goal", recap.goal.text, width, palette, "primary")
-		: wrappedField("Goal", "Set with /atelier goal", width, palette, "dim");
+		: wrappedField(
+				"Goal",
+				config.sessionRecap ? "Written after the first reply" : "Set with /atelier goal",
+				width,
+				palette,
+				"dim",
+			);
 	const status = recap.status
 		? wrappedField(
 				"Status",
@@ -1228,7 +1235,7 @@ export function renderSidebarLines(
 	const glyphs = config.nerdFont ? NERD_GLYPHS : PLAIN_GLYPHS;
 	const builtinPanels: Record<BuiltinSidebarPanelId, () => SidebarGroup[]> = {
 		session: () => {
-			const { summary, rows } = sessionSection(snapshot, contentWidth, palette, now);
+			const { summary, rows } = sessionSection(snapshot, config, contentWidth, palette, now);
 			const section: Section = {
 				id: "session",
 				title: "Session",

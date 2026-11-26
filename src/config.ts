@@ -52,7 +52,7 @@ export const DEFAULT_CONFIG: AtelierConfig = {
 	prefillEnabled: true,
 	prefillViews: SIDEBAR_PREFILL_VIEWS,
 	prefillProviders: ["llama.cpp"],
-	sessionRecap: false,
+	sessionRecap: true,
 	sessionRecapModel: "",
 };
 

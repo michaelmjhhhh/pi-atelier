@@ -1,10 +1,17 @@
 import { convertToLlm, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { type BranchEntryLike, latestReply, recapFromBranch, type StoredRecap } from "./session-recap.js";
 import {
+	type BranchEntryLike,
+	goalStateFromBranch,
+	latestReply,
+	recapFromBranch,
+	type StoredRecap,
+} from "./session-recap.js";
+import {
+	type GoalRequest,
 	parseRecapReply,
-	RECAP_REQUEST,
-	RECAP_TRANSCRIPT_SYSTEM,
+	recapRequest,
 	recapTranscript,
+	recapTranscriptSystem,
 } from "./session-summarizer.js";
 import { errorMessage, isRecord } from "./text.js";
 
@@ -80,6 +87,13 @@ export function needsRecap(branch: readonly BranchEntryLike[]): boolean {
 	if (!reply) return false;
 	const recap = recapFromBranch(branch);
 	return recap === undefined || recap.index < reply.index;
+}
+
+/** The goal is written once: asked for until a recap writes one, unless the user set their own. */
+export function goalRequestFor(branch: readonly BranchEntryLike[]): GoalRequest {
+	const goals = goalStateFromBranch(branch);
+	if (goals.manual || goals.generated) return { kind: "none" };
+	return goals.discarded ? { kind: "regenerate", previous: goals.discarded } : { kind: "initial" };
 }
 
 const isAssistantMessage = (message: unknown): message is { role: "assistant"; stopReason?: unknown } =>
@@ -176,6 +190,7 @@ export function createRecapRunner(options: RecapRunnerOptions): RecapRunner {
 			!CONTINUATION_KEYED_APIS.has(model.api) &&
 			typeof sessionManager.buildSessionProjection === "function" &&
 			typeof registry.streamSimple === "function";
+		const goal = goalRequestFor(ctx.sessionManager.getBranch());
 		let reply: AssistantReply;
 		if (warm && registry.streamSimple && sessionManager.buildSessionProjection) {
 			// Replay the conversation exactly as the agent sends it, plus one request, so the provider
@@ -185,7 +200,7 @@ export function createRecapRunner(options: RecapRunnerOptions): RecapRunner {
 			reply = await registry
 				.streamSimple(
 					model,
-					{ messages: [...messages, { role: "user", content: RECAP_REQUEST, timestamp: Date.now() }] },
+					{ messages: [...messages, { role: "user", content: recapRequest(goal), timestamp: Date.now() }] },
 					{
 						// Reasoning and, on Anthropic, tool choice are part of the cached prefix: both stay as the
 						// agent sends them. A reply that calls a tool anyway is discarded below.
@@ -208,7 +223,7 @@ export function createRecapRunner(options: RecapRunnerOptions): RecapRunner {
 			reply = await ctx.modelRegistry.complete(
 				model,
 				{
-					systemPrompt: RECAP_TRANSCRIPT_SYSTEM,
+					systemPrompt: recapTranscriptSystem(goal),
 					messages: [{ role: "user", content: transcript, timestamp: Date.now() }],
 				} as CompleteContext,
 				// A one-off prompt: nothing to gain from writing it to the cache.
@@ -234,7 +249,9 @@ export function createRecapRunner(options: RecapRunnerOptions): RecapRunner {
 		const parsed = parseRecapReply(replyText(reply));
 		if (!parsed) return undefined;
 		return {
-			...parsed,
+			// A goal the recap was not asked for is ignored: it is written once.
+			about: goal.kind === "none" ? "" : parsed.about,
+			status: parsed.status,
 			model: modelLabel(model),
 			mode: warm ? "warm" : "transcript",
 			...(usage ? { usage } : {}),

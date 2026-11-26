@@ -130,6 +130,18 @@ describe("recapFromSession", () => {
 		expect(recapFromSession([withUsage, goal("Mine"), reply("Newer.")]).recapBy).toBeUndefined();
 	});
 
+	it("keeps the first generated goal and lets /atelier goal auto replace it", () => {
+		const first = recapFromSession([recap("First goal", "a"), recap("Later goal", "b")]);
+		expect(first.goal).toEqual({ text: "First goal", source: "summary" });
+		const regenerated = recapFromSession([
+			recap("First goal", "a"),
+			{ type: "custom", customType: SESSION_GOAL_ENTRY, data: { text: null, regenerate: true } },
+			recap("Second goal", "b"),
+		]);
+		expect(regenerated.goal?.text).toBe("Second goal");
+		expect(recapFromSession([recap("", "a")], "issue-42").goal).toEqual({ text: "issue 42", source: "name" });
+	});
+
 	it("lets the todo in progress override the status", () => {
 		const view = withActiveTodo(recapFromSession([reply("Reply.")]), [
 			{ id: 1, text: "Done one", status: "completed" },

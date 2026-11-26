@@ -650,14 +650,30 @@ export default function atelierExtension(
 	const isOnOff = (value: string | undefined): boolean =>
 		value === undefined || value === "on" || value === "off";
 
-	/** `/atelier goal <text>` sets the goal; `/atelier goal` alone clears it. Stored in the session, so it survives `/resume`. */
+	/**
+	 * `/atelier goal <text>` sets the goal and `/atelier goal` alone clears it, falling back to the
+	 * generated one; `/atelier goal auto` discards the generated goal so the next recap writes a new
+	 * one. Stored in the session, so it survives `/resume`.
+	 */
 	function setGoal(ctx: ExtensionContext, rawText: string): void {
 		const current = requireActiveSession(ctx);
 		if (!current) return;
+		const hint = isSessionPanelVisible(current) ? "" : " · turn on the Session panel in /atelier display";
+		if (rawText.trim().toLowerCase() === "auto") {
+			pi.appendEntry(SESSION_GOAL_ENTRY, { text: null, regenerate: true });
+			invalidateSessionRecap(current);
+			const recapOn = current.runtime.getConfig().sessionRecap;
+			ctx.ui.notify(
+				recapOn
+					? `Goal will be written again after the next run${hint}`
+					: "Goal cleared · turn on Session recap in /atelier settings to have it written",
+				"info",
+			);
+			return;
+		}
 		const goal = normalizeGoal(rawText);
 		pi.appendEntry(SESSION_GOAL_ENTRY, { text: goal ?? null });
 		invalidateSessionRecap(current);
-		const hint = isSessionPanelVisible(current) ? "" : " · turn on the Session panel in /atelier display";
 		ctx.ui.notify(goal ? `Goal: ${goal}${hint}` : "Goal cleared", "info");
 	}
 

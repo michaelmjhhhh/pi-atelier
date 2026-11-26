@@ -655,8 +655,11 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 					.filter(Boolean)
 					.join(" ");
 			case "sidebarPanel":
-				return options.getSidebarPanelSettings().find((setting) => setting.id === row.id)?.available === false
-					? "Not available in this session. It keeps its place for later."
+				if (options.getSidebarPanelSettings().find((setting) => setting.id === row.id)?.available === false)
+					return "Not available in this session. It keeps its place for later.";
+				// Showing Session starts model requests, so the cost is stated where it is turned on.
+				return row.id === "session"
+					? "Goal and status of this session. Unless Session recap is off in Settings, a model writes them after each run, which costs tokens. Sidebar changes apply when you save."
 					: "Sidebar changes apply when you save.";
 		}
 	};

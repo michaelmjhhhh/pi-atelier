@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SESSION_RECAP_ENTRY } from "../src/session-recap.js";
 import { createRecapRunner, needsRecap, type StoredRecapEntry } from "../src/session-recap-runner.js";
-import { parseRecapReply, RECAP_REQUEST, recapTranscript } from "../src/session-summarizer.js";
+import { SESSION_GOAL_ENTRY } from "../src/session-recap.js";
+import { goalRequestFor } from "../src/session-recap-runner.js";
+import { parseRecapReply, recapRequest, recapTranscript } from "../src/session-summarizer.js";
 import { settleMicrotasks } from "./helpers/async.js";
 
 const assistant = (text: string, extra: Record<string, unknown> = {}) => ({
@@ -24,6 +26,19 @@ const modelReply = (text: string, extra: Record<string, unknown> = {}) => ({
 });
 
 describe("parseRecapReply", () => {
+	it("returns an unknown goal as empty and drops trailing punctuation", () => {
+		expect(parseRecapReply("About: unknown\nStopped: waiting for the user")).toEqual({
+			about: "",
+			status: "waiting for the user",
+		});
+		expect(parseRecapReply("About: Session panel goal.\nStopped: done")?.about).toBe("Session panel goal");
+	});
+
+	it("needs a stopping point", () => {
+		expect(parseRecapReply("About: Session panel")).toBeUndefined();
+		expect(parseRecapReply("Stopped: tests pass")).toEqual({ about: "", status: "tests pass" });
+	});
+
 	it("reads both lines, tolerating Markdown emphasis and list markers", () => {
 		expect(parseRecapReply("**About:** Session panel for Atelier\n- Stopped: tests pass, PR next")).toEqual({
 			about: "Session panel for Atelier",
@@ -138,7 +153,10 @@ describe("createRecapRunner", () => {
 			{ messages: { role: string; content: unknown }[] },
 			Record<string, unknown>,
 		];
-		expect(context.messages.at(-1)).toMatchObject({ role: "user", content: RECAP_REQUEST });
+		expect(context.messages.at(-1)).toMatchObject({
+			role: "user",
+			content: recapRequest({ kind: "initial" }),
+		});
 		expect(context.messages).toHaveLength(3);
 		expect(options).toMatchObject({ reasoning: "medium", sessionId: "session-1", disableContinuation: true });
 		expect(saved).toEqual([
@@ -252,5 +270,74 @@ describe("createRecapRunner", () => {
 		expect(warnings).toEqual([
 			"Session recap missed the prompt cache and cost $0.127. Another extension may change what the agent sends; choose a smaller Recap model in Settings to cap the cost.",
 		]);
+	});
+
+	it("asks for the goal until one is written, then only for the stopping point", async () => {
+		const first = fakeContext({
+			warm: true,
+			reply: modelReply("About: unknown\nStopped: Asked what to fix"),
+		});
+		const { instance, saved } = runner();
+		instance.request({ ctx: first.ctx, modelSetting: "", thinkingLevel: "off", blockImages: false });
+		await settleMicrotasks();
+		expect(saved[0]).toMatchObject({ about: "", status: "Asked what to fix" });
+
+		const withGoal = [
+			message(assistant("Did it.")),
+			{ type: "custom", customType: SESSION_RECAP_ENTRY, data: { about: "Session panel", status: "x" } },
+			message(assistant("Next.")),
+		];
+		const later = fakeContext({
+			warm: true,
+			branch: withGoal,
+			reply: modelReply("About: Other\nStopped: PR open"),
+		});
+		instance.request({ ctx: later.ctx, modelSetting: "", thinkingLevel: "off", blockImages: false });
+		await settleMicrotasks();
+		const request = (
+			later.streamSimple.mock.calls[0]?.[1] as { messages: { content: string }[] }
+		).messages.at(-1);
+		expect(request?.content).toBe(recapRequest({ kind: "none" }));
+		expect(saved[1]).toMatchObject({ about: "", status: "PR open" });
+	});
+});
+
+describe("goalRequestFor", () => {
+	const recapWith = (about: string) => ({
+		type: "custom",
+		customType: SESSION_RECAP_ENTRY,
+		data: { about, status: "s" },
+	});
+	const goalEntry = (data: unknown) => ({ type: "custom", customType: SESSION_GOAL_ENTRY, data });
+
+	it("asks once, retries an unknown goal, and stops for a goal the user set", () => {
+		expect(goalRequestFor([])).toEqual({ kind: "initial" });
+		expect(goalRequestFor([recapWith("")])).toEqual({ kind: "initial" });
+		expect(goalRequestFor([recapWith("Session panel")])).toEqual({ kind: "none" });
+		expect(goalRequestFor([goalEntry({ text: "Mine" })])).toEqual({ kind: "none" });
+	});
+
+	it("offers the discarded goal after /atelier goal auto", () => {
+		expect(goalRequestFor([recapWith("Old goal"), goalEntry({ text: null, regenerate: true })])).toEqual({
+			kind: "regenerate",
+			previous: "Old goal",
+		});
+		expect(
+			goalRequestFor([
+				recapWith("Old goal"),
+				goalEntry({ text: null, regenerate: true }),
+				recapWith("New goal"),
+			]),
+		).toEqual({ kind: "none" });
+	});
+});
+
+describe("recapRequest", () => {
+	it("carries the goal rules only while a goal is wanted", () => {
+		expect(recapRequest({ kind: "none" })).not.toContain("About:");
+		expect(recapRequest({ kind: "initial" })).toContain("About: unknown");
+		expect(recapRequest({ kind: "regenerate", previous: "Old goal" })).toContain(
+			'The previous About was "Old goal"',
+		);
 	});
 });
