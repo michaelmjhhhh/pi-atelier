@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Add **Settings → Sidebar → Anchor**. **Bottom** rests the panel stack on the footer, so a growing panel pushes the panels above it up and Context, Changed files, and the panels below Activity stay put. Saved as the user-only `sidebarAnchor` (`"top"` by default) ([#138](https://github.com/michaelmjhhhh/pi-atelier/issues/138)).
-- Add **Settings → Sidebar → Reserve tool rows**. Activity keeps three tool rows, with dim placeholders when fewer tools are listed, plus its First token and Output speed rows before the first run, so its height holds between runs. Placeholders drop on a short terminal at the same point as the tool rows they hold. Off by default; saved as the user-only `reserveSidebarToolRows` ([#138](https://github.com/michaelmjhhhh/pi-atelier/issues/138)).
+- Add **Settings → Sidebar → Reserve tool rows**. Activity keeps three tool rows, with dim placeholders when fewer tools are listed, plus its First token and Output speed rows before the first run, so its height holds between runs. A short terminal drops the placeholders before any panel content. Off by default; saved as the user-only `reserveSidebarToolRows` ([#138](https://github.com/michaelmjhhhh/pi-atelier/issues/138)).
 
 ## 0.22.0 — 2026-11-26
 

@@ -898,6 +898,8 @@ function activeToolNameRows(
  * Infinity and are only cut by the dock once every optional group is gone.
  */
 const DROP_RANK = {
+	/** Placeholders hold no information, so they are the first thing a short sidebar gives up. */
+	reservedToolRow: -1,
 	toolName: 0,
 	moreFiles: 3,
 	listedFile: 5,
@@ -1018,8 +1020,8 @@ function activityGroups(
 	// When every counted tool has its own row, the count only matters once a row is dropped for height.
 	const summarizes =
 		toolCount > recent.length ? undefined : recent.map((tool) => `activityRecent:${tool.id}`);
-	// Reserved rows hold the panel's height from run to run. Each placeholder gives way
-	// where the tool row it stands in for would, so a short sidebar sheds it as before.
+	// Reserved rows hold the panel's height from run to run. A short sidebar sheds them
+	// before any row with content, the lowest placeholder first.
 	const filled = visibleActive.length + moreRunning.length + recent.length;
 	const placeholders = reserveToolRows
 		? Array.from({ length: Math.max(0, RESERVED_TOOL_ROWS - filled) }, (_, index) => filled + index)
@@ -1038,7 +1040,8 @@ function activityGroups(
 				activity.phase === "idle" && !reserveToolRows
 					? []
 					: responsePerformanceRows(activity, width, palette),
-			dropRank: DROP_RANK.performance,
+			// Before the first run, reserved timing rows are placeholders too; they go right after the tool ones.
+			dropRank: activity.phase === "idle" ? DROP_RANK.reservedToolRow + 0.5 : DROP_RANK.performance,
 		},
 		...visibleActive.map((tool, index) => ({
 			name: `activityActive:${tool.id}`,
@@ -1058,8 +1061,7 @@ function activityGroups(
 			name: `activityReserved:${slot}`,
 			section,
 			rows: [palette.paint("dim", PLACEHOLDER)],
-			dropRank:
-				slot === 0 ? DROP_RANK.latestRecentTool : DROP_RANK.olderRecentTool + (RESERVED_TOOL_ROWS - slot - 1),
+			dropRank: DROP_RANK.reservedToolRow - slot / 100,
 		})),
 		{
 			name: "activityAggregate",

@@ -72,6 +72,39 @@ describe("configuration validation", () => {
 		).toBe("minimal");
 	});
 
+	it("parses the user-only sidebar anchor", () => {
+		expect(DEFAULT_CONFIG.sidebarAnchor).toBe("top");
+		expect(validateConfig({ sidebarAnchor: "bottom" }).config.sidebarAnchor).toBe("bottom");
+		const invalid = validateConfig({ sidebarAnchor: "left" });
+		expect(invalid.config.sidebarAnchor).toBe("top");
+		expect(invalid.warnings).toContain("Unknown sidebarAnchor: left");
+		expect(validateConfig({ sidebarAnchor: 1 }).warnings).toContain("sidebarAnchor must be a string");
+		expect(
+			resolveConfig({ user: { sidebarAnchor: "bottom" }, project: { sidebarAnchor: "top" } }).config
+				.sidebarAnchor,
+		).toBe("bottom");
+		expect(resolveConfig({ user: {}, project: { sidebarAnchor: "bottom" } }).config.sidebarAnchor).toBe(
+			"top",
+		);
+	});
+
+	it("parses the user-only reserved Activity tool rows", () => {
+		expect(DEFAULT_CONFIG.reserveSidebarToolRows).toBe(false);
+		expect(validateConfig({ reserveSidebarToolRows: true }).config.reserveSidebarToolRows).toBe(true);
+		expect(
+			resolveConfig({ user: { reserveSidebarToolRows: true }, project: { reserveSidebarToolRows: false } })
+				.config.reserveSidebarToolRows,
+		).toBe(true);
+		// A saved false stays false, and a project cannot turn it on.
+		expect(
+			resolveConfig({ user: { reserveSidebarToolRows: false }, project: { reserveSidebarToolRows: true } })
+				.config.reserveSidebarToolRows,
+		).toBe(false);
+		const invalid = validateConfig({ reserveSidebarToolRows: "yes" });
+		expect(invalid.config.reserveSidebarToolRows).toBe(false);
+		expect(invalid.warnings).toContain("reserveSidebarToolRows must be boolean");
+	});
+
 	it("keeps legacy Sidebar visibility compatible when no authoritative layout is present", () => {
 		const result = validateConfig({ showSidebarAgent: false, showSidebarTodos: false });
 		expect(result.config.sidebarPanelLayout.find((entry) => entry.id === "agent")?.visible).toBe(false);

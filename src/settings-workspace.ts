@@ -24,9 +24,9 @@ import type {
 	FooterState,
 	SegmentId,
 	SessionDisplayOverride,
+	SidebarAnchor,
 	SidebarPanelId,
 	SidebarPanelLayout,
-	SidebarAnchor,
 	SidebarStyle,
 } from "./types.js";
 
@@ -115,7 +115,7 @@ type PreferenceId =
 	| "notifications"
 	| "sidebarStyle"
 	| "sidebarAnchor"
-	| "toolRows"
+	| "activityToolRows"
 	| "sidebarStartup"
 	| "toolList"
 	| "prefill"
@@ -164,7 +164,7 @@ const PAGE_TITLES: Record<SettingsPage, string> = {
 const PAGE_PREFERENCES: Record<SettingsPage, readonly PreferenceId[]> = {
 	general: ["font", "footer", "notifications"],
 	rail: [],
-	sidebar: ["sidebarStyle", "sidebarAnchor", "toolRows", "sidebarStartup", "toolList", "prefill"],
+	sidebar: ["sidebarStyle", "sidebarAnchor", "activityToolRows", "sidebarStartup", "toolList", "prefill"],
 	recap: ["recap", "recapModel"],
 };
 
@@ -182,7 +182,7 @@ const PREFERENCE_LABELS: Record<PreferenceId, string> = {
 	notifications: "Notifications",
 	sidebarStyle: "Style",
 	sidebarAnchor: "Anchor",
-	toolRows: "Reserve tool rows",
+	activityToolRows: "Reserve tool rows",
 	sidebarStartup: "Show at startup",
 	toolList: "Tool list",
 	prefill: "Prefill progress",
@@ -196,7 +196,8 @@ const PREFERENCE_DESCRIPTIONS: Record<PreferenceId, string> = {
 	notifications: "Notify when a run finishes.",
 	sidebarStyle: "Framed panels with lit borders, or quiet headings without frames.",
 	sidebarAnchor: "Stack panels from the top, or rest them on the footer so growth pushes up.",
-	toolRows: "Activity keeps three tool rows, with placeholders when empty, so its height holds between runs.",
+	activityToolRows:
+		"Activity keeps three tool rows, with placeholders when empty, so its height holds between runs.",
 	sidebarStartup: "Show the sidebar when Pi starts.",
 	toolList: "List tool names in the sidebar.",
 	prefill: "While a local model reads a long prompt, a sidebar panel shows how far it has read.",
@@ -583,7 +584,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 				return config.sidebarStyle === "framed" ? "Framed" : "Minimal";
 			case "sidebarAnchor":
 				return config.sidebarAnchor === "bottom" ? "Bottom" : "Top";
-			case "toolRows":
+			case "activityToolRows":
 				return onOff(config.reserveSidebarToolRows);
 			case "sidebarStartup":
 				return onOff(config.showSidebarOnStartup);
@@ -765,7 +766,7 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 					return preferences.setSidebarStyle(config.sidebarStyle === "framed" ? "minimal" : "framed");
 				case "sidebarAnchor":
 					return preferences.setSidebarAnchor(config.sidebarAnchor === "bottom" ? "top" : "bottom");
-				case "toolRows":
+				case "activityToolRows":
 					return preferences.setReserveSidebarToolRows(!config.reserveSidebarToolRows);
 				case "sidebarStartup":
 					return preferences.setShowSidebarOnStartup(!config.showSidebarOnStartup);
