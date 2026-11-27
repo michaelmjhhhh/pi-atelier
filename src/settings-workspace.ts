@@ -197,7 +197,7 @@ const PREFERENCE_DESCRIPTIONS: Record<PreferenceId, string> = {
 	sidebarStyle: "Framed panels with lit borders, or quiet headings without frames.",
 	sidebarAnchor: "Stack panels from the top, or rest them on the footer so growth pushes up.",
 	activityToolRows:
-		"Activity keeps three tool rows, with placeholders when empty, so its height holds between runs.",
+		"Activity keeps three tool rows, blank until tools run, so its height holds between runs.",
 	sidebarStartup: "Show the sidebar when Pi starts.",
 	toolList: "List tool names in the sidebar.",
 	prefill: "While a local model reads a long prompt, a sidebar panel shows how far it has read.",

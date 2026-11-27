@@ -1060,7 +1060,15 @@ function activityGroups(
 		...placeholders.map((slot) => ({
 			name: `activityReserved:${slot}`,
 			section,
-			rows: [palette.paint("dim", PLACEHOLDER)],
+			// With no tools at all, the first reserved row says so; the rest stay blank.
+			rows: [
+				slot === 0
+					? palette.paint(
+							"dim",
+							truncateToWidth(activity.phase === "settled" ? "No tools used" : "No tools yet", width, "…"),
+						)
+					: "",
+			],
 			dropRank: DROP_RANK.reservedToolRow - slot / 100,
 		})),
 		{
