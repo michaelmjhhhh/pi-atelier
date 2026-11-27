@@ -46,6 +46,8 @@ export const DEFAULT_CONFIG: AtelierConfig = {
 	showSidebarOnStartup: true,
 	sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
 	sidebarStyle: "framed",
+	sidebarAnchor: "top",
+	reserveSidebarToolRows: false,
 	sidebarPanelLayout: cloneLayout(DEFAULT_SIDEBAR_PANEL_LAYOUT),
 	completionNotifications: true,
 	showFooter: true,
@@ -79,6 +81,8 @@ const USER_ONLY_KEYS: ReadonlySet<string> = new Set([
 	"showSidebarOnStartup",
 	"sidebarWidth",
 	"sidebarStyle",
+	"sidebarAnchor",
+	"reserveSidebarToolRows",
 	"completionNotifications",
 	"nerdFont",
 	"showFooter",
@@ -385,6 +389,12 @@ function applyNonDisplay(
 			if (userLayer) config.sidebarStyle = style;
 		} else warnings.push(invalidEnum("sidebarStyle", style));
 	}
+	if ("sidebarAnchor" in input) {
+		const anchor = input.sidebarAnchor;
+		if (anchor === "top" || anchor === "bottom") {
+			if (userLayer) config.sidebarAnchor = anchor;
+		} else warnings.push(invalidEnum("sidebarAnchor", anchor));
+	}
 	if ("sidebarWidth" in input) {
 		const width = input.sidebarWidth;
 		if (typeof width !== "number" || !Number.isInteger(width))
@@ -401,6 +411,7 @@ function applyNonDisplay(
 	for (const key of [
 		"showSidebarToolNames",
 		"showSidebarOnStartup",
+		"reserveSidebarToolRows",
 		"completionNotifications",
 		"nerdFont",
 		"showFooter",

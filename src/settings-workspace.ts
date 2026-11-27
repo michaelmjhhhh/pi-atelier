@@ -26,6 +26,7 @@ import type {
 	SessionDisplayOverride,
 	SidebarPanelId,
 	SidebarPanelLayout,
+	SidebarAnchor,
 	SidebarStyle,
 } from "./types.js";
 
@@ -65,6 +66,8 @@ export interface SettingsPreferences {
 	setCompletionNotifications(enabled: boolean): Promise<void>;
 	setPrefillEnabled(enabled: boolean): Promise<void>;
 	setSidebarStyle(style: SidebarStyle): Promise<void>;
+	setSidebarAnchor(anchor: SidebarAnchor): Promise<void>;
+	setReserveSidebarToolRows(enabled: boolean): Promise<void>;
 	setShowSidebarOnStartup(enabled: boolean): Promise<void>;
 	isToolListExpanded(): boolean;
 	toggleToolList(): Promise<void>;
@@ -111,6 +114,8 @@ type PreferenceId =
 	| "footer"
 	| "notifications"
 	| "sidebarStyle"
+	| "sidebarAnchor"
+	| "toolRows"
 	| "sidebarStartup"
 	| "toolList"
 	| "prefill"
@@ -159,7 +164,7 @@ const PAGE_TITLES: Record<SettingsPage, string> = {
 const PAGE_PREFERENCES: Record<SettingsPage, readonly PreferenceId[]> = {
 	general: ["font", "footer", "notifications"],
 	rail: [],
-	sidebar: ["sidebarStyle", "sidebarStartup", "toolList", "prefill"],
+	sidebar: ["sidebarStyle", "sidebarAnchor", "toolRows", "sidebarStartup", "toolList", "prefill"],
 	recap: ["recap", "recapModel"],
 };
 
@@ -176,6 +181,8 @@ const PREFERENCE_LABELS: Record<PreferenceId, string> = {
 	footer: "Atelier footer",
 	notifications: "Notifications",
 	sidebarStyle: "Style",
+	sidebarAnchor: "Anchor",
+	toolRows: "Reserve tool rows",
 	sidebarStartup: "Show at startup",
 	toolList: "Tool list",
 	prefill: "Prefill progress",
@@ -188,6 +195,8 @@ const PREFERENCE_DESCRIPTIONS: Record<PreferenceId, string> = {
 	footer: "The status rail and composer. Off restores Pi's own footer and composer when Settings closes.",
 	notifications: "Notify when a run finishes.",
 	sidebarStyle: "Framed panels with lit borders, or quiet headings without frames.",
+	sidebarAnchor: "Stack panels from the top, or rest them on the footer so growth pushes up.",
+	toolRows: "Activity keeps three tool rows, with placeholders when empty, so its height holds between runs.",
 	sidebarStartup: "Show the sidebar when Pi starts.",
 	toolList: "List tool names in the sidebar.",
 	prefill: "While a local model reads a long prompt, a sidebar panel shows how far it has read.",
@@ -572,6 +581,10 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 				return onOff(config.completionNotifications);
 			case "sidebarStyle":
 				return config.sidebarStyle === "framed" ? "Framed" : "Minimal";
+			case "sidebarAnchor":
+				return config.sidebarAnchor === "bottom" ? "Bottom" : "Top";
+			case "toolRows":
+				return onOff(config.reserveSidebarToolRows);
 			case "sidebarStartup":
 				return onOff(config.showSidebarOnStartup);
 			case "toolList":
@@ -750,6 +763,10 @@ export function createSettingsWorkspace(options: SettingsWorkspaceOptions): Sett
 					return preferences.setCompletionNotifications(!config.completionNotifications);
 				case "sidebarStyle":
 					return preferences.setSidebarStyle(config.sidebarStyle === "framed" ? "minimal" : "framed");
+				case "sidebarAnchor":
+					return preferences.setSidebarAnchor(config.sidebarAnchor === "bottom" ? "top" : "bottom");
+				case "toolRows":
+					return preferences.setReserveSidebarToolRows(!config.reserveSidebarToolRows);
 				case "sidebarStartup":
 					return preferences.setShowSidebarOnStartup(!config.showSidebarOnStartup);
 				case "toolList":

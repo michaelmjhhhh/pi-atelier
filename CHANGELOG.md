@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add **Settings → Sidebar → Anchor**. **Bottom** rests the panel stack on the footer, so a growing panel pushes the panels above it up and Context, Changed files, and the panels below Activity stay put. Saved as the user-only `sidebarAnchor` (`"top"` by default) ([#138](https://github.com/michaelmjhhhh/pi-atelier/issues/138)).
+- Add **Settings → Sidebar → Reserve tool rows**. Activity keeps three tool rows, with dim placeholders when fewer tools are listed, plus its First token and Output speed rows before the first run, so its height holds between runs. Placeholders drop on a short terminal at the same point as the tool rows they hold. Off by default; saved as the user-only `reserveSidebarToolRows` ([#138](https://github.com/michaelmjhhhh/pi-atelier/issues/138)).
+
 ## 0.22.0 — 2026-11-26
 
 - Merge the Control Center **Settings** list and **Settings → Display** into one **Settings** workspace with four pages: **General** (Font, Atelier footer, Notifications), **Status rail** (preview, Preset, Density, segments), **Sidebar** (Style, Show at startup, Tool list, Prefill progress, panels), and **Session recap** (on or off, and the recap model, picked from a list on the page). Tab and Shift+Tab switch pages, and each page remembers its selection. Wide terminals list the pages on the left; narrow ones show them as tabs. A dot marks a page with unsaved changes.

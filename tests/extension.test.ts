@@ -412,8 +412,8 @@ describe("extension registration", () => {
 				const rendered = workspace?.render(120).join("\n") ?? "";
 				expect(rendered).toContain("vendor:missing");
 
-				// Four Sidebar settings, the missing panel, and eleven built-in panels precede the contributed one.
-				for (let index = 0; index < 16; index += 1) workspace?.handleInput("\u001b[B");
+				// Six Sidebar settings, the missing panel, and eleven built-in panels precede the contributed one.
+				for (let index = 0; index < 18; index += 1) workspace?.handleInput("\u001b[B");
 				const focusedRendered = workspace?.render(120).join("\n") ?? "";
 				expect(focusedRendered).toContain("Queue title");
 				expect(focusedRendered).toContain("unavailable");

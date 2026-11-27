@@ -274,7 +274,7 @@ describe("Control Center presentation", () => {
 			{ page: "sidebar" },
 		);
 		const workspace = components[0] as { handleInput(data: string): void };
-		workspace.handleInput("\u001b[B");
+		for (let index = 0; index < 3; index += 1) workspace.handleInput("\u001b[B");
 		workspace.handleInput("\r");
 
 		expect(h.runtime.getConfig().showSidebarOnStartup).toBe(false);
