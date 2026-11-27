@@ -27,7 +27,7 @@ import {
 import type { SidebarMode, SidebarStatus } from "./split-pane.js";
 import type { AtelierRuntime } from "./state.js";
 import { errorMessage, fitToWidth, isColorEnabled } from "./text.js";
-import type { AtelierConfig, SidebarStyle } from "./types.js";
+import type { AtelierConfig, SidebarAnchor, SidebarStyle } from "./types.js";
 
 type SaveConfigPatch = typeof saveUserConfigPatch;
 type ThinkingLevel = Parameters<ExtensionAPI["setThinkingLevel"]>[0];
@@ -117,6 +117,8 @@ export function createMenuActions(
 				| "showFooter"
 				| "prefillEnabled"
 				| "sidebarStyle"
+				| "sidebarAnchor"
+				| "reserveSidebarToolRows"
 				| "sessionRecap"
 				| "sessionRecapModel"
 			>
@@ -236,6 +238,24 @@ export function createMenuActions(
 				{
 					saved: `Sidebar style: ${sidebarStyleLabel(style)}`,
 					failed: "Sidebar style changed for this session but could not be saved",
+				},
+				false,
+			),
+		setSidebarAnchor: (anchor: SidebarAnchor): Promise<void> =>
+			persistPreference(
+				{ sidebarAnchor: anchor },
+				{
+					saved: `Sidebar anchor: ${anchor === "bottom" ? "Bottom" : "Top"}`,
+					failed: "Sidebar anchor changed for this session but could not be saved",
+				},
+				false,
+			),
+		setReserveSidebarToolRows: (enabled: boolean): Promise<void> =>
+			persistPreference(
+				{ reserveSidebarToolRows: enabled },
+				{
+					saved: `Reserve tool rows: ${enabled ? "On" : "Off"}`,
+					failed: "Reserve tool rows changed for this session but could not be saved",
 				},
 				false,
 			),
@@ -438,6 +458,8 @@ export async function openSettingsWorkspace(
 						setCompletionNotifications: actions.setCompletionNotifications,
 						setPrefillEnabled: actions.setPrefillEnabled,
 						setSidebarStyle: actions.setSidebarStyle,
+						setSidebarAnchor: actions.setSidebarAnchor,
+						setReserveSidebarToolRows: actions.setReserveSidebarToolRows,
 						setShowSidebarOnStartup: actions.setShowSidebarOnStartup,
 						isToolListExpanded: () => sidebar.isToolListExpanded(),
 						toggleToolList: () => sidebar.toggleToolList(report),

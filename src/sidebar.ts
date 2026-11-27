@@ -31,6 +31,7 @@ import type {
 	AtelierState,
 	BuiltinSidebarPanelId,
 	NormalizedTodo,
+	SidebarAnchor,
 	SidebarStyle,
 	WorkspacePulseState,
 } from "./types.js";
@@ -91,6 +92,8 @@ const LABEL_COLUMN_WIDTH = 12;
 const SIDEBAR_ANIMATION_INTERVAL_MS = 1_000;
 /** Running tools listed during a turn; the rest are counted. */
 const MAX_ACTIVE_TOOLS = 3;
+/** Tool rows Activity keeps when they are reserved: as many as the recent tools it lists. */
+const RESERVED_TOOL_ROWS = 3;
 /** Changed files listed before the rest are counted. */
 const MAX_LISTED_FILES = 5;
 /** Open todos listed before the rest are counted. */
@@ -176,11 +179,19 @@ function renderDock(
 	height: number,
 	palette: AtelierPalette,
 	resizing: boolean,
+	anchor: SidebarAnchor = "top",
 ): string[] {
 	const contentWidth = Math.max(0, width - 2);
 	const edge = resizing ? `${palette.paint("warning", "│")} ` : "  ";
+	// Bottom-anchored, the stack sits flush on the footer: the last panel's spacer goes,
+	// and blank rows fill the space above. A stack taller than the dock still clips at the foot.
+	const stack = anchor === "bottom" && rows.at(-1) === "" ? rows.slice(0, -1) : rows;
+	const docked =
+		anchor === "bottom"
+			? [...Array.from({ length: Math.max(0, height - stack.length) }, () => ""), ...stack]
+			: rows;
 	return Array.from({ length: height }, (_, index) =>
-		truncateToWidth(`${edge}${fitToWidth(rows[index] ?? "", contentWidth)}`, width, ""),
+		truncateToWidth(`${edge}${fitToWidth(docked[index] ?? "", contentWidth)}`, width, ""),
 	);
 }
 
@@ -887,6 +898,8 @@ function activeToolNameRows(
  * Infinity and are only cut by the dock once every optional group is gone.
  */
 const DROP_RANK = {
+	/** Placeholders hold no information, so they are the first thing a short sidebar gives up. */
+	reservedToolRow: -1,
 	toolName: 0,
 	moreFiles: 3,
 	listedFile: 5,
@@ -974,6 +987,7 @@ function activityGroups(
 	theme: ThemeLike,
 	now: number,
 	glyphs: SidebarGlyphs,
+	reserveToolRows: boolean,
 ): SidebarGroup[] {
 	const lit: PaletteRole | undefined =
 		snapshot.activity !== "ready"
@@ -1006,6 +1020,12 @@ function activityGroups(
 	// When every counted tool has its own row, the count only matters once a row is dropped for height.
 	const summarizes =
 		toolCount > recent.length ? undefined : recent.map((tool) => `activityRecent:${tool.id}`);
+	// Reserved rows hold the panel's height from run to run. A short sidebar sheds them
+	// before any row with content, the lowest placeholder first.
+	const filled = visibleActive.length + moreRunning.length + recent.length;
+	const placeholders = reserveToolRows
+		? Array.from({ length: Math.max(0, RESERVED_TOOL_ROWS - filled) }, (_, index) => filled + index)
+		: [];
 	return [
 		{
 			name: "activityStatus",
@@ -1016,8 +1036,12 @@ function activityGroups(
 		{
 			name: "activityPerformance",
 			section,
-			rows: activity.phase === "idle" ? [] : responsePerformanceRows(activity, width, palette),
-			dropRank: DROP_RANK.performance,
+			rows:
+				activity.phase === "idle" && !reserveToolRows
+					? []
+					: responsePerformanceRows(activity, width, palette),
+			// Before the first run, reserved timing rows are placeholders too; they go right after the tool ones.
+			dropRank: activity.phase === "idle" ? DROP_RANK.reservedToolRow + 0.5 : DROP_RANK.performance,
 		},
 		...visibleActive.map((tool, index) => ({
 			name: `activityActive:${tool.id}`,
@@ -1032,6 +1056,20 @@ function activityGroups(
 			rows: [toolActivityRow(tool, width, nameWidth, palette, now, glyphs)],
 			dropRank:
 				index === 0 ? DROP_RANK.latestRecentTool : DROP_RANK.olderRecentTool + (recent.length - index - 1),
+		})),
+		...placeholders.map((slot) => ({
+			name: `activityReserved:${slot}`,
+			section,
+			// With no tools at all, the first reserved row says so; the rest stay blank.
+			rows: [
+				slot === 0
+					? palette.paint(
+							"dim",
+							truncateToWidth(activity.phase === "settled" ? "No tools used" : "No tools yet", width, "…"),
+						)
+					: "",
+			],
+			dropRank: DROP_RANK.reservedToolRow - slot / 100,
 		})),
 		{
 			name: "activityAggregate",
@@ -1311,7 +1349,8 @@ export function renderSidebarLines(
 				dropRank: DROP_RANK.agent,
 			},
 		],
-		activity: () => activityGroups(snapshot, contentWidth, palette, theme, now, glyphs),
+		activity: () =>
+			activityGroups(snapshot, contentWidth, palette, theme, now, glyphs, config.reserveSidebarToolRows),
 		alerts: () => [
 			{
 				name: "alerts",
@@ -1515,9 +1554,12 @@ export function renderSidebarLines(
 			dropRank: DROP_RANK.required,
 		});
 	}
+	const anchor = config.sidebarAnchor;
+	// Bottom-anchored, the last panel's spacer is not drawn, so the stack has one more row to use.
+	const stackHeight = anchor === "bottom" ? safeHeight + 1 : safeHeight;
 	return renderDock(
 		renderGroups(
-			composeGroups(placeSummaries(ordered, headingWidth, contentWidth, style), safeHeight, style),
+			composeGroups(placeSummaries(ordered, headingWidth, contentWidth, style), stackHeight, style),
 			headingWidth,
 			palette,
 			theme,
@@ -1528,6 +1570,7 @@ export function renderSidebarLines(
 		safeHeight,
 		palette,
 		resizing,
+		anchor,
 	);
 }
 

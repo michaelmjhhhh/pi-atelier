@@ -54,6 +54,8 @@ function harness(
 			setCompletionNotifications: vi.fn().mockResolvedValue(undefined),
 			setPrefillEnabled: vi.fn().mockResolvedValue(undefined),
 			setSidebarStyle: vi.fn().mockResolvedValue(undefined),
+			setSidebarAnchor: vi.fn().mockResolvedValue(undefined),
+			setReserveSidebarToolRows: vi.fn().mockResolvedValue(undefined),
 			setShowSidebarOnStartup: vi.fn().mockResolvedValue(undefined),
 			isToolListExpanded: () => false,
 			toggleToolList: vi.fn().mockResolvedValue(undefined),
@@ -113,8 +115,8 @@ describe("Settings Workspace", () => {
 		expect(text(h.component)).toContain("Queue");
 		expect(text(h.component)).toMatch(/● Missing +unavailable/);
 
-		// Four Sidebar settings and the configured layout precede the discovered panel.
-		for (let index = 0; index < configuredLayout.length + 4; index += 1) h.component.handleInput("\u001b[B");
+		// Six Sidebar settings and the configured layout precede the discovered panel.
+		for (let index = 0; index < configuredLayout.length + 6; index += 1) h.component.handleInput("\u001b[B");
 		h.component.handleInput(" ");
 		h.component.handleInput("s");
 		expect(h.persist).toHaveBeenCalled();
